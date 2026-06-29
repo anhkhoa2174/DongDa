@@ -1,0 +1,27 @@
+# ── Build stage (dev) ──────────────────────────────────────
+FROM node:20-alpine
+
+# Prisma cần OpenSSL trên alpine
+RUN apk add --no-cache openssl libc6-compat
+
+WORKDIR /app
+
+# Copy package + Prisma schema trước để layer cache + postinstall chạy được
+COPY package*.json ./
+COPY src/infrastructure/database/prisma ./src/infrastructure/database/prisma
+
+RUN npm install
+
+# Copy build configs cần ở runtime (nest start cần tsconfig.json + nest-cli.json)
+COPY tsconfig.json nest-cli.json ./
+
+# Entrypoint: migrate → seed → start
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+# Source code mount qua volume ở docker-compose
+# không COPY src ở đây → hot reload hoạt động
+
+EXPOSE 3000
+
+ENTRYPOINT ["./entrypoint.sh"]

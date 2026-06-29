@@ -1,0 +1,82 @@
+// NestJS App Module — wiring tất cả modules
+// Layer: Interface
+
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { JwtModule, JwtService } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+
+import { PrismaService } from './infrastructure/database/prisma.service';
+import { PrismaUserRepository } from './infrastructure/database/repositories/prisma-user.repository';
+
+import { LoginUseCase } from './application/use-cases/auth/login.use-case';
+import { CreateUserUseCase } from './application/use-cases/auth/create-user.use-case';
+import { ChangePasswordUseCase } from './application/use-cases/auth/change-password.use-case';
+import { RefreshTokenUseCase } from './application/use-cases/auth/refresh-token.use-case';
+
+import { AuthController, UserController } from './interfaces/http/controllers/auth.controller';
+import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
+import { HashService } from './infrastructure/config/hash.service';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+
+    // Rate limiting (NF1) — enforce qua APP_GUARD bên dưới
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+
+    PassportModule,
+
+    JwtModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (cfg: ConfigService) => ({
+        // Default secret cho access token (refresh ký bằng secret khác trong factory)
+        secret: cfg.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: cfg.get<string>('JWT_EXPIRES_IN') ?? '30m' },
+      }),
+    }),
+  ],
+  controllers: [AuthController, UserController],
+  providers: [
+    PrismaService,
+
+    // Bind interface token → concrete implementation
+    { provide: 'IUserRepository', useClass: PrismaUserRepository },
+    { provide: 'IHashService', useClass: HashService },
+
+    // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
+    {
+      provide: 'IJwtService',
+      useFactory: (jwt: JwtService, cfg: ConfigService) => ({
+        signAccess: (payload: Record<string, unknown>) =>
+          jwt.sign(payload, {
+            secret: cfg.get<string>('JWT_SECRET'),
+            expiresIn: cfg.get<string>('JWT_EXPIRES_IN') ?? '30m',
+          }),
+        signRefresh: (payload: Record<string, unknown>) =>
+          jwt.sign(payload, {
+            secret: cfg.get<string>('JWT_REFRESH_SECRET'),
+            expiresIn: cfg.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
+          }),
+        verifyAccess: (token: string) =>
+          jwt.verify(token, { secret: cfg.get<string>('JWT_SECRET') }),
+        verifyRefresh: (token: string) =>
+          jwt.verify(token, { secret: cfg.get<string>('JWT_REFRESH_SECRET') }),
+      }),
+      inject: [JwtService, ConfigService],
+    },
+
+    LoginUseCase,
+    CreateUserUseCase,
+    ChangePasswordUseCase,
+    RefreshTokenUseCase,
+
+    JwtStrategy,
+
+    // Enforce rate limit cho mọi route (NF1)
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+})
+export class AppModule {}

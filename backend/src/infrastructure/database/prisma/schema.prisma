@@ -1,0 +1,58 @@
+// ============================================================
+// Prisma Schema — DongDa (Auth scope only)
+// Các module khác sẽ thêm model sau
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN    // 1 tài khoản — toàn quyền hệ thống
+  MANAGER  // Trưởng chi nhánh / KTTH — quản lý chi nhánh
+  STAFF    // Nhân viên chi nhánh — nhập giao dịch
+  AUDITOR  // Read-only
+}
+
+// ─── Models ──────────────────────────────────────────────────
+
+model Branch {
+  id                String   @id @default(cuid())
+  name              String
+  code              String   @unique // NCT, TAO_DAN, LHP, BAY_HIEN, AN_DONG
+  address           String?
+  isActive          Boolean  @default(true)
+  enabledCurrencies String[] @default(["USD", "VND"])
+
+  users             User[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("branches")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String   // bcrypt hashed
+  fullName  String
+  role      UserRole
+  branchId  String?  // null = ADMIN / AUDITOR
+  isActive  Boolean  @default(true)
+
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}

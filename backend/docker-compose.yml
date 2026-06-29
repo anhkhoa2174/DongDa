@@ -1,0 +1,44 @@
+services:
+  # ── PostgreSQL ────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: dongda_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dongda_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (NestJS — hot reload) ────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: dongda_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dongda_db?schema=public
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount toàn bộ source code → thay đổi file là container nhận ngay
+      - ./src:/app/src
+      # Giữ node_modules trong container, không bị override bởi host
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
