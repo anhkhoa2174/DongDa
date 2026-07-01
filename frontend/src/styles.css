@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-600: #0d9488;
+  --color-brand-700: #0f766e;
+  --color-brand-800: #115e59;
+}
+
+@layer base {
+  :root {
+    color: #1f2937;
+    background: #f5f7fb;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+.header-user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 4px 8px;
+}
+
+.header-user-copy,
+.user-menu-identity,
+.notification-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.35;
+}
+
+.header-user-copy .ant-typography:last-child {
+  font-size: 11px;
+}
+
+.notification-menu-item {
+  width: 280px;
+  white-space: normal;
+}
+
+.notification-menu-item .ant-typography:last-child {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.notification-list__item {
+  margin: 0 -12px;
+  padding: 16px 12px !important;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.notification-list__item:hover,
+.notification-list__item--unread {
+  background: #f0fdfa;
+}
+
+.notification-list__item .ant-list-item-meta-description .ant-btn {
+  height: auto;
+  padding: 0;
+}
+
+.balance-card {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.balance-card .ant-card-body {
+  padding: 24px;
+}
+
+.balance-card__content {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.balance-card__main {
+  min-width: 0;
+}
+
+.balance-card__eyebrow,
+.balance-card__muted {
+  color: rgba(255, 255, 255, 0.72) !important;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.balance-card__amount {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.12;
+}
+
+.balance-card__amount span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 24px;
+}
+
+.balance-card__sparkline {
+  min-width: 160px;
+  text-align: right;
+}
+
+.sparkline {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 6px;
+  height: 56px;
+  margin-top: 10px;
+}
+
+.sparkline span {
+  display: block;
+  width: 12px;
+  min-height: 12px;
+  border-radius: 4px 4px 0 0;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.sub-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.sub-balance-grid div {
+  min-width: 0;
+}
+
+.sub-balance-grid .ant-typography {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sub-balance-grid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 17px;
+}
+
+.dashboard-actions {
+  display: flex;
+  width: 100%;
+  margin-top: 24px;
+}
+
+.dashboard-actions .ant-btn-default {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.dashboard-actions .ant-btn-default:hover {
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.dashboard-actions .ant-btn-primary.ant-btn-background-ghost {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-weight: 400;
+}
+
+.dashboard-actions .ant-btn-primary.ant-btn-background-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+@media (max-width: 960px) {
+  .balance-card__content {
+    flex-direction: column;
+  }
+
+  .balance-card__sparkline {
+    width: 100%;
+    text-align: left;
+  }
+
+  .sparkline {
+    justify-content: flex-start;
+  }
+
+  .sub-balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .balance-card .ant-card-body {
+    padding: 18px;
+  }
+
+  .balance-card__amount {
+    font-size: 30px;
+  }
+
+  .sub-balance-grid {
+    grid-template-columns: 1fr;
+  }
+}
