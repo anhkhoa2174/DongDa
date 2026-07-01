@@ -1,0 +1,49 @@
+{
+  "name": "dong-da-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0 <26",
+    "npm": ">=10 <12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.6.1",
+    "@hookform/resolvers": "^3.10.0",
+    "@tailwindcss/vite": "^4.3.1",
+    "@tanstack/react-query": "^5.62.8",
+    "@tanstack/react-table": "^8.20.6",
+    "antd": "^5.22.7",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.54.2",
+    "react-router": "^7.1.1",
+    "react-router-dom": "^7.1.1",
+    "recharts": "^2.15.4",
+    "tailwindcss": "^4.3.1",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "typescript": "~5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^6.0.5"
+  }
+}
