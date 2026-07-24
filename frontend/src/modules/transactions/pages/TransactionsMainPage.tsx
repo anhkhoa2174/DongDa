@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  FieldTimeOutlined,
   InboxOutlined,
   SendOutlined,
   SwapOutlined,
@@ -13,7 +14,6 @@ import {
   Modal,
   Row,
   Select,
-  Space,
   Statistic,
   Table,
   Tag,
@@ -22,7 +22,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency } from '@/shared/utils/formatters';
+import { formatDateTime, formatVnd } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useShiftStore } from '@/modules/shift-management/model/shift.store';
@@ -86,16 +86,22 @@ export function TransactionsMainPage() {
     { title: 'Loại giao dịch', dataIndex: 'type' },
     { title: 'Khách hàng', dataIndex: 'customerName', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
     { title: 'Số tiền', dataIndex: 'amountLabel', align: 'right' },
-    { title: 'Quy đổi VND', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatCurrency(value) },
+    { title: 'Quy đổi VND', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatVnd(value) },
     { title: 'Chi nhánh', dataIndex: 'branch' },
     { title: 'Ca', dataIndex: 'shiftCode' },
     { title: 'Thời gian', dataIndex: 'createdAt' },
     { title: 'Trạng thái', dataIndex: 'status', render: (value: TransactionStatus) => <Tag color={statusMeta[value].color}>{statusMeta[value].label}</Tag> },
   ];
 
-  const totalVnd = aggregatedTransactionsMock.reduce((sum, transaction) => sum + transaction.vndAmount, 0);
   const canCreate = access.canCreate || isUiTestMode;
   const activeCreateAction = createActions.find((action) => action.key === activeCreateSource);
+  const activeShiftCode = currentShift?.code ?? aggregatedTransactionsMock[0]?.shiftCode;
+  const shiftTransactions = aggregatedTransactionsMock.filter((transaction) => transaction.shiftCode === activeShiftCode);
+  const visibleShiftTransactions = shiftTransactions.length > 0 ? shiftTransactions : aggregatedTransactionsMock;
+  const shiftTotalVnd = visibleShiftTransactions.reduce((sum, transaction) => sum + transaction.vndAmount, 0);
+  const completedCount = visibleShiftTransactions.filter((transaction) => transaction.status === 'COMPLETED').length;
+  const internationalCount = visibleShiftTransactions.filter((transaction) => ['WU', 'MG'].includes(transaction.source)).length;
+  const openedAt = currentShift?.openedAt ? formatDateTime(currentShift.openedAt) : 'UI TEST';
 
   const renderCreateForm = () => {
     const closeModal = () => setActiveCreateSource(null);
@@ -114,31 +120,71 @@ export function TransactionsMainPage() {
       moduleName="transactions"
     >
       <div className="space-y-4">
-        <Card title="Tạo giao dịch">
-          <Space wrap>
-            {createActions.map((action) => (
-              <Button
-                key={action.label}
-                type="primary"
-                ghost
-                icon={action.icon}
-                disabled={!canCreate}
-                onClick={() => setActiveCreateSource(action.key as TransactionSource)}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </Space>
+        <Card className="transaction-command-center polished-card" classNames={{ body: 'p-0!' }}>
+          <div className="grid xl:grid-cols-[1.1fr_1.4fr_1.1fr]">
+            <div className="border-b border-slate-200 p-5 xl:border-r xl:border-b-0">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="grid size-11 place-items-center rounded-lg bg-black text-brand-700">
+                  <FieldTimeOutlined />
+                </div>
+                <div>
+                  <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">Ca giao dịch</Typography.Text>
+                  <Typography.Title level={4} className="m-0!">{currentShift?.branchName ?? 'Chi nhánh test'}</Typography.Title>
+                </div>
+              </div>
+              <div className="grid gap-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Mã ca</span>
+                  <Typography.Text strong className="font-mono!">{activeShiftCode ?? 'UI-TEST-SHIFT'}</Typography.Text>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Người mở</span>
+                  <Typography.Text strong>{currentShift?.openedBy ?? 'UI Test'}</Typography.Text>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Thời gian mở</span>
+                  <Typography.Text strong>{openedAt}</Typography.Text>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-slate-200 p-5 xl:border-r xl:border-b-0">
+              <Typography.Text type="secondary" className="mb-4 block text-xs! font-semibold! uppercase">Thống kê trong ca</Typography.Text>
+              <Row gutter={[12, 12]}>
+                <Col xs={12} md={6} xl={12}><Statistic title="Tổng GD" value={visibleShiftTransactions.length} /></Col>
+                <Col xs={12} md={6} xl={12}><Statistic title="Hoàn tất" value={completedCount} /></Col>
+                <Col xs={12} md={6} xl={12}><Statistic title="WU / MG" value={internationalCount} /></Col>
+                <Col xs={12} md={6} xl={12}><Statistic title="Quy đổi" value={shiftTotalVnd} formatter={(value) => formatVnd(Number(value))} /></Col>
+              </Row>
+            </div>
+
+            <div className="p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">Tạo giao dịch</Typography.Text>
+                  <Typography.Title level={5} className="m-0!">Chọn nghiệp vụ</Typography.Title>
+                </div>
+                <Tag color={canCreate ? 'green' : 'red'}>{canCreate ? 'OPEN' : 'LOCKED'}</Tag>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                {createActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    className="justify-start!"
+                    type={action.key === 'WU' ? 'primary' : 'default'}
+                    icon={action.icon}
+                    disabled={!canCreate}
+                    onClick={() => setActiveCreateSource(action.key as TransactionSource)}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
         </Card>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Tổng giao dịch" value={aggregatedTransactionsMock.length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="WU / MG" value={aggregatedTransactionsMock.filter((item) => ['WU', 'MG'].includes(item.source)).length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Ngoại tệ / Chuyển tiền" value={aggregatedTransactionsMock.filter((item) => ['FX', 'DOMESTIC'].includes(item.source)).length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Tổng quy đổi" value={totalVnd} suffix="₫" /></Card></Col>
-        </Row>
-
-        <Card>
+        <Card className="polished-card">
           <Row gutter={[12, 12]} className="mb-4">
             <Col xs={24} lg={8}>
               <Input.Search allowClear placeholder="Tìm mã GD, khách hàng, ca..." value={keyword} onChange={(event) => setKeyword(event.target.value)} />

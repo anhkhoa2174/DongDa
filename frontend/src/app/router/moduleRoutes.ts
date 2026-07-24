@@ -1,6 +1,7 @@
 import type { RouteObject } from 'react-router-dom';
 import { auditLogRoutes } from '@/modules/audit-log/routes';
 import { bankManagementRoutes } from '@/modules/bank-management/routes';
+import { branchManagementRoutes } from '@/modules/branch-management/routes';
 import { cashCountRoutes } from '@/modules/cash-count/routes';
 import { dashboardRoutes } from '@/modules/dashboard/routes';
 import { debtManagementRoutes } from '@/modules/debt-management/routes';
@@ -21,6 +22,7 @@ export const moduleRoutes: RouteObject[] = [
   ...dashboardRoutes,
   ...shiftManagementRoutes,
   ...transactionRoutes,
+  ...branchManagementRoutes,
   ...westernUnionRoutes,
   ...moneyGramRoutes,
   ...foreignExchangeRoutes,

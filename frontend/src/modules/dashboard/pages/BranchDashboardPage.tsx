@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useShiftStore } from '@/modules/shift-management/model/shift.store';
 import { getTransactionAccess } from '@/modules/transactions/model/transactionAccess';
-import { formatCurrency, formatForeignCurrency } from '@/shared/utils/formatters';
+import { formatForeignCurrency, formatVnd } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import {
   BalanceOverviewCard,
@@ -46,7 +46,7 @@ const fundAColumns: ColumnsType<FundACurrency> = [
     title: 'Quy đổi VND',
     dataIndex: 'vndValue',
     align: 'right',
-    render: (value: number) => formatCurrency(value),
+    render: (value: number) => formatVnd(value),
   },
   {
     title: 'Trạng thái',

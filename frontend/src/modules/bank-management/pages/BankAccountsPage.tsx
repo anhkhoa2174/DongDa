@@ -14,8 +14,9 @@ import {
 } from '@ant-design/icons';
 import { Button, Card, Col, Input, Progress, Row, Select, Space, Statistic, Tag, Typography } from 'antd';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import { formatNumber, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { bankAccountsMock } from '../data/bankAccounts.mock';
 import type { BankAccount, BankAccountStatus, BankReconciliationStatus } from '../model/bank.types';
 
@@ -46,21 +47,24 @@ const reconciliationMeta: Record<BankReconciliationStatus, { label: string; colo
 };
 
 function formatAccountMoney(account: BankAccount, value: number) {
-  return account.currency === 'VND' ? formatCurrency(value) : formatCurrency(value, 'USD');
+  return account.currency === 'VND' ? formatVnd(value) : formatUsd(value);
 }
 
 function BankAccountCard({ account }: { account: BankAccount }) {
   const liquidityPercent = Math.round((account.availableBalance / account.balance) * 100);
   const status = statusMeta[account.status];
   const reconciliation = reconciliationMeta[account.reconciliationStatus];
+  const navigate = useNavigate();
+  const movementsPath = `/bank-management/accounts/${account.key}/movements`;
 
   return (
     <Card
-      className="h-full overflow-hidden"
+      className="h-full cursor-pointer overflow-hidden transition hover:border-brand-700"
       classNames={{ body: 'p-0!' }}
+      onClick={() => navigate(movementsPath)}
       title={(
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded bg-teal-50 text-lg text-teal-700">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded bg-brand-50 text-lg text-black">
             <BankOutlined />
           </div>
           <div className="min-w-0">
@@ -96,7 +100,7 @@ function BankAccountCard({ account }: { account: BankAccount }) {
             <Typography.Text type="secondary">Tỷ lệ khả dụng</Typography.Text>
             <Typography.Text strong>{liquidityPercent}%</Typography.Text>
           </div>
-          <Progress percent={liquidityPercent} showInfo={false} strokeColor="#0f766e" />
+          <Progress percent={liquidityPercent} showInfo={false} strokeColor="#f5b301" />
         </div>
 
         <Row gutter={[12, 12]}>
@@ -149,10 +153,10 @@ function BankAccountCard({ account }: { account: BankAccount }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-4">
-        <Button icon={<EyeOutlined />}>Giao dịch</Button>
-        <Button icon={<SwapOutlined />}>Nộp/Rút</Button>
-        <Button icon={<AuditOutlined />}>Đối chiếu</Button>
-        <Button icon={<DownloadOutlined />}>Sao kê</Button>
+        <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Giao dịch</Button>
+        <Button icon={<SwapOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Nộp/Rút</Button>
+        <Button icon={<AuditOutlined />} onClick={(event) => event.stopPropagation()}>Đối chiếu</Button>
+        <Button icon={<DownloadOutlined />} onClick={(event) => event.stopPropagation()}>Sao kê</Button>
       </div>
     </Card>
   );
@@ -199,10 +203,10 @@ export function BankAccountsPage() {
       <Space direction="vertical" size={16} className="w-full">
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Tổng VND ngân hàng" value={totalVnd} formatter={(value) => formatCurrency(Number(value))} /></Card>
+            <Card><Statistic title="Tổng VND ngân hàng" value={totalVnd} formatter={(value) => formatVnd(Number(value))} /></Card>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Tổng USD ngân hàng" value={totalUsd} formatter={(value) => formatCurrency(Number(value), 'USD')} /></Card>
+            <Card><Statistic title="Tổng USD ngân hàng" value={totalUsd} formatter={(value) => formatUsd(Number(value))} /></Card>
           </Col>
           <Col xs={24} sm={12} xl={6}>
             <Card><Statistic title="Chờ đối chiếu" value={pendingReconciliation} suffix="TK" /></Card>

@@ -1,9 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { App as AntApp, ConfigProvider, theme } from 'antd';
-import viVN from 'antd/locale/vi_VN';
+import { App as AntApp } from 'antd';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
-import { type PropsWithChildren, useState } from 'react';
+import { Suspense, type PropsWithChildren, useState } from 'react';
+import { AppErrorBoundary } from '../components/AppErrorBoundary';
+import { AppLoading } from '../components/AppLoading';
+import { AuthProvider } from './auth/AuthProvider';
+import { AppConfigProvider } from './config/AppConfigProvider';
+import { MockProvider } from './mock/MockProvider';
+import { NotificationProvider } from './notifications/NotificationProvider';
+import { PermissionProvider } from './permissions/PermissionProvider';
+import { ThemeProvider } from './theme/ThemeProvider';
 
 dayjs.locale('vi');
 
@@ -22,34 +29,24 @@ export function AppProviders({ children }: PropsWithChildren) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ConfigProvider
-        locale={viVN}
-        theme={{
-          algorithm: theme.defaultAlgorithm,
-          token: {
-            colorPrimary: '#0f766e',
-            colorInfo: '#2563eb',
-            borderRadius: 6,
-            fontFamily:
-              'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-          },
-          components: {
-            Layout: {
-              bodyBg: '#f5f7fb',
-              headerBg: '#ffffff',
-              siderBg: '#111827',
-            },
-            Menu: {
-              darkItemBg: '#111827',
-              darkSubMenuItemBg: '#0f172a',
-              darkItemSelectedBg: '#0f766e',
-            },
-          },
-        }}
-      >
-        <AntApp>{children}</AntApp>
-      </ConfigProvider>
-    </QueryClientProvider>
+    <AppConfigProvider>
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <AntApp>
+              <AuthProvider>
+                <PermissionProvider>
+                  <NotificationProvider>
+                    <MockProvider>
+                      <Suspense fallback={<AppLoading />}>{children}</Suspense>
+                    </MockProvider>
+                  </NotificationProvider>
+                </PermissionProvider>
+              </AuthProvider>
+            </AntApp>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </AppConfigProvider>
   );
 }

@@ -1,4 +1,4 @@
-import type { BankAccount } from '../model/bank.types';
+import type { BankAccount, BankBalanceMovement } from '../model/bank.types';
 
 export const bankAccountsMock: BankAccount[] = [
   {
@@ -107,3 +107,55 @@ export const bankAccountsMock: BankAccount[] = [
     linkedModules: ['Công nợ USD', 'WU', 'MG'],
   },
 ];
+
+export const bankBalanceMovementsMock: BankBalanceMovement[] = bankAccountsMock.flatMap((account, accountIndex) => {
+  const depositAmount = account.currency === 'VND' ? 185_000_000 + accountIndex * 22_000_000 : 7_500 + accountIndex * 450;
+  const withdrawAmount = account.currency === 'VND' ? 92_000_000 + accountIndex * 13_000_000 : 3_200 + accountIndex * 220;
+  const transferAmount = account.currency === 'VND' ? 64_000_000 + accountIndex * 8_000_000 : 1_850 + accountIndex * 180;
+  const endingBalance = account.balance;
+  const beforeDeposit = endingBalance - depositAmount + withdrawAmount - transferAmount;
+  const afterDeposit = beforeDeposit + depositAmount;
+  const afterWithdraw = afterDeposit - withdrawAmount;
+
+  return [
+    {
+      key: `${account.key}-mv-001`,
+      accountKey: account.key,
+      occurredAt: '26/06/2026 09:12',
+      type: 'DEPOSIT',
+      description: 'Nạp tiền vào tài khoản',
+      counterparty: account.ownerScope,
+      amount: depositAmount,
+      balanceBefore: beforeDeposit,
+      balanceAfter: afterDeposit,
+      referenceCode: `NAP-${account.key.toUpperCase()}-001`,
+      createdBy: 'KTTH',
+    },
+    {
+      key: `${account.key}-mv-002`,
+      accountKey: account.key,
+      occurredAt: '26/06/2026 11:35',
+      type: 'WITHDRAW',
+      description: 'Chi tiền ra khỏi tài khoản',
+      counterparty: 'Quỹ vận hành',
+      amount: -withdrawAmount,
+      balanceBefore: afterDeposit,
+      balanceAfter: afterWithdraw,
+      referenceCode: `CHI-${account.key.toUpperCase()}-002`,
+      createdBy: 'KTTH',
+    },
+    {
+      key: `${account.key}-mv-003`,
+      accountKey: account.key,
+      occurredAt: '26/06/2026 15:48',
+      type: accountIndex % 2 === 0 ? 'TRANSFER_IN' : 'TRANSFER_OUT',
+      description: accountIndex % 2 === 0 ? 'Điều chuyển tiền vào' : 'Điều chuyển tiền ra',
+      counterparty: accountIndex % 2 === 0 ? 'Quỹ Chung' : 'Chi nhánh',
+      amount: accountIndex % 2 === 0 ? transferAmount : -transferAmount,
+      balanceBefore: afterWithdraw,
+      balanceAfter: endingBalance,
+      referenceCode: `DC-${account.key.toUpperCase()}-003`,
+      createdBy: 'Hệ thống',
+    },
+  ];
+});

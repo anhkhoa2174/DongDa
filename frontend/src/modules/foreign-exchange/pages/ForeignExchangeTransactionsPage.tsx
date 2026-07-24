@@ -5,7 +5,7 @@ import {
   type TransactionField,
 } from '@/modules/transactions/components/TransactionWorkspacePage';
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
-import { formatCurrency, formatForeignCurrency, formatNumber } from '@/shared/utils/formatters';
+import { formatVnd, formatForeignCurrency, formatExchangeRate } from '@/shared/utils/formatters';
 import { foreignExchangeTransactionsMock } from '../data/transactions.mock';
 
 const fields: TransactionField[] = [
@@ -46,8 +46,8 @@ const columns: ColumnsType<TransactionRecord> = [
     align: 'right',
     render: (value: number, record) => formatForeignCurrency(Number(value), String(record.currency ?? '')),
   },
-  { title: 'Tỷ giá', dataIndex: 'rate', align: 'right', render: (value: number) => formatNumber(Number(value)) },
-  { title: 'Thành tiền', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatCurrency(Number(value)) },
+  { title: 'Tỷ giá', dataIndex: 'rate', align: 'right', render: (value: number) => formatExchangeRate(Number(value)) },
+  { title: 'Thành tiền', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatVnd(Number(value)) },
 ];
 
 type ForeignExchangeTransactionsPageProps = {

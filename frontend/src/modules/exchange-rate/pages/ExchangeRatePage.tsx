@@ -29,12 +29,26 @@ import type { UploadFile } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatNumber } from '@/shared/utils/formatters';
+import {
+  exchangeRateInputFormatter,
+  exchangeRateInputParser,
+  formatExchangeRate,
+  formatTime,
+} from '@/shared/utils/formatters';
 import { RateCard } from '@/modules/dashboard/components/RateCard';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import { fundARatesMock, primaryRatesMock } from '../data/exchangeRates.mock';
 import type { FundARate, FundARateForm, PrimaryRateForm } from '../model/exchangeRate.types';
+
+const exchangeRateInputProps = {
+  className: 'w-full',
+  controls: false,
+  formatter: exchangeRateInputFormatter,
+  min: 0,
+  parser: exchangeRateInputParser,
+  precision: 2,
+};
 
 const baseFundAColumns: ColumnsType<FundARate> = [
   {
@@ -52,13 +66,13 @@ const baseFundAColumns: ColumnsType<FundARate> = [
     title: 'Giá mua',
     dataIndex: 'buyRate',
     align: 'right',
-    render: (value: number) => <Typography.Text strong>{formatNumber(value)}</Typography.Text>,
+    render: (value: number) => <Typography.Text strong>{formatExchangeRate(value)}</Typography.Text>,
   },
   {
     title: 'Giá bán',
     dataIndex: 'sellRate',
     align: 'right',
-    render: (value: number) => <Typography.Text strong>{formatNumber(value)}</Typography.Text>,
+    render: (value: number) => <Typography.Text strong>{formatExchangeRate(value)}</Typography.Text>,
   },
   {
     title: 'Biên độ cho phép',
@@ -141,7 +155,7 @@ export function ExchangeRatePage() {
     setFundARates((current) =>
       current.map((rate) =>
         rate.key === editingFundARate.key
-          ? { ...rate, ...values, updatedAt: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) }
+          ? { ...rate, ...values, updatedAt: formatTime(new Date()) }
           : rate,
       ),
     );
@@ -283,22 +297,22 @@ export function ExchangeRatePage() {
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="paidSell" label="Paid (WU/MG) Bán" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="paidBuy" label="Paid Mua" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="sell" label="Giá Bán" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="buy" label="Giá Mua" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
           </Row>
@@ -347,12 +361,12 @@ export function ExchangeRatePage() {
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="buyRate" label="Giá mua" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="sellRate" label="Giá bán" rules={[{ required: true }]}>
-                <InputNumber min={0} controls={false} className="w-full" />
+                <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
           </Row>
@@ -430,14 +444,14 @@ export function ExchangeRatePage() {
                   align: 'right',
                   render: (_, record) => fundARates.find((rate) => rate.key === record.key)?.buyRate.toString(),
                 },
-                { title: 'Giá mua mới', dataIndex: 'buyRate', align: 'right', render: (value: number) => <Typography.Text strong>{formatNumber(value)}</Typography.Text> },
+                { title: 'Giá mua mới', dataIndex: 'buyRate', align: 'right', render: (value: number) => <Typography.Text strong>{formatExchangeRate(value)}</Typography.Text> },
                 {
                   title: 'Giá bán hiện tại',
                   key: 'currentSell',
                   align: 'right',
                   render: (_, record) => fundARates.find((rate) => rate.key === record.key)?.sellRate.toString(),
                 },
-                { title: 'Giá bán mới', dataIndex: 'sellRate', align: 'right', render: (value: number) => <Typography.Text strong>{formatNumber(value)}</Typography.Text> },
+                { title: 'Giá bán mới', dataIndex: 'sellRate', align: 'right', render: (value: number) => <Typography.Text strong>{formatExchangeRate(value)}</Typography.Text> },
                 { title: 'Biên độ', dataIndex: 'adjustment', align: 'center' },
               ]}
             />

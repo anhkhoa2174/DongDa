@@ -14,8 +14,8 @@ export const loginBranchesMock = [
 ];
 
 export const loginFormDefaultsMock = {
-  username: 'director',
-  password: '123456',
+  username: 'admin',
+  password: 'Admin@123456',
 };
 
 export const defaultLoginBranchMock = 'hq';

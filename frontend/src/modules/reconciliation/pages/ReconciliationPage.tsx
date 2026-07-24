@@ -10,7 +10,7 @@ import {
 import { Alert, Button, Card, Col, Progress, Row, Space, Statistic, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { useMemo, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency, formatDateTime, formatUsd } from '@/shared/utils/formatters';
+import { formatDateTime, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { journalUploadsMock, wuReconciliationRowsMock } from '../data/reconciliation.mock';
 import type { ReconciliationResult, ReconciliationRow } from '../model/reconciliation.types';
 
@@ -45,7 +45,7 @@ function ReconciliationRowCard({ row }: { row: ReconciliationRow }) {
           <div className="font-medium">{row.externalName ?? '—'} · <code className="text-xs">{row.externalId}</code></div>
           <div className="text-sm">
             {row.externalAmountUsd !== undefined && <span className="mr-2">{formatUsd(row.externalAmountUsd, 0)}</span>}
-            {row.externalAmountVnd !== undefined && <span>{formatCurrency(row.externalAmountVnd)}</span>}
+            {row.externalAmountVnd !== undefined && <span>{formatVnd(row.externalAmountVnd)}</span>}
           </div>
         </Col>
         <Col xs={24} md={4} className="text-center">
@@ -61,7 +61,7 @@ function ReconciliationRowCard({ row }: { row: ReconciliationRow }) {
               <div className="font-medium">{row.systemName} · <code className="text-xs">{row.systemId}</code></div>
               <div className="text-sm">
                 {row.systemAmountUsd !== undefined && <span className="mr-2">{formatUsd(row.systemAmountUsd, 0)}</span>}
-                {row.systemAmountVnd !== undefined && <span>{formatCurrency(row.systemAmountVnd)}</span>}
+                {row.systemAmountVnd !== undefined && <span>{formatVnd(row.systemAmountVnd)}</span>}
               </div>
             </>
           ) : (

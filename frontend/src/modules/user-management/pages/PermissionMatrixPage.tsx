@@ -2,25 +2,23 @@ import { CheckOutlined, MinusOutlined } from '@ant-design/icons';
 import { Card, Table, Tag, Typography } from 'antd';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 
-const roles = ['Giám đốc', 'KTTH', 'Trưởng CN', 'NV CN', 'Auditor'] as const;
+const roles = ['ADMIN', 'MANAGER', 'STAFF', 'AUDITOR'] as const;
 type Cell = 'YES' | 'NO' | 'READ';
 
 const rows: { feature: string; values: Cell[] }[] = [
-  { feature: 'Xem toàn hệ thống',      values: ['YES', 'YES', 'NO',  'NO',  'READ'] },
-  { feature: 'Nhập tỷ giá',            values: ['NO',  'YES', 'NO',  'NO',  'NO']   },
-  { feature: 'Phê duyệt tỷ giá',       values: ['YES', 'NO',  'NO',  'NO',  'NO']   },
-  { feature: 'Tạo GD WU/MG',           values: ['NO',  'NO',  'YES', 'YES', 'NO']   },
-  { feature: 'Sửa GD',                 values: ['NO',  'YES', 'YES', 'YES', 'NO']   },
-  { feature: 'Void GD',                values: ['NO',  'YES', 'YES', 'NO',  'NO']   },
-  { feature: 'Mở/đóng ca',             values: ['NO',  'NO',  'YES', 'YES', 'NO']   },
-  { feature: 'Điều động vốn',          values: ['YES', 'YES', 'YES', 'NO',  'NO']   },
-  { feature: 'Duyệt điều động',        values: ['YES', 'YES', 'NO',  'NO',  'NO']   },
-  { feature: 'Đối chiếu Journal',      values: ['YES', 'YES', 'NO',  'NO',  'NO']   },
-  { feature: 'Xem báo cáo CN mình',    values: ['YES', 'YES', 'YES', 'YES', 'READ'] },
-  { feature: 'Xem báo cáo toàn hệ',    values: ['YES', 'YES', 'NO',  'NO',  'READ'] },
-  { feature: 'Audit log',              values: ['YES', 'YES', 'NO',  'NO',  'READ'] },
-  { feature: 'Quản lý người dùng',     values: ['YES', 'NO',  'NO',  'NO',  'NO']   },
-  { feature: 'Override hệ thống',      values: ['YES', 'NO',  'NO',  'NO',  'NO']   },
+  { feature: 'Toàn quyền hệ thống',        values: ['YES', 'NO',  'NO',  'NO']   },
+  { feature: 'Xem giao dịch',              values: ['YES', 'YES', 'YES', 'READ'] },
+  { feature: 'Tạo GD WU/MG/FX/Chuyển tiền', values: ['YES', 'YES', 'YES', 'NO']   },
+  { feature: 'Duyệt/void giao dịch',       values: ['YES', 'YES', 'NO',  'NO']   },
+  { feature: 'Mở/đóng ca',                 values: ['YES', 'YES', 'YES', 'READ'] },
+  { feature: 'Xem tỷ giá',                 values: ['YES', 'YES', 'YES', 'READ'] },
+  { feature: 'Quản lý tỷ giá',             values: ['YES', 'NO',  'NO',  'NO']   },
+  { feature: 'Tiếp quỹ',                   values: ['YES', 'YES', 'NO',  'NO']   },
+  { feature: 'Ngân hàng/Công nợ',          values: ['YES', 'YES', 'NO',  'READ'] },
+  { feature: 'Đối chiếu Journal',          values: ['YES', 'YES', 'NO',  'READ'] },
+  { feature: 'Báo cáo',                    values: ['YES', 'YES', 'NO',  'READ'] },
+  { feature: 'Audit log',                  values: ['YES', 'NO',  'NO',  'READ'] },
+  { feature: 'Quản lý người dùng',         values: ['YES', 'NO',  'NO',  'NO']   },
 ];
 
 function PermissionCell({ value }: Readonly<{ value: Cell }>) {

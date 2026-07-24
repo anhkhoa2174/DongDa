@@ -1,4 +1,4 @@
-export type UserRoleCode = 'director' | 'accountant' | 'branch_manager' | 'branch_staff' | 'auditor';
+export type UserRoleCode = 'ADMIN' | 'MANAGER' | 'STAFF' | 'AUDITOR';
 
 export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED';
 

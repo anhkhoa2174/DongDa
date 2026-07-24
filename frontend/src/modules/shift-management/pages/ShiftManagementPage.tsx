@@ -11,7 +11,7 @@ import { App, Button, Card, Col, Empty, Progress, Row, Space, Table, Tag, Typogr
 import type { ColumnsType } from 'antd/es/table';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import { formatTime, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { useShiftStore } from '../model/shift.store';
 import { shiftCashFlowMock, shiftHistoryMock, shiftPayInOutMock, shiftReconciliationMock } from '../data/shiftDashboard.mock';
 
@@ -19,7 +19,7 @@ type PayInOutRecord = (typeof shiftPayInOutMock)[number];
 type ShiftHistoryRecord = (typeof shiftHistoryMock)[number];
 
 function formatShiftTime(value: string) {
-  return new Date(value).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  return formatTime(value);
 }
 
 const payInOutColumns: ColumnsType<PayInOutRecord> = [
@@ -33,7 +33,7 @@ const payInOutColumns: ColumnsType<PayInOutRecord> = [
     title: 'Số tiền',
     dataIndex: 'amount',
     align: 'right',
-    render: (value: number) => <Typography.Text className={value > 0 ? 'text-emerald-600!' : 'text-rose-600!'}>{formatCurrency(value)}</Typography.Text>,
+    render: (value: number) => <Typography.Text className={value > 0 ? 'text-emerald-600!' : 'text-rose-600!'}>{formatVnd(value)}</Typography.Text>,
   },
   { title: 'Lý do', dataIndex: 'reason' },
 ];
@@ -45,13 +45,13 @@ const historyColumns: ColumnsType<ShiftHistoryRecord> = [
   { title: 'Mở', dataIndex: 'openedAt', render: (value: string) => <Typography.Text className="font-mono">{value}</Typography.Text> },
   { title: 'Đóng', dataIndex: 'closedAt', render: (value: string) => <Typography.Text className="font-mono">{value}</Typography.Text> },
   { title: 'GD', dataIndex: 'transactionCount', align: 'right' },
-  { title: 'Expected VND', dataIndex: 'expectedVnd', align: 'right', render: (value: number) => formatCurrency(value) },
-  { title: 'Actual VND', dataIndex: 'actualVnd', align: 'right', render: (value: number) => formatCurrency(value) },
+  { title: 'Expected VND', dataIndex: 'expectedVnd', align: 'right', render: (value: number) => formatVnd(value) },
+  { title: 'Actual VND', dataIndex: 'actualVnd', align: 'right', render: (value: number) => formatVnd(value) },
   {
     title: 'Diff',
     dataIndex: 'diff',
     align: 'right',
-    render: (value: number) => <Typography.Text className={value === 0 ? 'text-emerald-600!' : value > 0 ? 'text-amber-600!' : 'text-rose-600!'}>{formatCurrency(value)}</Typography.Text>,
+    render: (value: number) => <Typography.Text className={value === 0 ? 'text-emerald-600!' : value > 0 ? 'text-amber-600!' : 'text-rose-600!'}>{formatVnd(value)}</Typography.Text>,
   },
   {
     title: 'Trạng thái',
@@ -137,11 +137,11 @@ export function ShiftManagementPage() {
       extra={<Button icon={<ReloadOutlined />}>Làm mới ca</Button>}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Card className="border-teal-200! bg-teal-50!" classNames={{ body: 'p-5!' }}>
+        <Card className="border-brand-100! bg-brand-50!" classNames={{ body: 'p-5!' }}>
           <div className="flex items-center justify-between gap-4 max-xl:flex-col max-xl:items-start">
             <div className="flex items-center gap-4">
               <div className="relative">
-                <Progress type="circle" percent={68} size={88} strokeColor="#0f766e" />
+                <Progress type="circle" percent={68} size={88} strokeColor="#f5b301" />
               </div>
               <div>
                 <div className="mb-1 flex items-center gap-2">
@@ -165,32 +165,32 @@ export function ShiftManagementPage() {
         <Card title="Đối chiếu ca hiện tại">
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={8}>
-              <div className="rounded-lg border border-teal-200 bg-teal-50 p-5">
-                <Typography.Text className="text-xs! font-semibold! uppercase text-teal-700!">Expected (Hệ thống)</Typography.Text>
-                <div className="mt-2 text-3xl font-bold text-teal-900">{formatCurrency(shiftReconciliationMock.vnd.expected)}</div>
-                <Typography.Text type="secondary" className="text-xs!">Đầu ca {formatCurrency(shiftReconciliationMock.vnd.openingBalance)} + thu/chi</Typography.Text>
+              <div className="rounded-lg border border-brand-100 bg-brand-50 p-5">
+                <Typography.Text className="text-xs! font-semibold! uppercase text-black!">Expected (Hệ thống)</Typography.Text>
+                <div className="mt-2 text-3xl font-bold text-black">{formatVnd(shiftReconciliationMock.vnd.expected)}</div>
+                <Typography.Text type="secondary" className="text-xs!">Đầu ca {formatVnd(shiftReconciliationMock.vnd.openingBalance)} + thu/chi</Typography.Text>
               </div>
             </Col>
             <Col xs={24} lg={8}>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-5">
                 <Typography.Text className="text-xs! font-semibold! uppercase text-slate-700!">Actual (Kiểm tiền thực)</Typography.Text>
-                <div className="mt-2 text-3xl font-bold text-slate-900">{formatCurrency(shiftReconciliationMock.vnd.actual)}</div>
+                <div className="mt-2 text-3xl font-bold text-slate-900">{formatVnd(shiftReconciliationMock.vnd.actual)}</div>
                 <Typography.Text type="secondary" className="text-xs!">Cập nhật: {shiftReconciliationMock.vnd.lastCountedAt}</Typography.Text>
               </div>
             </Col>
             <Col xs={24} lg={8}>
               <div className="rounded-lg border-2 border-emerald-500 bg-emerald-50 p-5">
                 <Typography.Text className="text-xs! font-semibold! uppercase text-emerald-700!">Difference</Typography.Text>
-                <div className="mt-2 text-3xl font-bold text-emerald-700">{formatCurrency(shiftReconciliationMock.vnd.difference)}</div>
+                <div className="mt-2 text-3xl font-bold text-emerald-700">{formatVnd(shiftReconciliationMock.vnd.difference)}</div>
                 <Typography.Text className="text-xs! text-emerald-700!"><CheckCircleOutlined /> Khớp hoàn toàn</Typography.Text>
               </div>
             </Col>
           </Row>
 
           <Row gutter={[16, 16]} className="mt-3">
-            <Col xs={24} lg={8}><div className="rounded border border-teal-200 bg-teal-50 p-3"><Typography.Text className="text-xs! text-teal-700!">USD Expected</Typography.Text><span className="float-right font-mono font-bold">$ {formatNumber(shiftReconciliationMock.usd.expected)}</span></div></Col>
-            <Col xs={24} lg={8}><div className="rounded border border-slate-200 bg-slate-50 p-3"><Typography.Text className="text-xs! text-slate-700!">USD Actual</Typography.Text><span className="float-right font-mono font-bold">$ {formatNumber(shiftReconciliationMock.usd.actual)}</span></div></Col>
-            <Col xs={24} lg={8}><div className="rounded border border-emerald-300 bg-emerald-50 p-3"><Typography.Text className="text-xs! text-emerald-700!">USD Diff</Typography.Text><span className="float-right font-mono font-bold text-emerald-700">$ {formatNumber(shiftReconciliationMock.usd.difference)}</span></div></Col>
+            <Col xs={24} lg={8}><div className="rounded border border-brand-100 bg-brand-50 p-3"><Typography.Text className="text-xs! text-black!">USD Expected</Typography.Text><span className="float-right font-mono font-bold">{formatUsd(shiftReconciliationMock.usd.expected)}</span></div></Col>
+            <Col xs={24} lg={8}><div className="rounded border border-slate-200 bg-slate-50 p-3"><Typography.Text className="text-xs! text-slate-700!">USD Actual</Typography.Text><span className="float-right font-mono font-bold">{formatUsd(shiftReconciliationMock.usd.actual)}</span></div></Col>
+            <Col xs={24} lg={8}><div className="rounded border border-emerald-300 bg-emerald-50 p-3"><Typography.Text className="text-xs! text-emerald-700!">USD Diff</Typography.Text><span className="float-right font-mono font-bold text-emerald-700">{formatUsd(shiftReconciliationMock.usd.difference)}</span></div></Col>
           </Row>
         </Card>
 
@@ -201,10 +201,10 @@ export function ShiftManagementPage() {
                 {shiftCashFlowMock.map((item) => (
                   <div
                     key={item.label}
-                    className={`flex justify-between rounded p-2 ${item.tone === 'in' ? 'bg-emerald-50 text-emerald-700' : item.tone === 'out' ? 'bg-rose-50 text-rose-700' : item.tone === 'total' ? 'border border-teal-300 bg-teal-100 text-teal-900' : 'bg-slate-50'}`}
+                    className={`flex justify-between rounded p-2 ${item.tone === 'in' ? 'bg-emerald-50 text-emerald-700' : item.tone === 'out' ? 'bg-rose-50 text-rose-700' : item.tone === 'total' ? 'border border-brand-700 bg-brand-100 text-black' : 'bg-slate-50'}`}
                   >
                     <span className={item.tone === 'total' ? 'font-semibold' : ''}>{item.label}</span>
-                    <span className="font-mono font-semibold">{formatCurrency(item.amount)}</span>
+                    <span className="font-mono font-semibold">{formatVnd(item.amount)}</span>
                   </div>
                 ))}
               </Space>

@@ -14,7 +14,7 @@ import {
 import { Button, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Typography } from 'antd';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency } from '@/shared/utils/formatters';
+import { formatVnd } from '@/shared/utils/formatters';
 
 const reportCards = [
   { key: 'fund',     title: 'Báo cáo Vốn & Quỹ',    desc: 'Tổng vốn, biến động, tồn quỹ',     icon: <WalletOutlined />,        color: '#2563eb' },
@@ -24,7 +24,7 @@ const reportCards = [
   { key: 'transfer', title: 'Báo cáo Điều động',    desc: 'Lịch sử luân chuyển vốn',          icon: <UsergroupAddOutlined />,  color: '#0891b2' },
   { key: 'gap',      title: 'Báo cáo Sai lệch',     desc: 'Chênh lệch quỹ, đối chiếu',        icon: <WarningOutlined />,       color: '#d97706' },
   { key: 'debt',     title: 'Báo cáo Công nợ',      desc: 'WU/MG chờ thanh toán',             icon: <FileSearchOutlined />,    color: '#dc2626' },
-  { key: 'bank',     title: 'Báo cáo Ngân hàng',    desc: 'Sao kê, đối chiếu ACB/MSB',        icon: <BankOutlined />,          color: '#0f766e' },
+  { key: 'bank',     title: 'Báo cáo Ngân hàng',    desc: 'Sao kê, đối chiếu ACB/MSB',        icon: <BankOutlined />,          color: '#f5b301' },
 ];
 
 const revenueData = [
@@ -126,7 +126,7 @@ export function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="day" />
                 <YAxis tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} />
+                <Tooltip formatter={(v: number) => formatVnd(v)} />
                 <Bar dataKey="wu" fill="#2563eb" name="Western Union" />
                 <Bar dataKey="mg" fill="#7c3aed" name="MoneyGram" />
               </BarChart>
@@ -149,7 +149,7 @@ export function ReportsPage() {
                   align: 'right',
                   render: (v: number) => (
                     <Typography.Text strong style={{ color: v > 0 ? '#16a34a' : '#64748b' }}>
-                      {formatCurrency(v)}
+                      {formatVnd(v)}
                     </Typography.Text>
                   ),
                 },
@@ -167,17 +167,17 @@ export function ReportsPage() {
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Doanh thu hôm nay" value={5_500_000} formatter={(v) => formatCurrency(Number(v))} />
+            <Statistic title="Doanh thu hôm nay" value={5_500_000} formatter={(v) => formatVnd(Number(v))} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Lợi nhuận TG" value={17_000_000} valueStyle={{ color: '#16a34a' }} formatter={(v) => formatCurrency(Number(v))} />
+            <Statistic title="Lợi nhuận TG" value={17_000_000} valueStyle={{ color: '#16a34a' }} formatter={(v) => formatVnd(Number(v))} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Chênh lệch quỹ" value={205_000} valueStyle={{ color: '#d97706' }} formatter={(v) => formatCurrency(Number(v))} />
+            <Statistic title="Chênh lệch quỹ" value={205_000} valueStyle={{ color: '#d97706' }} formatter={(v) => formatVnd(Number(v))} />
           </Card>
         </Col>
       </Row>

@@ -17,11 +17,10 @@ import { activityLogsMock, usersMock } from '../data/users.mock';
 import type { AppUser, UserRoleCode, UserStatus } from '../model/user.types';
 
 const roleMeta: Record<UserRoleCode, { label: string; color: string }> = {
-  director: { label: 'Giám đốc', color: 'red' },
-  accountant: { label: 'KTTH', color: 'blue' },
-  branch_manager: { label: 'Trưởng CN', color: 'geekblue' },
-  branch_staff: { label: 'Nhân viên CN', color: 'default' },
-  auditor: { label: 'Auditor', color: 'purple' },
+  ADMIN: { label: 'Admin', color: 'red' },
+  MANAGER: { label: 'Quản lý/KTTH', color: 'blue' },
+  STAFF: { label: 'Nhân viên CN', color: 'default' },
+  AUDITOR: { label: 'Auditor', color: 'purple' },
 };
 
 const statusMeta: Record<UserStatus, { label: string; color: string; icon: JSX.Element }> = {

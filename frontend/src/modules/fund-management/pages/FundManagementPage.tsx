@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import { formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { branchFundsMock, centralFundMock } from '../data/funds.mock';
 import type { BranchFund, FundACurrencyBalance, FundStatus } from '../model/fund.types';
 
@@ -40,6 +40,30 @@ function getBranchVndValue(branch: BranchFund) {
   return branch.vndCash + branch.usdCash * activePaidRatesMock.paidBuy + getFundAValue(branch.fundA);
 }
 
+function FundMetric({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string;
+  value: string;
+  tone?: 'default' | 'in' | 'out' | 'warning';
+}) {
+  const toneClass = {
+    default: 'text-slate-950',
+    in: 'text-emerald-700',
+    out: 'text-rose-700',
+    warning: 'text-amber-700',
+  }[tone];
+
+  return (
+    <div className="fund-metric">
+      <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">{label}</Typography.Text>
+      <div className={`mt-1 truncate text-base font-bold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
 function FundAList({ items }: { items: FundACurrencyBalance[] }) {
   const columns: ColumnsType<FundACurrencyBalance> = [
     {
@@ -52,9 +76,9 @@ function FundAList({ items }: { items: FundACurrencyBalance[] }) {
         </Space>
       ),
     },
-    { title: 'Tồn', dataIndex: 'amount', align: 'right', render: (value: number) => formatNumber(value) },
-    { title: 'Paid mua', dataIndex: 'buyRate', align: 'right', render: (value: number) => formatNumber(value) },
-    { title: 'Quy đổi', dataIndex: 'vndValue', align: 'right', render: (value: number) => formatCurrency(value) },
+    { title: 'Tồn', dataIndex: 'amount', align: 'right', render: (value: number) => formatExchangeRate(value) },
+    { title: 'Paid mua', dataIndex: 'buyRate', align: 'right', render: (value: number) => formatExchangeRate(value) },
+    { title: 'Quy đổi', dataIndex: 'vndValue', align: 'right', render: (value: number) => formatVnd(value) },
   ];
 
   return <Table columns={columns} dataSource={items} rowKey="currency" pagination={false} size="small" />;
@@ -68,67 +92,50 @@ function BranchFundCard({ branch, compact = false }: { branch: BranchFund; compa
 
   return (
     <Card
-      className="h-full overflow-hidden"
+      className="fund-branch-card h-full overflow-hidden"
       classNames={{ body: 'p-0!' }}
-      title={(
-        <div className="min-w-0">
-          <Typography.Text strong className="block truncate text-base!">{branch.branchName}</Typography.Text>
-          <Typography.Text type="secondary" className="block text-xs!">Quản lý: {branch.manager}</Typography.Text>
-        </div>
-      )}
-      extra={<Tag color={status.color} icon={status.icon}>{status.label}</Tag>}
     >
-      <div className="space-y-4 p-5">
-        <div>
-          <Typography.Text type="secondary" className="uppercase tracking-normal!">Tổng quy đổi theo Paid mua</Typography.Text>
-          <Typography.Title level={2} className="m-0! text-3xl!">{formatCurrency(totalValue)}</Typography.Title>
+      <div className="fund-branch-card__header">
+        <div className="min-w-0">
+          <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Chi nhánh</Typography.Text>
+          <Typography.Title level={4} className="m-0! truncate text-white!">{branch.branchName}</Typography.Title>
+          <Typography.Text className="text-white/70! text-xs!">Quản lý: {branch.manager}</Typography.Text>
+        </div>
+        <Tag color={status.color} icon={status.icon} className="m-0!">{status.label}</Tag>
+      </div>
+
+      <div className="space-y-5 p-5">
+        <div className="flex items-start justify-between gap-4 max-sm:flex-col">
+          <div>
+            <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">Tổng quy đổi theo Paid mua</Typography.Text>
+            <Typography.Title level={2} className="mt-1! mb-0! text-3xl!">{formatVnd(totalValue)}</Typography.Title>
+          </div>
+          <div className="rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-right">
+            <Typography.Text type="secondary" className="block text-xs!">Paid mua</Typography.Text>
+            <Typography.Text strong>{formatExchangeRate(activePaidRatesMock.paidBuy)}</Typography.Text>
+          </div>
         </div>
 
-        <Row gutter={[12, 12]}>
-          <Col xs={24} md={8}>
-            <div className="rounded border border-slate-100 bg-slate-50 p-3">
-              <Typography.Text type="secondary">VND tiền mặt</Typography.Text>
-              <div className="mt-1 font-semibold">{formatCurrency(branch.vndCash)}</div>
-            </div>
-          </Col>
-          <Col xs={24} md={8}>
-            <div className="rounded border border-slate-100 bg-slate-50 p-3">
-              <Typography.Text type="secondary">USD tiền mặt</Typography.Text>
-              <div className="mt-1 font-semibold">{formatCurrency(branch.usdCash, 'USD')}</div>
-            </div>
-          </Col>
-          <Col xs={24} md={8}>
-            <div className="rounded border border-slate-100 bg-slate-50 p-3">
-              <Typography.Text type="secondary">Quỹ A</Typography.Text>
-              <div className="mt-1 font-semibold">{branch.fundA.length} ngoại tệ</div>
-            </div>
-          </Col>
-        </Row>
+        <div className="grid gap-3 md:grid-cols-3">
+          <FundMetric label="VND tiền mặt" value={formatVnd(branch.vndCash)} />
+          <FundMetric label="USD tiền mặt" value={formatUsd(branch.usdCash)} />
+          <FundMetric label="Quỹ A" value={`${branch.fundA.length} ngoại tệ`} />
+        </div>
 
         <div>
           <div className="mb-1 flex items-center justify-between">
             <Typography.Text type="secondary">Tỷ trọng tiền ra hôm nay</Typography.Text>
             <Typography.Text strong>{outPercent}%</Typography.Text>
           </div>
-          <Progress percent={outPercent} showInfo={false} strokeColor="#0f766e" />
+          <Progress percent={outPercent} showInfo={false} strokeColor="#f5b301" />
         </div>
 
-        <Row gutter={[12, 12]}>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Tiền vào</Typography.Text>
-              <div className="mt-1 font-semibold text-emerald-700">{formatCurrency(branch.todayIn)}</div>
-            </div>
-          </Col>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Tiền ra</Typography.Text>
-              <div className="mt-1 font-semibold text-rose-700">{formatCurrency(branch.todayOut)}</div>
-            </div>
-          </Col>
-        </Row>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FundMetric label="Tiền vào hôm nay" value={formatVnd(branch.todayIn)} tone="in" />
+          <FundMetric label="Tiền ra hôm nay" value={formatVnd(branch.todayOut)} tone="out" />
+        </div>
 
-        <div className="space-y-2 border-t border-slate-100 pt-4">
+        <div className="fund-detail-list border-t border-slate-100 pt-4">
           <div className="flex items-center justify-between gap-3">
             <Typography.Text type="secondary">Ca đang mở</Typography.Text>
             {branch.openShift ? <Tag color="green">{branch.openShift.cashier}</Tag> : <Tag>Không có ca</Tag>}
@@ -140,7 +147,7 @@ function BranchFundCard({ branch, compact = false }: { branch: BranchFund; compa
           )}
           <div className="flex items-center justify-between gap-3">
             <Typography.Text type="secondary">Chờ tiếp quỹ</Typography.Text>
-            <Typography.Text strong>{formatCurrency(branch.pendingFundTransfer)}</Typography.Text>
+            <Typography.Text strong>{formatVnd(branch.pendingFundTransfer)}</Typography.Text>
           </div>
           <div className="flex items-center justify-between gap-3">
             <Typography.Text type="secondary">Kiểm quỹ cuối</Typography.Text>
@@ -209,21 +216,29 @@ function ControlBranchFundsPage() {
       extra={<Button icon={<ReloadOutlined />}>Đồng bộ quỹ chi nhánh</Button>}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Card>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}>
-              <Statistic title="Tổng quỹ chi nhánh quy đổi" value={totalBranchValue} formatter={(value) => formatCurrency(Number(value))} />
-            </Col>
-            <Col xs={24} md={8}>
-              <Statistic title="Chi nhánh thiếu quỹ" value={lowCashCount} suffix="CN" />
-            </Col>
-            <Col xs={24} md={8}>
-              <Statistic title="Cần kiểm quỹ" value={needsReconciliationCount} suffix="CN" />
-            </Col>
-          </Row>
+        <Card className="fund-command-center polished-card" classNames={{ body: 'p-0!' }}>
+          <div className="grid xl:grid-cols-[1.3fr_1fr]">
+            <div className="border-b border-slate-200 p-6 xl:border-r xl:border-b-0">
+              <Typography.Text className="text-xs! font-semibold! uppercase text-white/65!">Tổng quan quỹ chi nhánh</Typography.Text>
+              <Typography.Title level={2} className="mt-2! mb-2! text-white!">{formatVnd(totalBranchValue)}</Typography.Title>
+              <Typography.Text className="text-white/70!">
+                Bao gồm VND, USD quy đổi theo Paid mua và toàn bộ Quỹ A tại chi nhánh.
+              </Typography.Text>
+            </div>
+            <div className="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="fund-command-metric">
+                <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Chi nhánh thiếu quỹ</Typography.Text>
+                <div className="mt-1 text-3xl font-bold text-brand-700">{lowCashCount}<span className="ml-1 text-base text-white/60">CN</span></div>
+              </div>
+              <div className="fund-command-metric">
+                <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Cần kiểm quỹ</Typography.Text>
+                <div className="mt-1 text-3xl font-bold text-white">{needsReconciliationCount}<span className="ml-1 text-base text-white/60">CN</span></div>
+              </div>
+            </div>
+          </div>
         </Card>
 
-        <Card title="Bộ lọc chi nhánh">
+        <Card title="Danh sách quỹ chi nhánh" className="polished-card">
           <Row gutter={[12, 12]} align="middle" className="mb-4">
             <Col xs={24} lg={9}>
               <Input.Search allowClear placeholder="Tìm chi nhánh, quản lý, giao dịch viên..." value={keyword} onChange={(event) => setKeyword(event.target.value)} />
@@ -273,14 +288,16 @@ function ControlBranchFundsPage() {
 export function CentralFundPage() {
   const totalBranchValue = branchFundsMock.reduce((sum, branch) => sum + getBranchVndValue(branch), 0);
   const totalFundAValue = centralFundMock.fundA.reduce((sum, item) => sum + item.vndValue, 0);
-  const totalCompanyCapital =
+  const centralCashValue =
     centralFundMock.vndCash +
     centralFundMock.usdCash * activePaidRatesMock.paidBuy +
+    totalFundAValue;
+  const totalDebtValue = centralFundMock.debtVnd + centralFundMock.debtUsd * activePaidRatesMock.paidBuy;
+  const totalCompanyCapital =
+    centralCashValue +
     centralFundMock.bankBalance +
-    totalFundAValue +
     totalBranchValue -
-    centralFundMock.debtVnd -
-    centralFundMock.debtUsd * activePaidRatesMock.paidBuy;
+    totalDebtValue;
 
   return (
     <PageScaffold
@@ -295,42 +312,42 @@ export function CentralFundPage() {
       )}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Card className="overflow-hidden bg-teal-700! text-white!" classNames={{ body: 'p-0!' }}>
+        <Card className="fund-central-hero overflow-hidden text-white!" classNames={{ body: 'p-0!' }}>
           <div className="p-6">
             <div className="mb-6 flex items-start justify-between gap-4 max-lg:flex-col">
               <div>
                 <Typography.Text className="text-white/75! uppercase tracking-normal!">Tổng vốn kiểm soát</Typography.Text>
-                <Typography.Title level={2} className="mt-1! mb-2! text-white!">{formatCurrency(totalCompanyCapital)}</Typography.Title>
+                <Typography.Title level={2} className="mt-1! mb-2! text-white!">{formatVnd(totalCompanyCapital)}</Typography.Title>
                 <Typography.Text className="text-white/75!">
-                  Quy đổi USD và Quỹ A theo Paid mua {formatNumber(activePaidRatesMock.paidBuy)}
+                  Tiền mặt, ngân hàng, công nợ và tổng quỹ chi nhánh quy đổi theo Paid mua {formatExchangeRate(activePaidRatesMock.paidBuy)}.
                 </Typography.Text>
               </div>
-              <Tag color="cyan" className="m-0!">Đối chiếu {centralFundMock.lastReconciledAt}</Tag>
+              <Tag color="gold" className="m-0!">Đối chiếu {centralFundMock.lastReconciledAt}</Tag>
             </div>
 
             <Row gutter={[16, 16]}>
               <Col xs={24} md={12} xl={6}>
-                <div className="rounded border border-white/20 bg-white/10 p-4">
-                  <Typography.Text className="text-white/70!">Quỹ Chung VND</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(centralFundMock.vndCash)}</div>
+                <div className="fund-central-tile">
+                  <Typography.Text className="text-white/70!">Tiền mặt</Typography.Text>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralCashValue)}</div>
                 </div>
               </Col>
               <Col xs={24} md={12} xl={6}>
-                <div className="rounded border border-white/20 bg-white/10 p-4">
-                  <Typography.Text className="text-white/70!">Quỹ Chung USD</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(centralFundMock.usdCash, 'USD')}</div>
-                </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="rounded border border-white/20 bg-white/10 p-4">
+                <div className="fund-central-tile">
                   <Typography.Text className="text-white/70!">Ngân hàng</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(centralFundMock.bankBalance)}</div>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralFundMock.bankBalance)}</div>
                 </div>
               </Col>
               <Col xs={24} md={12} xl={6}>
-                <div className="rounded border border-white/20 bg-white/10 p-4">
+                <div className="fund-central-tile">
+                  <Typography.Text className="text-white/70!">Công nợ</Typography.Text>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalDebtValue)}</div>
+                </div>
+              </Col>
+              <Col xs={24} md={12} xl={6}>
+                <div className="fund-central-tile">
                   <Typography.Text className="text-white/70!">Tổng quỹ chi nhánh</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(totalBranchValue)}</div>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalBranchValue)}</div>
                 </div>
               </Col>
             </Row>
@@ -339,33 +356,33 @@ export function CentralFundPage() {
 
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={15}>
-            <Card title={<Space><MoneyCollectOutlined />Quỹ Chung</Space>}>
+            <Card title={<Space><MoneyCollectOutlined />Quỹ Chung</Space>} className="polished-card">
               <Row gutter={[16, 16]}>
                 <Col xs={24} md={8}>
-                  <Statistic title="Quỹ A quy đổi" value={totalFundAValue} formatter={(value) => formatCurrency(Number(value))} />
+                  <Statistic title="Tiền mặt VND" value={centralFundMock.vndCash} formatter={(value) => formatVnd(Number(value))} />
                 </Col>
                 <Col xs={24} md={8}>
-                  <Statistic title="Công nợ VND" value={centralFundMock.debtVnd} formatter={(value) => formatCurrency(Number(value))} />
+                  <Statistic title="Tiền mặt USD" value={centralFundMock.usdCash} formatter={(value) => formatUsd(Number(value))} />
                 </Col>
                 <Col xs={24} md={8}>
-                  <Statistic title="Công nợ USD" value={centralFundMock.debtUsd} formatter={(value) => formatCurrency(Number(value), 'USD')} />
+                  <Statistic title="Quỹ A quy đổi" value={totalFundAValue} formatter={(value) => formatVnd(Number(value))} />
                 </Col>
               </Row>
             </Card>
           </Col>
           <Col xs={24} xl={9}>
-            <Card title={<Space><BankOutlined />Cấu phần kiểm soát</Space>}>
+            <Card title={<Space><BankOutlined />Cấu phần kiểm soát</Space>} className="polished-card">
               <Space direction="vertical" className="w-full">
-                <div className="flex items-center justify-between"><Typography.Text>Tiền mặt VND</Typography.Text><Typography.Text strong>{formatCurrency(centralFundMock.vndCash)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Tiền mặt USD</Typography.Text><Typography.Text strong>{formatCurrency(centralFundMock.usdCash, 'USD')}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Số dư ngân hàng</Typography.Text><Typography.Text strong>{formatCurrency(centralFundMock.bankBalance)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Quỹ A quy đổi</Typography.Text><Typography.Text strong>{formatCurrency(totalFundAValue)}</Typography.Text></div>
+                <div className="flex items-center justify-between"><Typography.Text>Tiền mặt quy đổi</Typography.Text><Typography.Text strong>{formatVnd(centralCashValue)}</Typography.Text></div>
+                <div className="flex items-center justify-between"><Typography.Text>Số dư ngân hàng</Typography.Text><Typography.Text strong>{formatVnd(centralFundMock.bankBalance)}</Typography.Text></div>
+                <div className="flex items-center justify-between"><Typography.Text>Công nợ quy đổi</Typography.Text><Typography.Text strong>{formatVnd(totalDebtValue)}</Typography.Text></div>
+                <div className="flex items-center justify-between"><Typography.Text>Tổng quỹ chi nhánh</Typography.Text><Typography.Text strong>{formatVnd(totalBranchValue)}</Typography.Text></div>
               </Space>
             </Card>
           </Col>
         </Row>
 
-        <Card title="Quỹ A thuộc Quỹ Chung">
+        <Card title="Quỹ A thuộc Quỹ Chung" className="polished-card">
           <FundAList items={centralFundMock.fundA} />
         </Card>
       </Space>

@@ -18,6 +18,7 @@ import {
   Select,
   Space,
   Statistic,
+  Slider,
   Table,
   Tag,
   Typography,
@@ -27,7 +28,15 @@ import type { FormInstance } from 'antd';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatDateTime } from '@/shared/utils/formatters';
+import {
+  exchangeRateInputFormatter,
+  exchangeRateInputParser,
+  formatDateTime,
+  numberInputFormatter,
+  numberInputParser,
+  usdInputFormatter,
+  usdInputParser,
+} from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useShiftStore } from '@/modules/shift-management/model/shift.store';
@@ -41,14 +50,19 @@ export type TransactionFormValues = Record<string, string | number | undefined> 
 export type TransactionField = {
   name: string;
   label: string;
-  kind: 'text' | 'number' | 'select' | 'segmented';
+  kind: 'text' | 'number' | 'select' | 'segmented' | 'slider';
   required?: boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
   span?: 8 | 12 | 16 | 24;
   min?: number;
+  max?: number;
+  step?: number;
+  rangeMinField?: string;
+  rangeMaxField?: string;
   precision?: number;
   prefix?: string;
+  inputFormat?: 'vnd' | 'usd' | 'exchangeRate' | 'number';
   maxLength?: number;
   pattern?: RegExp;
   patternMessage?: string;
@@ -270,10 +284,13 @@ export function TransactionWorkspacePage({
 
   const createFormCard = (
     <Card
+          className="transaction-form-card polished-card"
           title={
             <div className="flex items-center justify-between gap-4 max-xl:flex-col max-xl:items-start">
-              <Space>
-                {formIcon}
+              <Space size={10}>
+                <span className="grid size-9 place-items-center rounded-lg bg-black text-brand-700">
+                  {formIcon}
+                </span>
                 <Typography.Text strong>{createLabel}</Typography.Text>
               </Space>
               {formSteps && (
@@ -281,8 +298,8 @@ export function TransactionWorkspacePage({
                   {formSteps.map((step, index) => (
                     <div className="flex items-center gap-2" key={step}>
                       {index > 0 && <div className="h-px w-8 bg-slate-200" />}
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-teal-700 text-xs font-semibold text-white">
+                      <div className="transaction-step flex items-center gap-1.5">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-700 text-xs font-semibold text-black">
                           {index + 1}
                         </div>
                         <span className="font-medium text-slate-600">{step}</span>
@@ -332,13 +349,13 @@ export function TransactionWorkspacePage({
         {createFormCard}
 
         <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Tổng giao dịch" value={records.length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Hoàn tất" value={records.filter((item) => item.status === 'COMPLETED').length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Void / Điều chỉnh" value={records.filter((item) => ['VOID', 'ADJUSTED'].includes(item.status)).length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card><Statistic title="Giá trị quy đổi" value={totalValue} suffix="₫" /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Tổng giao dịch" value={records.length} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Hoàn tất" value={records.filter((item) => item.status === 'COMPLETED').length} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Void / Điều chỉnh" value={records.filter((item) => ['VOID', 'ADJUSTED'].includes(item.status)).length} /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Giá trị quy đổi" value={totalValue} suffix="₫" /></Card></Col>
         </Row>
 
-        <Card>
+        <Card className="polished-card">
           <Row gutter={[12, 12]} className="mb-4">
             <Col xs={24} md={10}>
               <Input.Search allowClear placeholder="Tìm mã GD, khách hàng, MSKH..." value={keyword} onChange={(event) => setKeyword(event.target.value)} />
@@ -410,7 +427,7 @@ function ShiftReadOnlyHeader({
     : 'UI TEST';
 
   return (
-    <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-4">
+    <div className="shift-summary mb-5 rounded-lg border border-brand-100 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <Typography.Text strong>Thông tin ca</Typography.Text>
         <Tag color={currentShift?.status === 'OPEN' || !currentShift ? 'green' : 'red'}>
@@ -479,7 +496,7 @@ function TransactionFields({
                   : []),
               ]}
             >
-              {renderField(field, isDisabled)}
+              {renderField(field, isDisabled, watchedValues)}
             </Form.Item>
           </Col>
         );
@@ -488,7 +505,11 @@ function TransactionFields({
   );
 }
 
-function renderField(field: TransactionField, disabled = false) {
+function renderField(
+  field: TransactionField,
+  disabled = false,
+  values: TransactionFormValues = {},
+) {
   const controlClassName = "h-10! w-full";
 
   if (field.kind === 'segmented') {
@@ -497,7 +518,34 @@ function renderField(field: TransactionField, disabled = false) {
   if (field.kind === 'select') {
     return <Select className={controlClassName} disabled={disabled || field.readOnly} placeholder={field.placeholder} options={field.options} />;
   }
+  if (field.kind === 'slider') {
+    const rangeValues = [
+      Number(values[field.rangeMinField ?? ''] ?? field.min ?? 0),
+      Number(values[field.rangeMaxField ?? ''] ?? field.max ?? 0),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+    const min = rangeValues.length > 0 ? Math.min(...rangeValues) : field.min ?? 0;
+    const max = rangeValues.length > 0 ? Math.max(...rangeValues) : field.max ?? min;
+
+    return (
+      <Slider
+        className="mx-1!"
+        min={min}
+        max={Math.max(max, min)}
+        step={field.step ?? 1}
+        disabled={disabled || field.readOnly || min === 0 || max === 0}
+        tooltip={{ formatter: (value) => formatNumberInputTooltip(value, field.precision ?? 2) }}
+        marks={{
+          [min]: formatNumberInputTooltip(min, field.precision ?? 0),
+          [max]: formatNumberInputTooltip(max, field.precision ?? 0),
+        }}
+      />
+    );
+  }
   if (field.kind === 'number') {
+    const inputFormat = getNumberInputFormat(field);
+    const inputFormatter = inputFormat === 'usd' ? usdInputFormatter : inputFormat === 'number' ? usdInputFormatter : inputFormat === 'exchangeRate' ? exchangeRateInputFormatter : numberInputFormatter;
+    const inputParser = inputFormat === 'usd' ? usdInputParser : inputFormat === 'number' ? usdInputParser : inputFormat === 'exchangeRate' ? exchangeRateInputParser : numberInputParser;
+
     return (
       <InputNumber
         className={controlClassName}
@@ -505,6 +553,8 @@ function renderField(field: TransactionField, disabled = false) {
         precision={field.precision}
         controls={false}
         prefix={field.prefix}
+        formatter={inputFormatter}
+        parser={inputParser}
         placeholder={field.placeholder}
         disabled={disabled}
         readOnly={field.readOnly}
@@ -512,4 +562,29 @@ function renderField(field: TransactionField, disabled = false) {
     );
   }
   return <Input className={controlClassName} disabled={disabled} readOnly={field.readOnly} maxLength={field.maxLength} placeholder={field.placeholder} />;
+}
+
+function formatNumberInputTooltip(value: number | undefined, maximumFractionDigits: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '';
+
+  return new Intl.NumberFormat('vi-VN', {
+    maximumFractionDigits,
+    minimumFractionDigits: 0,
+  }).format(value);
+}
+
+function getNumberInputFormat(field: TransactionField) {
+  if (field.inputFormat) return field.inputFormat;
+
+  const normalizedName = field.name.toLowerCase();
+  const normalizedLabel = field.label.toLowerCase();
+
+  if (field.prefix === '$') return 'usd';
+  if (field.prefix === '₫') return 'vnd';
+  if (normalizedName.includes('rate') || normalizedLabel.includes('tỷ giá')) return 'exchangeRate';
+  if (normalizedName.includes('vnd') || normalizedName.includes('fee')) return 'vnd';
+  if (normalizedName.includes('amount') && !field.precision) return 'vnd';
+  if (field.precision && field.precision > 0) return 'number';
+
+  return 'vnd';
 }

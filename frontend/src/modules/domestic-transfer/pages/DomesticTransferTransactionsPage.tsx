@@ -5,7 +5,7 @@ import {
   type TransactionField,
 } from '@/modules/transactions/components/TransactionWorkspacePage';
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
-import { formatCurrency } from '@/shared/utils/formatters';
+import { formatVnd } from '@/shared/utils/formatters';
 import { domesticTransferTransactionsMock } from '../data/transactions.mock';
 
 const fields: TransactionField[] = [
@@ -37,8 +37,8 @@ const columns: ColumnsType<TransactionRecord> = [
   { title: 'Khách hàng', dataIndex: 'customerName', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
   { title: 'Ngân hàng', dataIndex: 'bank' },
   { title: 'Số tài khoản', dataIndex: 'accountNumber' },
-  { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (value: number) => formatCurrency(Number(value)) },
-  { title: 'Phí', dataIndex: 'fee', align: 'right', render: (value: number) => formatCurrency(Number(value)) },
+  { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (value: number) => formatVnd(Number(value)) },
+  { title: 'Phí', dataIndex: 'fee', align: 'right', render: (value: number) => formatVnd(Number(value)) },
 ];
 
 type DomesticTransferTransactionsPageProps = {

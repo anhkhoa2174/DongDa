@@ -1,19 +1,19 @@
 import type { FundARate, HistoricalFundARate, RateHistory } from '../model/exchangeRate.types';
 
 export const primaryRatesMock = [
-  { label: 'Paid (WU/MG) Bán', value: '25,650', adjustment: '±20', tone: 'gray' as const },
-  { label: 'Paid Mua', value: '25,580', adjustment: '±20', tone: 'gray' as const },
-  { label: 'Giá Bán', value: '25,720', adjustment: '±30', tone: 'gray' as const },
-  { label: 'Giá Mua', value: '25,600', adjustment: '±30', tone: 'gray' as const },
+  { label: 'Paid (WU/MG) Bán', value: '26,600', adjustment: '±20', tone: 'gray' as const },
+  { label: 'Paid Mua', value: '26,500', adjustment: '±20', tone: 'gray' as const },
+  { label: 'Giá Bán', value: '26,700', adjustment: '±30', tone: 'gray' as const },
+  { label: 'Giá Mua', value: '26,180', adjustment: '±30', tone: 'gray' as const },
 ];
 
 export const activePaidRatesMock = {
-  paidSell: 25650,
-  paidBuy: 25580,
+  paidSell: 26600,
+  paidBuy: 26500,
 };
 
 export const activeBankRateMock = {
-  usdToVnd: 25720,
+  usdToVnd: 26700,
   bank: 'ACB',
   version: 'NH-20260626-01',
   approvedBy: 'Trần Văn Hùng (GĐ)',

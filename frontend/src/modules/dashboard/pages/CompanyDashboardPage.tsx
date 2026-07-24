@@ -22,7 +22,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import { formatUsd, formatVnd } from '@/shared/utils/formatters';
 import {
   BalanceOverviewCard,
 } from '../components/BalanceOverviewCard';
@@ -64,13 +64,13 @@ const branchColumns: ColumnsType<BranchStatus> = [
     title: 'Tồn VND',
     dataIndex: 'vndBalance',
     align: 'right',
-    render: (value: number) => formatCurrency(value),
+    render: (value: number) => formatVnd(value),
   },
   {
     title: 'Tồn USD',
     dataIndex: 'usdBalance',
     align: 'right',
-    render: (value: number) => `$ ${formatNumber(value)}`,
+    render: (value: number) => formatUsd(value),
   },
   {
     title: 'GD',
@@ -81,13 +81,13 @@ const branchColumns: ColumnsType<BranchStatus> = [
     title: 'Doanh số',
     dataIndex: 'revenueToday',
     align: 'right',
-    render: (value: number) => formatCurrency(value),
+    render: (value: number) => formatVnd(value),
   },
   {
     title: 'LN tạm tính',
     dataIndex: 'profitToday',
     align: 'right',
-    render: (value: number) => <Typography.Text className="text-emerald-600!">{formatCurrency(value)}</Typography.Text>,
+    render: (value: number) => <Typography.Text className="text-emerald-600!">{formatVnd(value)}</Typography.Text>,
   },
   {
     title: 'Chênh lệch',
@@ -119,7 +119,7 @@ const branchColumns: ColumnsType<BranchStatus> = [
 ];
 
 const MAX_VISIBLE_RATES = 6;
-const mixColors = ['#0f766e', '#2563eb', '#16a34a', '#f59e0b'];
+const mixColors = ['#f5b301', '#2563eb', '#16a34a', '#f59e0b'];
 
 const rateColumns: ColumnsType<CompanyExchangeRate> = [
   {
@@ -196,7 +196,7 @@ export function CompanyDashboardPage() {
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="revenue" name="Doanh số" fill="#0f766e" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="left" dataKey="revenue" name="Doanh số" fill="#f5b301" radius={[4, 4, 0, 0]} />
                   <Line yAxisId="right" type="monotone" dataKey="profit" name="Lợi nhuận" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
@@ -239,7 +239,7 @@ export function CompanyDashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis type="number" hide />
                   <YAxis type="category" dataKey="branch" width={92} />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <Tooltip formatter={(value) => formatVnd(Number(value))} />
                   <Bar dataKey="profitToday" name="Lợi nhuận" fill="#16a34a" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

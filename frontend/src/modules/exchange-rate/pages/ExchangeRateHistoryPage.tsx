@@ -18,7 +18,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatNumber } from '@/shared/utils/formatters';
+import { formatExchangeRate } from '@/shared/utils/formatters';
 import { historicalFundARatesMock, rateHistoryMock } from '../data/exchangeRates.mock';
 import type { RateHistory } from '../model/exchangeRate.types';
 
@@ -177,5 +177,5 @@ export function ExchangeRateHistoryPage() {
 }
 
 function formatRate(value: number) {
-  return formatNumber(value, 2);
+  return formatExchangeRate(value, 2);
 }

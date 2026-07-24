@@ -15,7 +15,7 @@ export function PageScaffold({ title, description, moduleName, children, extra }
 
   return (
     <>
-      <div className="mb-4 flex items-start justify-between gap-4 max-sm:flex-col">
+      <div className="page-heading flex items-start justify-between gap-4 max-sm:flex-col">
         <div>
           <Typography.Title className="m-0! text-2xl! leading-tight!" level={1}>
             {title}
@@ -26,7 +26,7 @@ export function PageScaffold({ title, description, moduleName, children, extra }
 
       </div>
       {children ?? (
-        <Card>
+        <Card className="polished-card">
           <Space direction="vertical" size={12}>
             <Tag color="green">{moduleName}</Tag>
             <Typography.Text>

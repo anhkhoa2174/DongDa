@@ -30,7 +30,17 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import {
+  exchangeRateInputFormatter,
+  exchangeRateInputParser,
+  formatExchangeRate,
+  formatUsd,
+  formatVnd,
+  numberInputFormatter,
+  numberInputParser,
+  usdInputFormatter,
+  usdInputParser,
+} from '@/shared/utils/formatters';
 import { activeBankRateMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
 import { debtsMock } from '../data/debts.mock';
 import type {
@@ -60,11 +70,11 @@ const debtCodeOptions = debtsMock
   .filter((debt) => debt.status !== 'RESOLVED')
   .map((debt) => ({
     value: debt.code,
-    label: `${debt.code} - ${debt.currency} ${formatNumber(debt.remainingAmount)}`,
+    label: `${debt.code} - ${debt.currency} ${debt.currency === 'VND' ? formatVnd(debt.remainingAmount) : formatUsd(debt.remainingAmount)}`,
   }));
 
 function formatDebtAmount(currency: DebtCurrency, amount: number) {
-  return currency === 'VND' ? formatCurrency(amount) : formatCurrency(amount, 'USD');
+  return currency === 'VND' ? formatVnd(amount) : formatUsd(amount);
 }
 
 function splitUsdDebt(amount: number) {
@@ -175,16 +185,16 @@ export function DebtManagementPage() {
       )}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Card className="overflow-hidden bg-teal-700! text-white!" classNames={{ body: 'p-0!' }}>
+        <Card className="overflow-hidden bg-black! text-white!" classNames={{ body: 'p-0!' }}>
           <div className="p-6">
             <div className="mb-6 flex items-start justify-between gap-4 max-lg:flex-col">
               <div>
                 <Typography.Text className="text-white/75! uppercase tracking-normal!">Tổng quan công nợ</Typography.Text>
                 <Typography.Title level={2} className="mt-1! mb-2! text-white!">
-                  {formatCurrency(totalVndDebt)}
+                  {formatVnd(totalVndDebt)}
                 </Typography.Title>
                 <Typography.Text className="text-white/75!">
-                  Công nợ VND đang mở · USD mở {formatCurrency(totalUsdDebt, 'USD')}
+                  Công nợ VND đang mở · USD mở {formatUsd(totalUsdDebt)}
                 </Typography.Text>
               </div>
               <Space wrap>
@@ -201,13 +211,13 @@ export function DebtManagementPage() {
               <Col xs={24} md={12} xl={6}>
                 <div className="rounded border border-white/20 bg-white/10 p-4">
                   <Typography.Text className="text-white/70!">Công nợ USD mở</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(totalUsdDebt, 'USD')}</div>
+                  <div className="mt-2 text-2xl font-semibold">{formatUsd(totalUsdDebt)}</div>
                 </div>
               </Col>
               <Col xs={24} md={12} xl={6}>
                 <div className="rounded border border-white/20 bg-white/10 p-4">
                   <Typography.Text className="text-white/70!">Công nợ VND mở</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(totalVndDebt)}</div>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalVndDebt)}</div>
                 </div>
               </Col>
               <Col xs={24} md={12} xl={6}>
@@ -219,7 +229,7 @@ export function DebtManagementPage() {
               <Col xs={24} md={12} xl={6}>
                 <div className="rounded border border-white/20 bg-white/10 p-4">
                   <Typography.Text className="text-white/70!">Đã xử lý gần nhất</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatCurrency(resolvedToday)}</div>
+                  <div className="mt-2 text-2xl font-semibold">{formatVnd(resolvedToday)}</div>
                 </div>
               </Col>
             </Row>
@@ -239,7 +249,7 @@ export function DebtManagementPage() {
             className="mb-4"
             type="info"
             showIcon
-            message={`Đang áp dụng tỷ giá ngân hàng đã duyệt: ${formatNumber(activeBankRateMock.usdToVnd)} VND/USD`}
+            message={`Đang áp dụng tỷ giá ngân hàng đã duyệt: ${formatExchangeRate(activeBankRateMock.usdToVnd)} VND/USD`}
             description={`${activeBankRateMock.bank} · ${activeBankRateMock.version} · Duyệt bởi ${activeBankRateMock.approvedBy} lúc ${activeBankRateMock.approvedAt}`}
           />
               <Form
@@ -280,22 +290,22 @@ export function DebtManagementPage() {
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item name="cashUsdAmount" label="Phần nguyên USD xử lý tiền mặt" rules={[{ required: true, message: 'Thiếu phần nguyên USD' }]}>
-                      <InputNumber className="w-full" min={0} precision={0} addonAfter="USD" readOnly controls={false} />
+                      <InputNumber className="w-full" min={0} precision={0} addonAfter="USD" readOnly controls={false} formatter={usdInputFormatter} parser={usdInputParser} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item name="bankRate" label="Tỷ giá ngân hàng đã duyệt" rules={[{ required: true, message: 'Thiếu tỷ giá ngân hàng' }]}>
-                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND/USD" readOnly controls={false} />
+                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND/USD" readOnly controls={false} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item name="oddUsdAmount" label="Phần lẻ USD">
-                      <InputNumber className="w-full" min={0} precision={2} addonAfter="USD" readOnly controls={false} />
+                      <InputNumber className="w-full" min={0} precision={2} addonAfter="USD" readOnly controls={false} formatter={usdInputFormatter} parser={usdInputParser} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
                     <Form.Item name="oddVndAmount" label="Quy đổi VND">
-                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" readOnly controls={false} />
+                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" readOnly controls={false} formatter={numberInputFormatter} parser={numberInputParser} />
                     </Form.Item>
                   </Col>
                   <Col span={24}>
@@ -342,7 +352,7 @@ export function DebtManagementPage() {
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item name="transferAmount" label="Số tiền chuyển khoản" rules={[{ required: true, message: 'Nhập số tiền' }]}>
-                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" />
+                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" formatter={numberInputFormatter} parser={numberInputParser} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
@@ -352,7 +362,7 @@ export function DebtManagementPage() {
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item name="fee" label="Phí ngân hàng">
-                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" />
+                      <InputNumber className="w-full" min={0} precision={0} addonAfter="VND" formatter={numberInputFormatter} parser={numberInputParser} />
                     </Form.Item>
                   </Col>
                   <Col span={24}>

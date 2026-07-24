@@ -2,7 +2,7 @@ import { CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined, Re
 import { Alert, Button, Card, Col, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { useMemo } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency } from '@/shared/utils/formatters';
+import { formatVnd } from '@/shared/utils/formatters';
 import { centralAuditMock } from '../data/cashCount.mock';
 
 const statusMeta = {
@@ -46,7 +46,7 @@ export function CentralAuditPage() {
         <Col xs={12} md={6}>
           <Card>
             <Typography.Text type="secondary">Tổng chênh lệch tuyệt đối</Typography.Text>
-            <Typography.Title level={4} className="m-0!">{formatCurrency(stats.totalGap)}</Typography.Title>
+            <Typography.Title level={4} className="m-0!">{formatVnd(stats.totalGap)}</Typography.Title>
           </Card>
         </Col>
       </Row>
@@ -72,13 +72,13 @@ export function CentralAuditPage() {
               title: 'Sổ CN',
               dataIndex: 'reportedTotal',
               align: 'right',
-              render: (v: number) => formatCurrency(v),
+              render: (v: number) => formatVnd(v),
             },
             {
               title: 'Kỳ vọng trung tâm',
               dataIndex: 'centralExpected',
               align: 'right',
-              render: (v: number) => formatCurrency(v),
+              render: (v: number) => formatVnd(v),
             },
             {
               title: 'Chênh lệch',
@@ -86,7 +86,7 @@ export function CentralAuditPage() {
               align: 'right',
               render: (v: number) => {
                 if (v === 0) return <Tag color="green">0</Tag>;
-                return <Tag color={v > 0 ? 'gold' : 'red'}>{formatCurrency(v)}</Tag>;
+                return <Tag color={v > 0 ? 'gold' : 'red'}>{formatVnd(v)}</Tag>;
               },
             },
             {

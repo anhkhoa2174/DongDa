@@ -8,7 +8,12 @@ import { App, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, T
 import type { ColumnsType } from 'antd/es/table';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { branchFundsMock } from '@/modules/fund-management/data/funds.mock';
-import { formatCurrency, formatNumber } from '@/shared/utils/formatters';
+import {
+  formatForeignCurrency,
+  formatVnd,
+  numberInputFormatter,
+  numberInputParser,
+} from '@/shared/utils/formatters';
 import {
   fundTransferCurrencyOptions,
   fundTransferReasonOptions,
@@ -24,8 +29,8 @@ const defaultItem: FundTransferItem = {
 
 function formatTransferAmount(item: Partial<FundTransferItem>) {
   if (!item.currency || !item.amount) return '-';
-  if (item.currency === 'VND') return formatCurrency(Number(item.amount));
-  return `${formatNumber(Number(item.amount))} ${item.currency}`;
+  if (item.currency === 'VND') return formatVnd(Number(item.amount));
+  return formatForeignCurrency(Number(item.amount), item.currency);
 }
 
 const summaryColumns: ColumnsType<Partial<FundTransferItem> & { key: number }> = [
@@ -159,7 +164,14 @@ export function FundTransferPage() {
                             label="Số lượng"
                             rules={[{ required: true, message: 'Nhập số lượng' }]}
                           >
-                            <InputNumber className="w-full" min={0} precision={2} controls={false} />
+                            <InputNumber
+                              className="w-full"
+                              min={0}
+                              precision={2}
+                              controls={false}
+                              formatter={numberInputFormatter}
+                              parser={numberInputParser}
+                            />
                           </Form.Item>
                         </Col>
                         <Col xs={24} md={6}>

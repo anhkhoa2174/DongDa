@@ -8,10 +8,16 @@ import {
   SaveOutlined,
   SendOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, InputNumber, Row, Space, Statistic, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { Button, Card, Col, InputNumber, Row, Space, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { useMemo, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatCurrency, formatDateTime, formatUsd } from '@/shared/utils/formatters';
+import {
+  formatDateTime,
+  formatUsd,
+  formatVnd,
+  numberInputFormatter,
+  numberInputParser,
+} from '@/shared/utils/formatters';
 import { cashCountsMock, usdDenominations, vndDenominations } from '../data/cashCount.mock';
 import type { CashCountStatus } from '../model/cashCount.types';
 
@@ -44,7 +50,7 @@ function DenominationInput({
           dataIndex: 'value',
           render: (v: number) =>
             currency === 'VND' ? (
-              <Typography.Text strong>{formatCurrency(v)}</Typography.Text>
+              <Typography.Text strong>{formatVnd(v)}</Typography.Text>
             ) : (
               <Typography.Text strong>{formatUsd(v, 0)}</Typography.Text>
             ),
@@ -57,6 +63,8 @@ function DenominationInput({
               min={0}
               value={row.count}
               onChange={(v) => onChange(row.value, Number(v ?? 0))}
+              formatter={numberInputFormatter}
+              parser={numberInputParser}
               className="w-full"
             />
           ),
@@ -68,7 +76,7 @@ function DenominationInput({
           render: (_: unknown, row: { value: number; count: number }) => (
             <Typography.Text>
               {currency === 'VND'
-                ? formatCurrency(row.value * row.count)
+                ? formatVnd(row.value * row.count)
                 : formatUsd(row.value * row.count)}
             </Typography.Text>
           ),
@@ -100,13 +108,13 @@ function OpenShiftPanel() {
         <Col xs={24} md={8}>
           <Card>
             <Typography.Text type="secondary" className="uppercase text-xs!">Số dư kỳ vọng (VND)</Typography.Text>
-            <Typography.Title level={3} className="m-0! text-blue-600!">{formatCurrency(vndExpected)}</Typography.Title>
+            <Typography.Title level={3} className="m-0! text-blue-600!">{formatVnd(vndExpected)}</Typography.Title>
           </Card>
         </Col>
         <Col xs={24} md={8}>
           <Card>
             <Typography.Text type="secondary" className="uppercase text-xs!">Kiểm thực tế (VND)</Typography.Text>
-            <Typography.Title level={3} className="m-0!">{formatCurrency(vndTotal)}</Typography.Title>
+            <Typography.Title level={3} className="m-0!">{formatVnd(vndTotal)}</Typography.Title>
           </Card>
         </Col>
         <Col xs={24} md={8}>
@@ -117,7 +125,7 @@ function OpenShiftPanel() {
               className="m-0!"
               style={{ color: vndTotal === vndExpected ? '#16a34a' : vndTotal > vndExpected ? '#d97706' : '#dc2626' }}
             >
-              {vndTotal - vndExpected === 0 ? '0 ₫' : formatCurrency(vndTotal - vndExpected)}
+              {vndTotal - vndExpected === 0 ? '0 ₫' : formatVnd(vndTotal - vndExpected)}
             </Typography.Title>
           </Card>
         </Col>
@@ -197,13 +205,13 @@ function HistoryPanel() {
             title: 'Kỳ vọng',
             dataIndex: 'expected',
             align: 'right',
-            render: (v: number, r) => (r.currency === 'VND' ? formatCurrency(v) : formatUsd(v, 0)),
+            render: (v: number, r) => (r.currency === 'VND' ? formatVnd(v) : formatUsd(v, 0)),
           },
           {
             title: 'Thực tế',
             dataIndex: 'actual',
             align: 'right',
-            render: (v: number, r) => (r.currency === 'VND' ? formatCurrency(v) : formatUsd(v, 0)),
+            render: (v: number, r) => (r.currency === 'VND' ? formatVnd(v) : formatUsd(v, 0)),
           },
           {
             title: 'Chênh lệch',
@@ -211,7 +219,7 @@ function HistoryPanel() {
             align: 'right',
             render: (v: number, r) => {
               if (v === 0) return <Tag color="green">0</Tag>;
-              const value = r.currency === 'VND' ? formatCurrency(v) : formatUsd(v, 0);
+              const value = r.currency === 'VND' ? formatVnd(v) : formatUsd(v, 0);
               return <Tag color={v > 0 ? 'gold' : 'red'}>{value}</Tag>;
             },
           },

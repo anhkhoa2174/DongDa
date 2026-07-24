@@ -14,9 +14,11 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { navigationItems } from '@/shared/constants/navigation';
 import type { AppMenuItem } from '@/shared/types/navigation';
+import { logoutWithApi } from '@/modules/auth/api/auth.api';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { notificationsMock, type AppNotification } from '../data/notifications.mock';
 import type { AppRole } from '@/modules/auth/model/auth.types';
+import { hasBackendPermission, hasPermission } from '@/modules/auth/model/permissions';
 
 const { Header, Content, Sider } = Layout;
 
@@ -30,12 +32,28 @@ function findOpenKeys(items: AppMenuItem[], pathname: string): string[] {
   return ['dashboard'];
 }
 
-function filterNavigationByRole(items: AppMenuItem[], role: AppRole | undefined): AppMenuItem[] {
+function canAccessMenuItem(
+  item: AppMenuItem,
+  role: AppRole | undefined,
+  permissions: string[] | undefined,
+) {
+  if (item.requiredPermission) {
+    return hasBackendPermission(permissions, item.requiredPermission) || hasPermission(role, item.requiredPermission);
+  }
+
+  return !item.allowedRoles || (role && item.allowedRoles.includes(role));
+}
+
+function filterNavigationByRole(
+  items: AppMenuItem[],
+  role: AppRole | undefined,
+  permissions: string[] | undefined,
+): AppMenuItem[] {
   return items
-    .filter((item) => !item.allowedRoles || (role && item.allowedRoles.includes(role)))
+    .filter((item) => canAccessMenuItem(item, role, permissions))
     .map((item) => ({
       ...item,
-      children: item.children?.filter((child) => !child.allowedRoles || (role && child.allowedRoles.includes(role))),
+      children: item.children?.filter((child) => canAccessMenuItem(child, role, permissions)),
     }))
     .filter((item) => item.path || (item.children?.length ?? 0) > 0);
 }
@@ -48,7 +66,10 @@ export function AppLayout() {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
-  const visibleNavigationItems = useMemo(() => filterNavigationByRole(navigationItems, user?.role), [user?.role]);
+  const visibleNavigationItems = useMemo(
+    () => filterNavigationByRole(navigationItems, user?.role, user?.permissions),
+    [user?.permissions, user?.role],
+  );
   const openKeys = useMemo(() => findOpenKeys(visibleNavigationItems, location.pathname), [location.pathname, visibleNavigationItems]);
   const roleLabel = {
     director: 'Giám đốc',
@@ -75,8 +96,14 @@ export function AppLayout() {
     { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true },
   ];
 
-  const handleUserMenuClick: MenuProps['onClick'] = ({ key }) => {
+  const handleUserMenuClick: MenuProps['onClick'] = async ({ key }) => {
     if (key === 'logout') {
+      try {
+        await logoutWithApi();
+      } catch {
+        // Client-side logout still clears local session when the token is expired.
+      }
+
       logout();
       navigate('/login');
     }
@@ -95,18 +122,29 @@ export function AppLayout() {
   ).length;
 
   return (
-    <Layout className="min-h-screen">
+    <Layout className="app-shell min-h-screen">
       <Sider
         width={288}
         collapsed={collapsed}
         breakpoint="lg"
         onBreakpoint={setCollapsed}
-        className="!sticky !top-0 !h-screen !min-h-screen !self-start !overflow-hidden"
+        className="app-sider !sticky !top-0 !h-screen !min-h-screen !self-start !overflow-hidden"
       >
         <div className={`flex h-16 items-center ${collapsed ? 'px-4' : 'px-5'}`}>
-          <Typography.Text strong className={collapsed ? '!text-lg !text-white' : '!text-base !text-white'}>
-            {collapsed ? 'ĐĐ' : 'Đống Đa Ops'}
-          </Typography.Text>
+          {collapsed ? (
+            <div className="flex size-10 items-center justify-center rounded-lg bg-white p-1 shadow-sm">
+              <img src="/navigation-logo.png" alt="Đống Đa Ops" className="max-h-full max-w-full object-contain" />
+            </div>
+          ) : (
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-sm">
+                <img src="/navigation-logo.png" alt="Đống Đa Ops" className="max-h-full max-w-full object-contain" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-xl font-extrabold text-brand-700">Đống Đa</div>
+              </div>
+            </div>
+          )}
         </div>
         <Menu
           mode="inline"
@@ -119,7 +157,7 @@ export function AppLayout() {
         />
       </Sider>
       <Layout>
-        <Header className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
+        <Header className="app-header flex h-16 items-center justify-between border-b border-slate-200 bg-white/95! px-5">
           <Button
             aria-label={collapsed ? 'Mở menu' : 'Thu gọn menu'}
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -139,7 +177,7 @@ export function AppLayout() {
               trigger={['click']}
             >
               <Button className="header-user-trigger" type="text">
-                <Avatar size="small" className="!bg-brand-700">
+                <Avatar size="small" className="!bg-brand-700 !text-black">
                   {user?.name.charAt(0) ?? 'A'}
                 </Avatar>
                 <span className="header-user-copy">
@@ -151,8 +189,10 @@ export function AppLayout() {
             </Dropdown>
           </Space>
         </Header>
-        <Content className="p-6 max-sm:p-4">
-          <Outlet />
+        <Content className="app-content p-6 max-sm:p-4">
+          <div className="mx-auto w-full max-w-[1560px]">
+            <Outlet />
+          </div>
         </Content>
       </Layout>
       <Drawer
