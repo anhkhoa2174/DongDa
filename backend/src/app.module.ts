@@ -26,6 +26,9 @@ import { PrismaFundRepository } from './infrastructure/database/repositories/pri
 import {
   CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
 } from './application/use-cases/fund/fund-transfer.use-cases';
+import { WuController } from './interfaces/http/controllers/wu.controller';
+import { PrismaWuRepository } from './infrastructure/database/repositories/prisma-wu.repository';
+import { CreateWuUseCase, ListWuUseCase } from './application/use-cases/wu/wu.use-cases';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -58,7 +61,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController],
   providers: [
     PrismaService,
 
@@ -68,6 +71,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IDebtRepository', useClass: PrismaDebtRepository },
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IFundRepository', useClass: PrismaFundRepository },
+    { provide: 'IWuRepository', useClass: PrismaWuRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -110,6 +114,9 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ConfirmTransferUseCase,
     RejectTransferUseCase,
     ListFundUseCase,
+
+    CreateWuUseCase,
+    ListWuUseCase,
 
     JwtStrategy,
 

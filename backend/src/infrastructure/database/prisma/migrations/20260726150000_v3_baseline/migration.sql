@@ -510,14 +510,14 @@ DECLARE
     shift_branch UUID;
     shift_state shift_status;
     user_branch UUID;
-    requires_shift BOOLEAN;
+    v_requires_shift BOOLEAN;
 BEGIN
-    SELECT requires_shift
-    INTO requires_shift
-    FROM operation_types
-    WHERE code = NEW.operation_code;
+    SELECT ot.requires_shift
+    INTO v_requires_shift
+    FROM operation_types ot
+    WHERE ot.code = NEW.operation_code;
 
-    IF requires_shift IS DISTINCT FROM TRUE THEN
+    IF v_requires_shift IS DISTINCT FROM TRUE THEN
         RAISE EXCEPTION 'Operation % is not a customer shift operation', NEW.operation_code;
     END IF;
 
