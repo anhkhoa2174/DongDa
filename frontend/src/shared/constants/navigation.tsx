@@ -39,6 +39,7 @@ export const navigationItems: AppMenuItem[] = [
     children: [
       { key: '/transactions', label: 'Tổng quan', path: '/transactions', requiredPermission: 'transaction.view' },
       { key: '/western-union/workspace', label: 'Western Union', path: '/western-union/workspace', requiredPermission: 'transaction.view' },
+      { key: '/moneygram/workspace', label: 'MoneyGram', path: '/moneygram/workspace', requiredPermission: 'transaction.view' },
     ],
     requiredPermission: 'transaction.view',
   },

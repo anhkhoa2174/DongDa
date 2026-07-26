@@ -29,6 +29,9 @@ import {
 import { WuController } from './interfaces/http/controllers/wu.controller';
 import { PrismaWuRepository } from './infrastructure/database/repositories/prisma-wu.repository';
 import { CreateWuUseCase, ListWuUseCase } from './application/use-cases/wu/wu.use-cases';
+import { MgController } from './interfaces/http/controllers/mg.controller';
+import { PrismaMgRepository } from './infrastructure/database/repositories/prisma-mg.repository';
+import { CreateMgUseCase, ListMgUseCase } from './application/use-cases/mg/mg.use-cases';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -61,7 +64,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController],
   providers: [
     PrismaService,
 
@@ -72,6 +75,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IFundRepository', useClass: PrismaFundRepository },
     { provide: 'IWuRepository', useClass: PrismaWuRepository },
+    { provide: 'IMgRepository', useClass: PrismaMgRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -117,6 +121,9 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     CreateWuUseCase,
     ListWuUseCase,
+
+    CreateMgUseCase,
+    ListMgUseCase,
 
     JwtStrategy,
 
