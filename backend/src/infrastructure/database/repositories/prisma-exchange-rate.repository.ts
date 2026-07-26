@@ -1,0 +1,125 @@
+// Prisma ExchangeRate Repository Implementation
+// Layer: Infrastructure
+
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma.service';
+import {
+  IExchangeRateRepository,
+  CreateExchangeRateData,
+  ListRatesFilter,
+} from '../../../domain/repositories/exchange-rate.repository';
+import {
+  ExchangeRate,
+  ExchangeRateType,
+  RateStatus,
+  ServiceProvider,
+  CurrencyCode,
+} from '../../../domain/entities/exchange-rate.entity';
+
+@Injectable()
+export class PrismaExchangeRateRepository implements IExchangeRateRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(data: CreateExchangeRateData): Promise<ExchangeRate> {
+    const row = await this.prisma.exchange_rates.create({
+      data: {
+        rate_type: data.rateType,
+        provider: data.provider ?? null,
+        from_currency: data.fromCurrency,
+        to_currency: data.toCurrency,
+        buy_rate: data.buyRate ?? null,
+        sell_rate: data.sellRate ?? null,
+        rate: data.rate,
+        effective_from: data.effectiveFrom,
+        status: 'DRAFT',
+        created_by_user_id: data.createdByUserId,
+      },
+    });
+    return toDomain(row);
+  }
+
+  async findById(id: string): Promise<ExchangeRate | null> {
+    const row = await this.prisma.exchange_rates.findUnique({ where: { id } });
+    return row ? toDomain(row) : null;
+  }
+
+  async findMany(filter?: ListRatesFilter): Promise<ExchangeRate[]> {
+    const rows = await this.prisma.exchange_rates.findMany({
+      where: {
+        ...(filter?.status && { status: filter.status }),
+        ...(filter?.rateType && { rate_type: filter.rateType }),
+        ...(filter?.provider && { provider: filter.provider }),
+        ...(filter?.fromCurrency && { from_currency: filter.fromCurrency }),
+      },
+      orderBy: { effective_from: 'desc' },
+    });
+    return rows.map(toDomain);
+  }
+
+  findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]> {
+    return this.findMany({ ...filter, status: RateStatus.ACTIVE });
+  }
+
+  async approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate> {
+    const target = await this.prisma.exchange_rates.findUnique({ where: { id } });
+    if (!target) throw new Error('Tỷ giá không tồn tại');
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Supersede bản ACTIVE cùng identity (BR-F2.3-01: chỉ 1 active/identity)
+      await tx.exchange_rates.updateMany({
+        where: {
+          status: 'ACTIVE',
+          rate_type: target.rate_type,
+          provider: target.provider,
+          from_currency: target.from_currency,
+          to_currency: target.to_currency,
+          id: { not: id },
+        },
+        data: { status: 'SUPERSEDED', effective_to: now },
+      });
+
+      // 2. Set bản này ACTIVE
+      return tx.exchange_rates.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          approved_by_user_id: approverUserId,
+          approved_at: now,
+        },
+      });
+    });
+
+    return toDomain(updated);
+  }
+
+  async reject(id: string): Promise<ExchangeRate> {
+    const row = await this.prisma.exchange_rates.update({
+      where: { id },
+      data: { status: 'REJECTED' },
+    });
+    return toDomain(row);
+  }
+}
+
+function toDomain(row: any): ExchangeRate {
+  const num = (v: any): number | null => (v === null || v === undefined ? null : Number(v));
+  return {
+    id: row.id,
+    rateType: row.rate_type as ExchangeRateType,
+    provider: (row.provider as ServiceProvider) ?? null,
+    fromCurrency: row.from_currency as CurrencyCode,
+    toCurrency: row.to_currency as CurrencyCode,
+    buyRate: num(row.buy_rate),
+    sellRate: num(row.sell_rate),
+    rate: Number(row.rate),
+    effectiveFrom: row.effective_from,
+    effectiveTo: row.effective_to ?? null,
+    status: row.status as RateStatus,
+    createdByUserId: row.created_by_user_id,
+    approvedByUserId: row.approved_by_user_id ?? null,
+    approvedAt: row.approved_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}

@@ -61,10 +61,14 @@ export const navigationItems: AppMenuItem[] = [
     requiredPermission: 'fund.view',
   },
   {
-    key: '/exchange-rate',
+    key: 'exchange-rate',
     icon: <DollarOutlined />,
     label: 'Tỷ Giá',
-    path: '/exchange-rate',
+    children: [
+      { key: '/exchange-rate', label: 'Bảng tỷ giá', path: '/exchange-rate', requiredPermission: 'exchange_rate.view' },
+      { key: '/exchange-rate/approval', label: 'Duyệt tỷ giá', path: '/exchange-rate/approval', requiredPermission: 'exchange_rate.view' },
+      { key: '/exchange-rate/history', label: 'Lịch sử tỷ giá', path: '/exchange-rate/history', requiredPermission: 'exchange_rate.view' },
+    ],
     requiredPermission: 'exchange_rate.view',
   },
   {

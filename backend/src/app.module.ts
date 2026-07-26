@@ -17,8 +17,15 @@ import { ChangePasswordUseCase } from './application/use-cases/auth/change-passw
 import { RefreshTokenUseCase } from './application/use-cases/auth/refresh-token.use-case';
 
 import { AuthController, UserController } from './interfaces/http/controllers/auth.controller';
+import { ExchangeRateController } from './interfaces/http/controllers/exchange-rate.controller';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
+
+import { PrismaExchangeRateRepository } from './infrastructure/database/repositories/prisma-exchange-rate.repository';
+import { CreateExchangeRateUseCase } from './application/use-cases/exchange-rate/create-exchange-rate.use-case';
+import { ApproveExchangeRateUseCase } from './application/use-cases/exchange-rate/approve-exchange-rate.use-case';
+import { RejectExchangeRateUseCase } from './application/use-cases/exchange-rate/reject-exchange-rate.use-case';
+import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/list-exchange-rates.use-case';
 
 @Module({
   imports: [
@@ -38,12 +45,13 @@ import { HashService } from './infrastructure/config/hash.service';
       }),
     }),
   ],
-  controllers: [AuthController, UserController],
+  controllers: [AuthController, UserController, ExchangeRateController],
   providers: [
     PrismaService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
+    { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -72,6 +80,11 @@ import { HashService } from './infrastructure/config/hash.service';
     CreateUserUseCase,
     ChangePasswordUseCase,
     RefreshTokenUseCase,
+
+    CreateExchangeRateUseCase,
+    ApproveExchangeRateUseCase,
+    RejectExchangeRateUseCase,
+    ListExchangeRatesUseCase,
 
     JwtStrategy,
 
