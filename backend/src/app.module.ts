@@ -18,6 +18,9 @@ import { RefreshTokenUseCase } from './application/use-cases/auth/refresh-token.
 
 import { AuthController, UserController } from './interfaces/http/controllers/auth.controller';
 import { ExchangeRateController } from './interfaces/http/controllers/exchange-rate.controller';
+import { DebtController } from './interfaces/http/controllers/debt.controller';
+import { BranchController } from './interfaces/http/controllers/branch.controller';
+import { PrismaBranchRepository } from './infrastructure/database/repositories/prisma-branch.repository';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -26,6 +29,11 @@ import { CreateExchangeRateUseCase } from './application/use-cases/exchange-rate
 import { ApproveExchangeRateUseCase } from './application/use-cases/exchange-rate/approve-exchange-rate.use-case';
 import { RejectExchangeRateUseCase } from './application/use-cases/exchange-rate/reject-exchange-rate.use-case';
 import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/list-exchange-rates.use-case';
+
+import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
+import { RecordDebtUseCase } from './application/use-cases/debt/record-debt.use-case';
+import { SettleDebtUseCase } from './application/use-cases/debt/settle-debt.use-case';
+import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-case';
 
 @Module({
   imports: [
@@ -45,13 +53,15 @@ import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController],
   providers: [
     PrismaService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
+    { provide: 'IDebtRepository', useClass: PrismaDebtRepository },
+    { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -85,6 +95,10 @@ import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/
     ApproveExchangeRateUseCase,
     RejectExchangeRateUseCase,
     ListExchangeRatesUseCase,
+
+    RecordDebtUseCase,
+    SettleDebtUseCase,
+    ListDebtsUseCase,
 
     JwtStrategy,
 

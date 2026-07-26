@@ -85,6 +85,7 @@ export const navigationItems: AppMenuItem[] = [
     label: 'Công Nợ',
     children: [
       { key: '/debt-management/debt-list', label: 'Danh sách', path: '/debt-management/debt-list', requiredPermission: 'debt.view' },
+      { key: '/debt-management/settlement', label: 'Giải quyết công nợ', path: '/debt-management/settlement', requiredPermission: 'debt.view' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'debt.view',
