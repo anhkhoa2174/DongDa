@@ -72,10 +72,13 @@ export const navigationItems: AppMenuItem[] = [
     requiredPermission: 'exchange_rate.view',
   },
   {
-    key: '/fund-transfer',
+    key: 'fund-transfer',
     icon: <UserSwitchOutlined />,
     label: 'Tiếp Quỹ',
-    path: '/fund-transfer',
+    children: [
+      { key: '/fund-transfer', label: 'Tổng quan', path: '/fund-transfer', requiredPermission: 'fund.transfer' },
+      { key: '/fund-transfer/workspace', label: 'Điều chuyển vốn', path: '/fund-transfer/workspace', requiredPermission: 'fund.transfer' },
+    ],
     allowedRoles: ['director', 'accountant'],
     requiredPermission: 'fund.transfer',
   },

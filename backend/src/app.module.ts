@@ -21,6 +21,11 @@ import { ExchangeRateController } from './interfaces/http/controllers/exchange-r
 import { DebtController } from './interfaces/http/controllers/debt.controller';
 import { BranchController } from './interfaces/http/controllers/branch.controller';
 import { PrismaBranchRepository } from './infrastructure/database/repositories/prisma-branch.repository';
+import { FundController } from './interfaces/http/controllers/fund.controller';
+import { PrismaFundRepository } from './infrastructure/database/repositories/prisma-fund.repository';
+import {
+  CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
+} from './application/use-cases/fund/fund-transfer.use-cases';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -53,7 +58,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController],
   providers: [
     PrismaService,
 
@@ -62,6 +67,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
     { provide: 'IDebtRepository', useClass: PrismaDebtRepository },
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
+    { provide: 'IFundRepository', useClass: PrismaFundRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -99,6 +105,11 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     RecordDebtUseCase,
     SettleDebtUseCase,
     ListDebtsUseCase,
+
+    CreateTransferUseCase,
+    ConfirmTransferUseCase,
+    RejectTransferUseCase,
+    ListFundUseCase,
 
     JwtStrategy,
 
