@@ -128,10 +128,13 @@ export const navigationItems: AppMenuItem[] = [
     requiredPermission: 'report.view',
   },
   {
-    key: '/audit-log',
+    key: 'audit-log',
     icon: <AuditOutlined />,
     label: 'Audit Log',
-    path: '/audit-log',
+    children: [
+      { key: '/audit-log', label: 'Tổng quan', path: '/audit-log', requiredPermission: 'audit_log.view' },
+      { key: '/audit-log/live', label: 'Nhật ký hệ thống', path: '/audit-log/live', requiredPermission: 'audit_log.view' },
+    ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'audit_log.view',
   },

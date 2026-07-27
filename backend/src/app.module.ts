@@ -2,7 +2,7 @@
 // Layer: Interface
 
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -41,6 +41,10 @@ import { ListBankUseCase, ReceiveFromProviderUseCase } from './application/use-c
 import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
 import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
 import { RunReconciliationUseCase, ListReconciliationUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
+import { AuditLogController } from './interfaces/http/controllers/audit-log.controller';
+import { PrismaAuditRepository } from './infrastructure/database/repositories/prisma-audit.repository';
+import { ListAuditUseCase } from './application/use-cases/audit/list-audit.use-case';
+import { AuditInterceptor } from './interfaces/http/interceptors/audit.interceptor';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -73,7 +77,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController],
   providers: [
     PrismaService,
 
@@ -88,7 +92,11 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IFxRepository', useClass: PrismaFxRepository },
     { provide: 'IBankRepository', useClass: PrismaBankRepository },
     { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
+    { provide: 'IAuditRepository', useClass: PrismaAuditRepository },
     { provide: 'IHashService', useClass: HashService },
+
+    // Ghi Audit Log tự động cho mọi mutation (Flow 6a)
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
     {
@@ -145,6 +153,8 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     RunReconciliationUseCase,
     ListReconciliationUseCase,
+
+    ListAuditUseCase,
 
     JwtStrategy,
 
