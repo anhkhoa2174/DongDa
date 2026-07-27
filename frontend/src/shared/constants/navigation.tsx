@@ -110,10 +110,13 @@ export const navigationItems: AppMenuItem[] = [
     requiredPermission: 'bank.view',
   },
   {
-    key: '/reconciliation',
+    key: 'reconciliation',
     icon: <CheckSquareOutlined />,
     label: 'Đối Chiếu',
-    path: '/reconciliation',
+    children: [
+      { key: '/reconciliation', label: 'Tổng quan', path: '/reconciliation' },
+      { key: '/reconciliation/journal', label: 'Đối chiếu Journal', path: '/reconciliation/journal' },
+    ],
     allowedRoles: ['director', 'accountant', 'auditor'],
   },
   {

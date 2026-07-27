@@ -38,6 +38,9 @@ import { CreateFxUseCase, ListFxUseCase } from './application/use-cases/fx/fx.us
 import { BankController } from './interfaces/http/controllers/bank.controller';
 import { PrismaBankRepository } from './infrastructure/database/repositories/prisma-bank.repository';
 import { ListBankUseCase, ReceiveFromProviderUseCase } from './application/use-cases/bank/bank.use-cases';
+import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
+import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
+import { RunReconciliationUseCase, ListReconciliationUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -70,7 +73,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController],
   providers: [
     PrismaService,
 
@@ -84,6 +87,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IMgRepository', useClass: PrismaMgRepository },
     { provide: 'IFxRepository', useClass: PrismaFxRepository },
     { provide: 'IBankRepository', useClass: PrismaBankRepository },
+    { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // IJwtService: wrapper quanh NestJS JwtService, tách access/refresh secret
@@ -138,6 +142,9 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     ListBankUseCase,
     ReceiveFromProviderUseCase,
+
+    RunReconciliationUseCase,
+    ListReconciliationUseCase,
 
     JwtStrategy,
 
