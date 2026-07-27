@@ -104,6 +104,7 @@ export const navigationItems: AppMenuItem[] = [
     label: 'Ngân Hàng',
     children: [
       { key: '/bank-management/accounts', label: 'Tài khoản', path: '/bank-management/accounts', requiredPermission: 'bank.view' },
+      { key: '/bank-management/receive', label: 'Tiền WU/MG về', path: '/bank-management/receive', requiredPermission: 'bank.view' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'bank.view',

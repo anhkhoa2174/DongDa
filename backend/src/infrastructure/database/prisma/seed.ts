@@ -84,7 +84,40 @@ async function main() {
   // 6. Sổ quỹ tiền mặt (CASH VND/USD) + số dư đầu kỳ cho MỌI chi nhánh
   await seedFundAccounts(adminUser.id);
 
-  console.log('✅ Seed xong: company, hội sở + 5 CN, roles, admin, sổ quỹ + số dư đầu kỳ');
+  // 7. Ngân hàng ACB/MSB + tài khoản ngân hàng (VND/USD) — ở hội sở
+  await seedBanks(headOffice.id);
+
+  console.log('✅ Seed xong: company, hội sở + 5 CN, roles, admin, sổ quỹ, ngân hàng');
+}
+
+// Ngân hàng ACB/MSB + mỗi ngân hàng 2 tài khoản (VND, USD) tại hội sở
+async function seedBanks(headOfficeId: string) {
+  const BANKS = [
+    { code: 'ACB', name: 'Ngân hàng ACB' },
+    { code: 'MSB', name: 'Ngân hàng MSB' },
+  ];
+  for (const b of BANKS) {
+    const bank = await prisma.banks.upsert({ where: { code: b.code }, update: {}, create: b });
+    for (const cur of ['VND', 'USD'] as const) {
+      const accountNo = `${b.code}-${cur}-001`;
+      const existing = await prisma.bank_accounts.findUnique({
+        where: { bank_id_account_no: { bank_id: bank.id, account_no: accountNo } },
+      });
+      if (existing) continue;
+      await prisma.bank_accounts.create({
+        data: {
+          branch_id: headOfficeId,
+          bank_id: bank.id,
+          account_no: accountNo,
+          account_name: `${b.code} ${cur} - Cong ty Dong Da`,
+          currency_code: cur,
+          opening_balance: 0,
+          current_balance: 0,
+          available_balance: 0,
+        },
+      });
+    }
+  }
 }
 
 // Tạo sổ quỹ CASH VND/USD cho mỗi chi nhánh + ghi số dư đầu kỳ vào ledger (idempotent)

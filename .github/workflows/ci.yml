@@ -1,0 +1,86 @@
+name: CI
+
+# Chạy khi mở/cập nhật PR vào develop hoặc main, và khi push thẳng vào 2 nhánh đó.
+# Muốn "phải pass mới merge được": bật Branch protection (xem README bên dưới).
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build · migrate · test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dongda_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dongda_test?schema=public
+      JWT_SECRET: ci-jwt-secret-min-32-characters-aaaaaaaaaa
+      JWT_REFRESH_SECRET: ci-refresh-secret-min-32-characters-bbbbbb
+      PRISMA_SCHEMA: src/infrastructure/database/prisma/schema.prisma
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm install
+
+      - name: Prisma generate
+        run: npx prisma generate --schema=$PRISMA_SCHEMA
+
+      - name: Apply migrations (kiểm tra migration chạy sạch)
+        run: npx prisma migrate deploy --schema=$PRISMA_SCHEMA
+
+      - name: Build (typecheck)
+        run: npm run build
+
+      - name: Test
+        run: npm test -- --passWithNoTests
+
+  frontend:
+    name: Frontend (typecheck · build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build (tsc -b + vite build)
+        run: npm run build
