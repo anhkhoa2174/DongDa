@@ -19,10 +19,13 @@ import type { AppMenuItem } from '@/shared/types/navigation';
 
 export const navigationItems: AppMenuItem[] = [
   {
-    key: '/dashboard',
+    key: 'dashboard',
     icon: <DashboardOutlined />,
     label: 'Dashboard',
-    path: '/dashboard',
+    children: [
+      { key: '/dashboard', label: 'Tổng quan', path: '/dashboard' },
+      { key: '/dashboard/live', label: 'Điều hành (real-time)', path: '/dashboard/live' },
+    ],
   },
   {
     key: '/shift-management/active-shift',
@@ -120,10 +123,13 @@ export const navigationItems: AppMenuItem[] = [
     allowedRoles: ['director', 'accountant', 'auditor'],
   },
   {
-    key: '/reports',
+    key: 'reports',
     icon: <BarChartOutlined />,
     label: 'Báo Cáo',
-    path: '/reports',
+    children: [
+      { key: '/reports', label: 'Tổng quan', path: '/reports', requiredPermission: 'report.view' },
+      { key: '/reports/summary', label: 'Báo cáo tổng hợp', path: '/reports/summary', requiredPermission: 'report.view' },
+    ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'report.view',
   },

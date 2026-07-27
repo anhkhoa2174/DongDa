@@ -11,7 +11,7 @@ import type { TransactionRecord } from '@/modules/transactions/model/transaction
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
 import { bankAccountsMock } from '@/modules/bank-management/data/bankAccounts.mock';
 import { formatExchangeRate, formatUsd, formatVnd as formatBaseVnd } from '@/shared/utils/formatters';
-import { westernUnionTransactionsMock } from '../data/transactions.mock';
+import { useWuRecords } from '../hooks/useWuRecords';
 
 const bankOptions = Array.from(new Map(
   bankAccountsMock.map((account) => [
@@ -263,6 +263,7 @@ type WesternUnionTransactionsPageProps = {
 };
 
 export function WesternUnionTransactionsPage({ createOnly, onCreated }: WesternUnionTransactionsPageProps = {}) {
+  const records = useWuRecords();
   return (
     <TransactionWorkspacePage
       title="Giao Dịch Western Union"
@@ -275,7 +276,7 @@ export function WesternUnionTransactionsPage({ createOnly, onCreated }: WesternU
       summaryRenderer={(values) => <TransactionSummary values={values} />}
       fields={fields}
       columns={columns}
-      initialRecords={westernUnionTransactionsMock}
+      initialRecords={records}
       initialFormValues={initialFormValues}
       onFormValuesChange={handleValuesChange}
       transformFormValues={transformValues}

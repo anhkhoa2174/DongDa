@@ -1,10 +1,15 @@
 import { Navigate, type RouteObject } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
+import { DashboardLivePage } from './pages/DashboardLivePage';
 
 export const dashboardRoutes: RouteObject[] = [
   {
     path: 'dashboard',
     element: <DashboardPage />,
+  },
+  {
+    path: 'dashboard/live',
+    element: <DashboardLivePage />,
   },
   {
     path: 'dashboard/company',

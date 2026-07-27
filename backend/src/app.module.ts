@@ -45,6 +45,9 @@ import { AuditLogController } from './interfaces/http/controllers/audit-log.cont
 import { PrismaAuditRepository } from './infrastructure/database/repositories/prisma-audit.repository';
 import { ListAuditUseCase } from './application/use-cases/audit/list-audit.use-case';
 import { AuditInterceptor } from './interfaces/http/interceptors/audit.interceptor';
+import { ReportsController } from './interfaces/http/controllers/reports.controller';
+import { PrismaReportsRepository } from './infrastructure/database/repositories/prisma-reports.repository';
+import { GetSummaryUseCase } from './application/use-cases/reports/get-summary.use-case';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -77,7 +80,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController],
   providers: [
     PrismaService,
 
@@ -93,6 +96,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IBankRepository', useClass: PrismaBankRepository },
     { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
     { provide: 'IAuditRepository', useClass: PrismaAuditRepository },
+    { provide: 'IReportsRepository', useClass: PrismaReportsRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // Ghi Audit Log tự động cho mọi mutation (Flow 6a)
@@ -155,6 +159,8 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ListReconciliationUseCase,
 
     ListAuditUseCase,
+
+    GetSummaryUseCase,
 
     JwtStrategy,
 

@@ -6,7 +6,7 @@ import {
 } from '@/modules/transactions/components/TransactionWorkspacePage';
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
 import { formatVnd, formatForeignCurrency, formatExchangeRate } from '@/shared/utils/formatters';
-import { foreignExchangeTransactionsMock } from '../data/transactions.mock';
+import { useFxRecords } from '../hooks/useFxRecords';
 
 const fields: TransactionField[] = [
   {
@@ -56,6 +56,7 @@ type ForeignExchangeTransactionsPageProps = {
 };
 
 export function ForeignExchangeTransactionsPage({ createOnly, onCreated }: ForeignExchangeTransactionsPageProps = {}) {
+  const records = useFxRecords();
   return (
     <TransactionWorkspacePage
       title="Mua Bán Ngoại Tệ"
@@ -65,7 +66,7 @@ export function ForeignExchangeTransactionsPage({ createOnly, onCreated }: Forei
       createLabel="Tạo giao dịch ngoại tệ"
       fields={fields}
       columns={columns}
-      initialRecords={foreignExchangeTransactionsMock}
+      initialRecords={records}
       createOnly={createOnly}
       onCreated={onCreated}
       formNotice={<Alert className="mb-4" type="info" showIcon message="Tỷ giá phải nằm trong biên độ được GĐ/KTTH phê duyệt." />}

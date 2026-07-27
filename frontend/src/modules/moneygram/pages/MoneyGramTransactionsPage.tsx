@@ -11,7 +11,7 @@ import type { TransactionRecord } from '@/modules/transactions/model/transaction
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
 import { bankAccountsMock } from '@/modules/bank-management/data/bankAccounts.mock';
 import { formatExchangeRate, formatUsd, formatVnd as formatBaseVnd } from '@/shared/utils/formatters';
-import { moneyGramTransactionsMock } from '../data/transactions.mock';
+import { useMgRecords } from '../hooks/useMgRecords';
 
 const typeLabels: Record<string, string> = {
   RECEIVE_USD: 'Khách nhận USD',
@@ -258,6 +258,7 @@ type MoneyGramTransactionsPageProps = {
 };
 
 export function MoneyGramTransactionsPage({ createOnly, onCreated }: MoneyGramTransactionsPageProps = {}) {
+  const records = useMgRecords();
   return (
     <TransactionWorkspacePage
       title="Giao Dịch MoneyGram"
@@ -270,7 +271,7 @@ export function MoneyGramTransactionsPage({ createOnly, onCreated }: MoneyGramTr
       summaryRenderer={(values) => <TransactionSummary values={values} />}
       fields={fields}
       columns={columns}
-      initialRecords={moneyGramTransactionsMock}
+      initialRecords={records}
       initialFormValues={initialFormValues}
       onFormValuesChange={handleValuesChange}
       transformFormValues={transformValues}
