@@ -48,6 +48,9 @@ import { AuditInterceptor } from './interfaces/http/interceptors/audit.intercept
 import { ReportsController } from './interfaces/http/controllers/reports.controller';
 import { PrismaReportsRepository } from './infrastructure/database/repositories/prisma-reports.repository';
 import { GetSummaryUseCase } from './application/use-cases/reports/get-summary.use-case';
+import { ShiftController } from './interfaces/http/controllers/shift.controller';
+import { PrismaShiftRepository } from './infrastructure/database/repositories/prisma-shift.repository';
+import { OpenShiftUseCase, CloseShiftUseCase, CurrentShiftUseCase } from './application/use-cases/shift/shift.use-cases';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 
@@ -80,7 +83,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController],
   providers: [
     PrismaService,
 
@@ -97,6 +100,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
     { provide: 'IAuditRepository', useClass: PrismaAuditRepository },
     { provide: 'IReportsRepository', useClass: PrismaReportsRepository },
+    { provide: 'IShiftRepository', useClass: PrismaShiftRepository },
     { provide: 'IHashService', useClass: HashService },
 
     // Ghi Audit Log tự động cho mọi mutation (Flow 6a)
@@ -161,6 +165,10 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ListAuditUseCase,
 
     GetSummaryUseCase,
+
+    OpenShiftUseCase,
+    CloseShiftUseCase,
+    CurrentShiftUseCase,
 
     JwtStrategy,
 

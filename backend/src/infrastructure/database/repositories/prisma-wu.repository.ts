@@ -125,21 +125,13 @@ export class PrismaWuRepository implements IWuRepository {
 
   // ── helpers (dùng trong transaction) ──────────────────────
 
-  private async ensureShift(tx: any, branchId: string, userId: string, now: Date) {
+  private async ensureShift(tx: any, branchId: string, _userId: string, _now: Date) {
+    // Bắt buộc ca đã mở (BR-F8.2-01) — KHÔNG tự mở ngầm nữa
     const open = await tx.shifts.findFirst({
       where: { branch_id: branchId, status: { in: ['OPEN', 'ACTIVE'] } },
     });
-    if (open) return open;
-    return tx.shifts.create({
-      data: {
-        branch_id: branchId,
-        shift_code: `SH-${branchId.slice(0, 8)}-${Date.now()}`,
-        business_date: now,
-        status: 'OPEN',
-        opened_by_user_id: userId,
-        opening_note: 'Ca tự mở khi phát sinh giao dịch',
-      },
-    });
+    if (!open) throw new BadRequestException('Chi nhánh chưa mở ca — vui lòng mở ca trước khi giao dịch');
+    return open;
   }
 
   private async cashAccount(tx: any, branchId: string, currency: Currency2): Promise<string> {
