@@ -16,11 +16,12 @@ export class CreateWuUseCase {
   ) {}
 
   async execute(dto: CreateWuDto, createdByUserId: string): Promise<WuTransaction> {
-    // Snapshot tỷ giá công ty (PAID_SELL WU USD active) tại thời điểm — hỗ trợ so sánh
-    const active = await this.rateRepo.findActive({
-      rateType: ExchangeRateType.PAID_SELL,
-      fromCurrency: 'USD',
-    });
+    // Snapshot tỷ giá WU active theo tiền khách nhận:
+    //   khách nhận USD → PAID_SELL ; khách nhận VND → PAID_BUY
+    const rateType = dto.receivedUsd > 0
+      ? ExchangeRateType.PAID_SELL
+      : ExchangeRateType.PAID_BUY;
+    const active = await this.rateRepo.findActive({ rateType, fromCurrency: 'USD' });
     const systemRate = active[0]?.rate ?? dto.appliedRate;
 
     return this.wuRepo.create({

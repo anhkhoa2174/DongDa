@@ -30,9 +30,11 @@ export class CreateMgDto {
   @Min(0)
   payoutAmount: number;
 
+  // MG không cho chọn tỷ giá (applied_rate = system_rate). Field này optional, bị bỏ qua.
+  @IsOptional()
   @IsNumber()
   @IsPositive()
-  appliedRate: number;
+  appliedRate?: number;
 
   @IsEnum(['USD', 'VND'] as any, { message: 'paidCurrency phải USD/VND' })
   paidCurrency: string;
