@@ -15,8 +15,8 @@ export class PrismaWuRepository implements IWuRepository {
     const rate = input.appliedRate;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
-      // 1. Đảm bảo có ca mở (tự mở ngầm nếu chưa có)
-      const shift = await this.ensureShift(tx, input.branchId, input.createdByUserId, now);
+      // 1. Bắt buộc có ca mở trước khi tạo giao dịch.
+      const shift = await this.ensureShift(tx, input.branchId);
 
       // 2. customer_transaction (WU, COMPLETED)
       const txn = await tx.customer_transactions.create({
@@ -54,11 +54,13 @@ export class PrismaWuRepository implements IWuRepository {
       const lines: any[] = [];
       if (input.receivedVnd > 0) {
         const acc = await this.cashAccount(tx, input.branchId, 'VND');
+        await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
         lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedVnd,
           currency_code: 'VND', exchange_rate: 1, base_amount_vnd: input.receivedVnd });
       }
       if (input.receivedUsd > 0) {
         const acc = await this.cashAccount(tx, input.branchId, 'USD');
+        await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
         lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedUsd,
           currency_code: 'USD', exchange_rate: rate, base_amount_vnd: input.receivedUsd * rate });
       }
@@ -109,7 +111,7 @@ export class PrismaWuRepository implements IWuRepository {
   async findById(id: string): Promise<WuTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { wu_transaction_details: true },
+      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
     });
     return row?.wu_transaction_details ? toDomain(row) : null;
   }
@@ -117,7 +119,7 @@ export class PrismaWuRepository implements IWuRepository {
   async list(filter?: ListWuFilter): Promise<WuTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'WU', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { wu_transaction_details: true },
+      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.wu_transaction_details).map(toDomain);
@@ -125,21 +127,12 @@ export class PrismaWuRepository implements IWuRepository {
 
   // ── helpers (dùng trong transaction) ──────────────────────
 
-  private async ensureShift(tx: any, branchId: string, userId: string, now: Date) {
+  private async ensureShift(tx: any, branchId: string) {
     const open = await tx.shifts.findFirst({
-      where: { branch_id: branchId, status: { in: ['OPEN', 'ACTIVE'] } },
+      where: { branch_id: branchId, status: 'OPEN' },
     });
     if (open) return open;
-    return tx.shifts.create({
-      data: {
-        branch_id: branchId,
-        shift_code: `SH-${branchId.slice(0, 8)}-${Date.now()}`,
-        business_date: now,
-        status: 'OPEN',
-        opened_by_user_id: userId,
-        opening_note: 'Ca tự mở khi phát sinh giao dịch',
-      },
-    });
+    throw new BadRequestException('Chi nhánh chưa mở ca. Vui lòng mở ca và kiểm quỹ đầu ca trước khi tạo giao dịch WU.');
   }
 
   private async cashAccount(tx: any, branchId: string, currency: Currency2): Promise<string> {
@@ -149,6 +142,26 @@ export class PrismaWuRepository implements IWuRepository {
     });
     if (!acc) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ tiền mặt ${currency}`);
     return acc.id;
+  }
+
+  private async ensureEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
+    await this.lockFundAccount(tx, fundAccountId);
+    const balance = await this.balance(tx, fundAccountId);
+    if (amount > balance) {
+      throw new BadRequestException(`Không đủ tiền mặt ${currency}. Tồn hiện tại ${balance}, cần chi ${amount}`);
+    }
+  }
+
+  private async lockFundAccount(tx: any, fundAccountId: string) {
+    await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+  }
+
+  private async balance(tx: any, fundAccountId: string): Promise<number> {
+    const lines = await tx.ledger_lines.findMany({
+      where: { fund_account_id: fundAccountId, ledger_entries: { status: 'POSTED' } },
+      select: { direction: true, amount: true },
+    });
+    return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
   private async ensureDebtAccount(tx: any, branchId: string, provider: string, currency: Currency2): Promise<string> {
@@ -176,6 +189,8 @@ function toDomain(row: any): WuTransaction {
     businessDate: row.business_date,
     status: row.status,
     customerName: row.customer_name ?? null,
+    customerPhone: row.customer_phone ?? null,
+    shiftCode: row.shifts?.shift_code,
     mtcn: d.mtcn,
     wuUsdAmount: wuUsd,
     wuVndAmount: Number(d.wu_vnd_amount),

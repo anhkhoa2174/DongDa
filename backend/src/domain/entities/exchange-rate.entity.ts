@@ -7,9 +7,10 @@
 //   (rate_type + provider + from_currency + to_currency).
 
 export enum ExchangeRateType {
-  PAID_BUY = 'PAID_BUY', // tỷ giá công ty trả khi mua (WU/MG)
-  PAID_SELL = 'PAID_SELL',
-  WU_SYSTEM = 'WU_SYSTEM', // tỷ giá WU/MG công bố tham chiếu
+  PAID_BUY = 'PAID_BUY', // áp dụng cho WU/MG khi khách nhận VND
+  PAID_SELL = 'PAID_SELL', // áp dụng cho WU/MG khi khách nhận USD
+  BANK_RATE = 'BANK_RATE', // tỷ giá ngân hàng xử lý phần lẻ công nợ USD
+  WU_SYSTEM = 'WU_SYSTEM', // legacy
   WU_PROVIDER = 'WU_PROVIDER',
   MG_SYSTEM = 'MG_SYSTEM',
   FX_BUY = 'FX_BUY', // mua ngoại tệ từ khách
@@ -24,6 +25,7 @@ export enum RateStatus {
 }
 
 export enum ServiceProvider {
+  WU_MG = 'WU_MG',
   WU = 'WU',
   MG = 'MG',
   BANK = 'BANK',
@@ -32,7 +34,8 @@ export enum ServiceProvider {
 
 export type CurrencyCode =
   | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW';
+  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW'
+  | 'CAD' | 'CHF' | 'NZD' | 'TWD' | 'MYR' | 'IDR' | 'PHP' | 'LAK' | 'KHR';
 
 export interface ExchangeRate {
   id: string;

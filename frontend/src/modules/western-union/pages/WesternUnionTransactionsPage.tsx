@@ -10,7 +10,7 @@ import {
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
 import { bankAccountsMock } from '@/modules/bank-management/data/bankAccounts.mock';
-import { formatExchangeRate, formatUsd, formatVnd as formatBaseVnd } from '@/shared/utils/formatters';
+import { formatExchangeRate, formatUsd, formatVnd as formatBaseVnd, formatWuMtcn } from '@/shared/utils/formatters';
 import { westernUnionTransactionsMock } from '../data/transactions.mock';
 
 const bankOptions = Array.from(new Map(
@@ -24,8 +24,8 @@ const fields: TransactionField[] = [
   { name: 'customerCode', label: 'MSKH (WU MTCN)', kind: 'text', required: true, span: 8, maxLength: 10, pattern: /^\d{10}$/, patternMessage: 'MSKH Western Union phải gồm đúng 10 chữ số', placeholder: 'Nhập đúng 10 số' },
   { name: 'customerName', label: 'Tên khách hàng', kind: 'text', required: true, span: 8 },
   { name: 'phone', label: 'Số điện thoại (optional)', kind: 'text', span: 8 },
-  { name: 'paidUsd', label: 'Amount USD', kind: 'number', required: true, span: 8, precision: 2, prefix: '$' },
-  { name: 'paidVnd', label: 'Amount VND', kind: 'number', required: true, span: 8, prefix: '₫' },
+  { name: 'paidUsd', label: 'Amount USD', kind: 'number', required: true, positive: true, span: 8, precision: 2, prefix: '$' },
+  { name: 'paidVnd', label: 'Amount VND', kind: 'number', required: true, positive: true, span: 8, prefix: '₫' },
   { name: 'wuRate', label: 'WU Implied Rate (auto)', kind: 'number', span: 8, readOnly: true, precision: 4 },
   { name: 'receivedUsd', label: 'Receive USD chẵn', kind: 'number', required: true, span: 8, precision: 0, prefix: '$' },
   { name: 'receivedVnd', label: 'Receive VND phần lẻ', kind: 'number', required: true, span: 8, prefix: '₫' },
@@ -35,6 +35,7 @@ const fields: TransactionField[] = [
     kind: 'slider',
     span: 8,
     precision: 2,
+    positive: true,
     step: 50,
     rangeMinField: 'wuRate',
     rangeMaxField: 'appliedPaidRate',
@@ -229,7 +230,7 @@ function TransactionSummary({ values }: Readonly<{ values: TransactionFormValues
 }
 
 const columns: ColumnsType<TransactionRecord> = [
-  { title: 'MSKH', dataIndex: 'customerCode' },
+  { title: 'MSKH', dataIndex: 'customerCode', render: (value: string) => formatWuMtcn(value) },
   { title: 'Khách hàng', dataIndex: 'customerName', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
   { title: 'USD', dataIndex: 'paidUsd', align: 'right', render: (value: number) => formatUsd(Number(value ?? 0)) },
   { title: 'VND', dataIndex: 'paidVnd', align: 'right', render: (value: number) => formatVnd(Number(value ?? 0)) },

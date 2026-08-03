@@ -1,4 +1,4 @@
-// Fund Controller — Flow 3: Tiếp quỹ / Điều chuyển vốn
+// Fund Controller — Flow 3: Tiếp quỹ
 // Layer: Interface (HTTP)
 //
 //   GET  /fund/balances            số dư quỹ (từ ledger)
@@ -8,7 +8,7 @@
 //   PATCH /fund/transfers/:id/reject    bên nhận từ chối
 
 import {
-  Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Request,
+  Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Request, ForbiddenException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
@@ -29,12 +29,23 @@ export class FundController {
   ) {}
 
   @Get('balances')
-  balances(@Query('branchId') branchId?: string) {
-    return this.listFund.balances(branchId);
+  balances(@Request() req: any, @Query('branchId') branchId?: string) {
+    const scopedBranchId = this.staffBranchScope(req, branchId);
+    return this.listFund.balances(scopedBranchId);
+  }
+
+  @Get('central-summary')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
+  centralSummary() {
+    return this.listFund.centralSummary();
   }
 
   @Get('transfers')
-  transfers(@Query() query: ListTransfersQueryDto) {
+  transfers(@Request() req: any, @Query() query: ListTransfersQueryDto) {
+    if (req.user?.role === UserRole.STAFF) {
+      query.branchId = this.staffBranchScope(req, query.branchId);
+    }
     return this.listFund.transfers(query);
   }
 
@@ -43,21 +54,29 @@ export class FundController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   create(@Request() req: any, @Body() dto: CreateTransferDto) {
-    return this.createTransfer.execute(dto, req.user.id);
+    return this.createTransfer.execute(dto, req.user);
   }
 
   // Xác nhận (bên nhận) — post ledger, chuyển số dư
   @Patch('transfers/:id/confirm')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   confirm(@Request() req: any, @Param('id') id: string) {
     return this.confirmTransfer.execute(id, req.user.id);
   }
 
   @Patch('transfers/:id/reject')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   reject(@Request() req: any, @Param('id') id: string) {
     return this.rejectTransfer.execute(id, req.user.id);
+  }
+
+  private staffBranchScope(req: any, branchId?: string) {
+    if (req.user?.role !== UserRole.STAFF) return branchId;
+    if (branchId && branchId !== req.user.branchId) {
+      throw new ForbiddenException('Nhân viên chỉ được xem dữ liệu quỹ của chi nhánh đang làm việc');
+    }
+    return req.user.branchId;
   }
 }

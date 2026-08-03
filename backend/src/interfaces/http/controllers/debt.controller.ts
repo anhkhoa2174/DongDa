@@ -37,7 +37,8 @@ export class DebtController {
 
   // Danh sách sổ nợ
   @Get()
-  list(@Query() query: ListDebtsQueryDto) {
+  list(@Request() req: any, @Query() query: ListDebtsQueryDto) {
+    if (req.user?.role === UserRole.STAFF) query.branchId = req.user.branchId;
     return this.listDebts.list(query as any);
   }
 

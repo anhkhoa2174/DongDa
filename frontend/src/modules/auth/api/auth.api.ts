@@ -44,6 +44,8 @@ const backendPermissionByRole: Record<BackendRole, string[]> = {
     'shift:open',
     'shift:close',
     'exchange-rate:read',
+    'capital-transfer:create',
+    'capital-transfer:read',
   ],
   AUDITOR: [
     'transaction:read',

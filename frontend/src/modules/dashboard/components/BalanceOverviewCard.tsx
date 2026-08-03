@@ -26,6 +26,7 @@ type BalanceOverviewCardProps = {
   subBalances: SubBalance[];
   sparklineBars: number[];
   actions: BalanceAction[];
+  loading?: boolean;
 };
 
 export function BalanceOverviewCard({
@@ -37,9 +38,10 @@ export function BalanceOverviewCard({
   subBalances,
   sparklineBars,
   actions,
+  loading = false,
 }: BalanceOverviewCardProps) {
   return (
-    <Card className="balance-card" bordered={false}>
+    <Card loading={loading} className="balance-card" bordered={false}>
       <div className="balance-card__content">
         <div className="balance-card__main">
           <Typography.Text className="balance-card__eyebrow">{eyebrow}</Typography.Text>
@@ -58,7 +60,7 @@ export function BalanceOverviewCard({
           <div className="sparkline">
             {sparklineBars.map((height, index) => (
               <span
-                key={height}
+                key={`${index}-${height}`}
                 style={{ height: `${height}%`, opacity: index === sparklineBars.length - 1 ? 1 : 0.62 }}
               />
             ))}

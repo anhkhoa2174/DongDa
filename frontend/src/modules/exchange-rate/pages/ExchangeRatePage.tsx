@@ -50,6 +50,53 @@ const exchangeRateInputProps = {
   precision: 2,
 };
 
+const adjustmentInputProps = {
+  ...exchangeRateInputProps,
+  addonBefore: '±',
+};
+
+const requiredPositiveNumberRule = (label: string) => ({
+  validator: (_: unknown, value: unknown) => {
+    if (value === undefined || value === null || value === '') {
+      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()}`));
+    }
+
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) {
+      return Promise.reject(new Error(`${label} phải là số hợp lệ`));
+    }
+
+    if (numberValue <= 0) {
+      return Promise.reject(new Error(`${label} phải lớn hơn 0`));
+    }
+
+    return Promise.resolve();
+  },
+});
+
+const requiredNonNegativeNumberRule = (label: string) => ({
+  validator: (_: unknown, value: unknown) => {
+    if (value === undefined || value === null || value === '') {
+      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()}`));
+    }
+
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue)) {
+      return Promise.reject(new Error(`${label} phải là số hợp lệ`));
+    }
+
+    if (numberValue < 0) {
+      return Promise.reject(new Error(`${label} không được âm`));
+    }
+
+    return Promise.resolve();
+  },
+});
+
+function formatAdjustment(value: number) {
+  return `±${formatExchangeRate(value)}`;
+}
+
 const baseFundAColumns: ColumnsType<FundARate> = [
   {
     title: 'Ngoại tệ',
@@ -78,7 +125,7 @@ const baseFundAColumns: ColumnsType<FundARate> = [
     title: 'Biên độ cho phép',
     dataIndex: 'adjustment',
     align: 'center',
-    render: (value: string) => <Tag color="blue">{value}</Tag>,
+    render: (value: number) => <Tag color="blue">{formatAdjustment(value)}</Tag>,
   },
   {
     title: 'Cập nhật',
@@ -266,7 +313,7 @@ export function ExchangeRatePage() {
       </Space>
 
       <Modal
-        title="Nhập 4 tỷ giá chính"
+        title="Nhập nhóm tỷ giá chính"
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
@@ -284,57 +331,69 @@ export function ExchangeRatePage() {
           layout="vertical"
           initialValues={{
             paidSell: 25650,
-            paidSellAdjustment: '',
+            paidSellAdjustment: 20,
             paidBuy: 25580,
-            paidBuyAdjustment: '±20',
-            sell: 25720,
-            sellAdjustment: '±30',
-            buy: 25600,
-            buyAdjustment: '±30',
+            paidBuyAdjustment: 20,
+            bankRate: 26550,
+            bankRateAdjustment: 0,
+            fxSell: 25720,
+            fxSellAdjustment: 30,
+            fxBuy: 25600,
+            fxBuyAdjustment: 30,
           }}
           onFinish={submitForApproval}
         >
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="paidSell" label="Paid (WU/MG) Bán" rules={[{ required: true }]}>
+              <Form.Item name="paidSell" label="Paid (WU/MG) Bán" rules={[requiredPositiveNumberRule('Paid (WU/MG) Bán')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="paidBuy" label="Paid Mua" rules={[{ required: true }]}>
+              <Form.Item name="paidBuy" label="Paid Mua" rules={[requiredPositiveNumberRule('Paid Mua')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="sell" label="Giá Bán" rules={[{ required: true }]}>
+              <Form.Item name="bankRate" label="Tỷ giá ngân hàng" rules={[requiredPositiveNumberRule('Tỷ giá ngân hàng')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="buy" label="Giá Mua" rules={[{ required: true }]}>
+              <Form.Item name="fxSell" label="Bán ngoại tệ" rules={[requiredPositiveNumberRule('Bán ngoại tệ')]}>
+                <InputNumber {...exchangeRateInputProps} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fxBuy" label="Mua ngoại tệ" rules={[requiredPositiveNumberRule('Mua ngoại tệ')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="paidSellAdjustment" label="Biên độ Paid Bán" rules={[{ required: true }]}>
-                <Input placeholder="Ví dụ: ±20" />
+              <Form.Item name="paidSellAdjustment" label="Biên độ Paid Bán" rules={[requiredNonNegativeNumberRule('Biên độ Paid Bán')]}>
+                <InputNumber {...adjustmentInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="paidBuyAdjustment" label="Biên độ Paid Mua" rules={[{ required: true }]}>
-                <Input placeholder="Ví dụ: ±20" />
+              <Form.Item name="paidBuyAdjustment" label="Biên độ Paid Mua" rules={[requiredNonNegativeNumberRule('Biên độ Paid Mua')]}>
+                <InputNumber {...adjustmentInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="sellAdjustment" label="Biên độ Giá Bán" rules={[{ required: true }]}>
-                <Input placeholder="Ví dụ: ±30" />
+              <Form.Item name="bankRateAdjustment" label="Biên độ Tỷ giá NH" rules={[requiredNonNegativeNumberRule('Biên độ Tỷ giá NH')]}>
+                <InputNumber {...adjustmentInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="buyAdjustment" label="Biên độ Giá Mua" rules={[{ required: true }]}>
-                <Input placeholder="Ví dụ: ±30" />
+              <Form.Item name="fxSellAdjustment" label="Biên độ Bán ngoại tệ" rules={[requiredNonNegativeNumberRule('Biên độ Bán ngoại tệ')]}>
+                <InputNumber {...adjustmentInputProps} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fxBuyAdjustment" label="Biên độ Mua ngoại tệ" rules={[requiredNonNegativeNumberRule('Biên độ Mua ngoại tệ')]}>
+                <InputNumber {...adjustmentInputProps} />
               </Form.Item>
             </Col>
           </Row>
@@ -360,18 +419,18 @@ export function ExchangeRatePage() {
         <Form<FundARateForm> form={fundAForm} layout="vertical" onFinish={updateSingleFundARate}>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="buyRate" label="Giá mua" rules={[{ required: true }]}>
+              <Form.Item name="buyRate" label="Giá mua" rules={[requiredPositiveNumberRule('Giá mua')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="sellRate" label="Giá bán" rules={[{ required: true }]}>
+              <Form.Item name="sellRate" label="Giá bán" rules={[requiredPositiveNumberRule('Giá bán')]}>
                 <InputNumber {...exchangeRateInputProps} />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="adjustment" label="Biên độ cho phép" rules={[{ required: true }]}>
-            <Input placeholder="Ví dụ: ±100" />
+          <Form.Item name="adjustment" label="Biên độ cho phép" rules={[requiredNonNegativeNumberRule('Biên độ cho phép')]}>
+            <InputNumber {...adjustmentInputProps} />
           </Form.Item>
           <Space className="flex justify-end">
             <Button onClick={() => setEditingFundARate(null)}>Hủy</Button>
@@ -452,7 +511,7 @@ export function ExchangeRatePage() {
                   render: (_, record) => fundARates.find((rate) => rate.key === record.key)?.sellRate.toString(),
                 },
                 { title: 'Giá bán mới', dataIndex: 'sellRate', align: 'right', render: (value: number) => <Typography.Text strong>{formatExchangeRate(value)}</Typography.Text> },
-                { title: 'Biên độ', dataIndex: 'adjustment', align: 'center' },
+                { title: 'Biên độ', dataIndex: 'adjustment', align: 'center', render: (value: number) => formatAdjustment(value) },
               ]}
             />
             <Space className="flex justify-end">

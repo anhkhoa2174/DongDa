@@ -3,16 +3,27 @@ import { App, Button, Card, Form, InputNumber, Popconfirm, Select, Space, Table,
 import type { ColumnsType } from 'antd/es/table';
 import { CheckOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatExchangeRate, formatTime } from '@/shared/utils/formatters';
+import {
+  exchangeRateInputFormatter,
+  exchangeRateInputParser,
+  formatExchangeRate,
+  formatTime,
+} from '@/shared/utils/formatters';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
-  useApproveRate, useCreateRate, useExchangeRates, useRejectRate,
+  useActiveRates, useApproveRate, useCreateRate, useExchangeRates, useRejectRate,
 } from '../hooks/useExchangeRates';
-import type { CreateRatePayload, ExchangeRateDto, RateStatus } from '../api/exchangeRate.api';
+import type { CreateRatePayload, ExchangeRateDto, ExchangeRateType, RateStatus, ServiceProvider } from '../api/exchangeRate.api';
 
-const RATE_TYPES = ['PAID_BUY', 'PAID_SELL', 'WU_SYSTEM', 'MG_SYSTEM', 'FX_BUY', 'FX_SELL'];
-const CURRENCIES = ['USD', 'EUR', 'JPY', 'GBP', 'SGD', 'AUD', 'CNY', 'KRW', 'THB', 'HKD'];
+const RATE_TYPES: Array<{ value: ExchangeRateType; label: string }> = [
+  { value: 'PAID_BUY', label: 'Paid mua' },
+  { value: 'PAID_SELL', label: 'Paid bán' },
+  { value: 'BANK_RATE', label: 'Tỷ giá ngân hàng' },
+  { value: 'FX_BUY', label: 'Mua ngoại tệ' },
+  { value: 'FX_SELL', label: 'Bán ngoại tệ' },
+];
+const CURRENCIES = ['USD', 'EUR', 'JPY', 'GBP', 'SGD', 'AUD', 'CNY', 'KRW', 'THB', 'HKD', 'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR'];
 
 const STATUS_COLOR: Record<RateStatus, string> = {
   DRAFT: 'gold',
@@ -27,16 +38,24 @@ export function ExchangeRateApprovalPage() {
   const canManage = hasPermission(role, 'exchange_rate.manage');
   const canApprove = hasPermission(role, 'exchange_rate.approve');
 
-  const { data: rates = [], isLoading } = useExchangeRates();
+  const { data: activeRates = [], isLoading: isLoadingActive } = useActiveRates();
+  const { data: pendingRates = [], isLoading: isLoadingPending } = useExchangeRates({ status: 'DRAFT' });
   const createRate = useCreateRate();
   const approveRate = useApproveRate();
   const rejectRate = useRejectRate();
   const [form] = Form.useForm<CreateRatePayload>();
+  const selectedRateType = Form.useWatch('rateType', form);
+  const selectedProvider = selectedRateType ? normalizeRateProvider(selectedRateType) : undefined;
 
   const onCreate = async (values: CreateRatePayload) => {
     try {
-      await createRate.mutateAsync({ ...values, toCurrency: 'VND' });
-      message.success('Đã tạo tỷ giá (chờ duyệt)');
+      await createRate.mutateAsync({
+        ...values,
+        provider: normalizeRateProvider(values.rateType, values.provider),
+        fromCurrency: normalizeFormCurrency(values.fromCurrency),
+        toCurrency: 'VND',
+      });
+      message.success('Đã tạo tỷ giá thay thế (chờ duyệt)');
       form.resetFields();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Tạo tỷ giá thất bại');
@@ -61,19 +80,33 @@ export function ExchangeRateApprovalPage() {
     }
   };
 
-  const columns: ColumnsType<ExchangeRateDto> = [
+  const activeColumns: ColumnsType<ExchangeRateDto> = [
     { title: 'Loại tỷ giá', dataIndex: 'rateType', render: (v, r) => (
       <Space direction="vertical" size={0}>
-        <Typography.Text strong>{v}</Typography.Text>
-        {r.provider && <Typography.Text type="secondary">{r.provider}</Typography.Text>}
+        <Typography.Text strong>{rateTypeLabel(v)}</Typography.Text>
+        <Typography.Text type="secondary">{rateUsageLabel(v, r.provider)}</Typography.Text>
       </Space>
     ) },
     { title: 'Cặp tiền', render: (_, r) => `${r.fromCurrency}/${r.toCurrency}` },
     { title: 'Tỷ giá', dataIndex: 'rate', align: 'right',
       render: (v: number) => <Typography.Text strong>{formatExchangeRate(v)}</Typography.Text> },
+    { title: 'Trạng thái', dataIndex: 'status', render: () => <Tag color="green">ACTIVE</Tag> },
+    { title: 'Hiệu lực từ', dataIndex: 'effectiveFrom', render: (v: string) => formatTime(v) },
+  ];
+
+  const pendingColumns: ColumnsType<ExchangeRateDto> = [
+    { title: 'Loại tỷ giá', dataIndex: 'rateType', render: (v, r) => (
+      <Space direction="vertical" size={0}>
+        <Typography.Text strong>{rateTypeLabel(v)}</Typography.Text>
+        <Typography.Text type="secondary">{rateUsageLabel(v, r.provider)}</Typography.Text>
+      </Space>
+    ) },
+    { title: 'Cặp tiền', render: (_, r) => `${r.fromCurrency}/${r.toCurrency}` },
+    { title: 'Tỷ giá mới', dataIndex: 'rate', align: 'right',
+      render: (v: number) => <Typography.Text strong>{formatExchangeRate(v)}</Typography.Text> },
     { title: 'Trạng thái', dataIndex: 'status',
       render: (s: RateStatus) => <Tag color={STATUS_COLOR[s]}>{s}</Tag> },
-    { title: 'Hiệu lực từ', dataIndex: 'effectiveFrom', render: (v: string) => formatTime(v) },
+    { title: 'Tạo lúc', dataIndex: 'createdAt', render: (v: string) => formatTime(v) },
     {
       title: 'Thao tác', key: 'action', fixed: 'right',
       render: (_, r) =>
@@ -95,27 +128,36 @@ export function ExchangeRateApprovalPage() {
   return (
     <PageScaffold
       title="Duyệt tỷ giá"
-      description="Tạo tỷ giá mới (DRAFT) → duyệt để ACTIVE. Chỉ 1 tỷ giá active cho mỗi loại + cặp tiền."
+      description="Chọn loại tỷ giá và ngoại tệ. Nhóm áp dụng được hệ thống tự xác định, không cần chọn provider thủ công."
       moduleName="exchange-rate"
     >
       {canManage && (
         <Card title="Tạo tỷ giá mới" size="small" className="mb-4">
           <Form form={form} layout="inline" onFinish={onCreate}>
             <Form.Item name="rateType" rules={[{ required: true }]}>
-              <Select placeholder="Loại tỷ giá" style={{ width: 160 }}
-                options={RATE_TYPES.map((v) => ({ value: v, label: v }))} />
+              <Select placeholder="Loại tỷ giá" style={{ width: 180 }}
+                options={RATE_TYPES} />
             </Form.Item>
-            <Form.Item name="provider">
-              <Select placeholder="Provider" allowClear style={{ width: 110 }}
-                options={['WU', 'MG'].map((v) => ({ value: v, label: v }))} />
-            </Form.Item>
+            <Tag className="mt-1! h-8 px-3! leading-8!">
+              {selectedProvider ? `Nhóm: ${providerLabel(selectedProvider)}` : 'Nhóm tự động'}
+            </Tag>
             <Form.Item name="fromCurrency" rules={[{ required: true }]}>
-              <Select placeholder="Ngoại tệ" style={{ width: 110 }}
+              <Select
+                mode="tags"
+                maxCount={1}
+                placeholder="Ngoại tệ"
+                style={{ width: 130 }}
+                tokenSeparators={[',', ' ']}
+                onChange={(values) => {
+                  const value = normalizeCurrencyCode(values[values.length - 1]);
+                  form.setFieldValue('fromCurrency', value ? [value] : []);
+                }}
                 options={CURRENCIES.map((v) => ({ value: v, label: v }))} />
             </Form.Item>
             <Form.Item name="rate" rules={[{ required: true }]}>
               <InputNumber placeholder="Tỷ giá (VND)" min={0} style={{ width: 150 }}
-                formatter={(v) => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} />
+                formatter={exchangeRateInputFormatter}
+                parser={exchangeRateInputParser} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" icon={<PlusOutlined />}
@@ -125,16 +167,77 @@ export function ExchangeRateApprovalPage() {
         </Card>
       )}
 
-      <Card size="small">
+      <Card title="Tỷ giá đang ACTIVE" size="small" className="mb-4">
         <Table<ExchangeRateDto>
           rowKey="id"
-          loading={isLoading}
-          columns={columns}
-          dataSource={rates}
+          loading={isLoadingActive}
+          columns={activeColumns}
+          dataSource={activeRates}
           scroll={{ x: 900 }}
           pagination={{ pageSize: 10 }}
         />
       </Card>
+
+      <Card title="Tỷ giá thay thế chờ duyệt" size="small">
+        <Table<ExchangeRateDto>
+          rowKey="id"
+          loading={isLoadingPending}
+          columns={pendingColumns}
+          dataSource={pendingRates}
+          scroll={{ x: 900 }}
+          pagination={{ pageSize: 5 }}
+        />
+      </Card>
     </PageScaffold>
   );
+}
+
+function normalizeCurrencyCode(value?: string) {
+  return String(value ?? '').replace(/[^a-z]/gi, '').toUpperCase().slice(0, 3);
+}
+
+function normalizeFormCurrency(value: string | string[]) {
+  return normalizeCurrencyCode(Array.isArray(value) ? value[value.length - 1] : value);
+}
+
+function normalizeRateProvider(rateType: ExchangeRateType, provider?: ServiceProvider): ServiceProvider | undefined {
+  if (
+    rateType === 'PAID_BUY' ||
+    rateType === 'PAID_SELL' ||
+    rateType === 'WU_SYSTEM' ||
+    rateType === 'WU_PROVIDER' ||
+    rateType === 'MG_SYSTEM'
+  ) {
+    return 'WU_MG';
+  }
+
+  if (rateType === 'BANK_RATE') {
+    return 'BANK';
+  }
+
+  if (rateType === 'FX_BUY' || rateType === 'FX_SELL') {
+    return provider ?? 'INTERNAL';
+  }
+
+  return provider;
+}
+
+function providerLabel(provider: ServiceProvider) {
+  if (provider === 'WU_MG') return 'WU/MG';
+  if (provider === 'BANK') return 'Ngân hàng';
+  if (provider === 'INTERNAL') return 'Nội bộ';
+  return provider;
+}
+
+function rateTypeLabel(rateType: ExchangeRateType) {
+  return RATE_TYPES.find((option) => option.value === rateType)?.label ?? rateType;
+}
+
+function rateUsageLabel(rateType: ExchangeRateType, provider?: ServiceProvider | null) {
+  if (rateType === 'PAID_BUY') return 'WU/MG - khách nhận VND';
+  if (rateType === 'PAID_SELL') return 'WU/MG - khách nhận USD';
+  if (rateType === 'BANK_RATE') return 'Công nợ USD lẻ';
+  if (rateType === 'FX_BUY') return 'Mua ngoại tệ từ khách';
+  if (rateType === 'FX_SELL') return 'Bán ngoại tệ cho khách';
+  return provider ? providerLabel(provider) : 'Nhóm tự động';
 }

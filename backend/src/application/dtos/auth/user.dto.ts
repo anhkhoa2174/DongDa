@@ -3,7 +3,7 @@
 
 import {
   IsString, IsNotEmpty, IsEmail, IsEnum, IsOptional,
-  IsBoolean, MinLength, MaxLength, Matches,
+  IsBoolean, MinLength, MaxLength, Matches, IsUUID,
 } from 'class-validator';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -34,7 +34,7 @@ export class CreateUserDto {
   role: UserRole;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   branchId?: string;
 }
 
@@ -53,7 +53,7 @@ export class UpdateUserDto {
   role?: UserRole;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   branchId?: string;
 
   @IsOptional()

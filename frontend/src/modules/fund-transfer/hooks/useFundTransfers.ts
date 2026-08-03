@@ -6,8 +6,12 @@ const KEY = ['fund'] as const;
 export function useFundTransfers() {
   return useQuery({ queryKey: [...KEY, 'transfers'], queryFn: () => fundApi.transfers() });
 }
-export function useFundBalances() {
-  return useQuery({ queryKey: [...KEY, 'balances'], queryFn: () => fundApi.balances() });
+export function useFundBalances(branchId?: string) {
+  return useQuery({
+    queryKey: [...KEY, 'balances', branchId],
+    queryFn: () => fundApi.balances(branchId),
+    enabled: Boolean(branchId),
+  });
 }
 export function useBranches() {
   return useQuery({ queryKey: ['branches'], queryFn: () => fundApi.branches() });

@@ -3,8 +3,8 @@ import { mgApi } from '../api/mg.api';
 
 const KEY = ['mg'] as const;
 
-export function useMgTransactions() {
-  return useQuery({ queryKey: [...KEY, 'list'], queryFn: () => mgApi.list() });
+export function useMgTransactions(branchId?: string) {
+  return useQuery({ queryKey: [...KEY, 'list', branchId], queryFn: () => mgApi.list(branchId) });
 }
 export function useBranches() {
   return useQuery({ queryKey: ['branches'], queryFn: () => mgApi.branches() });

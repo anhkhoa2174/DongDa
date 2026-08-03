@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isUiTestMode } from '@/shared/config/runtime';
 import { demoOpenShiftMock } from '../data/shift.mock';
 import type { Shift } from './shift.types';
 
@@ -12,7 +13,7 @@ type ShiftState = {
 };
 
 export const useShiftStore = create<ShiftState>((set) => ({
-  currentShift: demoOpenShiftMock,
+  currentShift: isUiTestMode ? demoOpenShiftMock : null,
   openShift: ({ branchId, branchName, openedBy }) => {
     const openedAt = new Date().toISOString();
     set({

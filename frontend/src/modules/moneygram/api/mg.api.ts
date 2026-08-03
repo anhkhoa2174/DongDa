@@ -4,12 +4,17 @@ export interface MgTransactionDto {
   id: string;
   transactionNo: string;
   branchId: string;
+  shiftCode?: string;
+  status: string;
   customerName?: string | null;
+  customerPhone?: string | null;
   referenceNo: string;
   mgUsdAmount: number;
   mgVndAmount: number;
   payoutCurrency: string;
   payoutAmount: number;
+  receivedUsd: number;
+  receivedVnd: number;
   mgRate: number;
   appliedRate: number;
   profit: number;
@@ -24,6 +29,8 @@ export interface CreateMgPayload {
   mgVndAmount: number;
   payoutCurrency: string;
   payoutAmount: number;
+  receivedUsd: number;
+  receivedVnd: number;
   appliedRate: number;
   paidCurrency: string;
 }

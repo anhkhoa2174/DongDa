@@ -16,6 +16,8 @@ export interface WuTransaction {
   businessDate: Date;
   status: string;
   customerName?: string | null;
+  customerPhone?: string | null;
+  shiftCode?: string;
   mtcn: string; // MSKH Western Union (10 số)
   wuUsdAmount: number;
   wuVndAmount: number;

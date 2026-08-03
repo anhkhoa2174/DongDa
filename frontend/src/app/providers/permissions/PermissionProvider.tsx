@@ -7,7 +7,10 @@ export function PermissionProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
   const value = useMemo<PermissionContextValue>(
     () => ({
-      can: (permission) => hasBackendPermission(user?.permissions, permission) || hasPermission(user?.role, permission),
+      can: (permission) =>
+        user?.permissions?.length
+          ? hasBackendPermission(user.permissions, permission)
+          : hasPermission(user?.role, permission),
     }),
     [user?.permissions, user?.role],
   );

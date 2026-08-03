@@ -4,7 +4,10 @@ export interface WuTransactionDto {
   id: string;
   transactionNo: string;
   branchId: string;
+  shiftCode?: string;
+  status: string;
   customerName?: string | null;
+  customerPhone?: string | null;
   mtcn: string;
   wuUsdAmount: number;
   wuVndAmount: number;
@@ -26,6 +29,7 @@ export interface CreateWuPayload {
   receivedUsd: number;
   receivedVnd: number;
   appliedRate: number;
+  payoutCurrency: string;
   paidCurrency: string;
 }
 

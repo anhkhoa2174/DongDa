@@ -19,7 +19,7 @@ import { ApproveExchangeRateUseCase } from '../../../application/use-cases/excha
 import { RejectExchangeRateUseCase } from '../../../application/use-cases/exchange-rate/reject-exchange-rate.use-case';
 import { ListExchangeRatesUseCase } from '../../../application/use-cases/exchange-rate/list-exchange-rates.use-case';
 import {
-  CreateExchangeRateDto, ListRatesQueryDto,
+  CreateExchangeRateDto, ExchangeRateHistoryQueryDto, ListRatesQueryDto,
 } from '../../../application/dtos/exchange-rate/exchange-rate.dto';
 
 @Controller('exchange-rates')
@@ -44,6 +44,14 @@ export class ExchangeRateController {
   @Get()
   list(@Query() query: ListRatesQueryDto) {
     return this.listRates.list(query);
+  }
+
+  // Lịch sử toàn hệ thống — GĐ/KTTH/Auditor
+  @Get('history')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
+  history(@Query() query: ExchangeRateHistoryQueryDto) {
+    return this.listRates.history(query);
   }
 
   // Tỷ giá đang áp dụng

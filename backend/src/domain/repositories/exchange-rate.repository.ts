@@ -28,11 +28,34 @@ export interface ListRatesFilter {
   fromCurrency?: CurrencyCode;
 }
 
+export interface ExchangeRateHistoryFilter {
+  status?: RateStatus;
+  rateType?: ExchangeRateType;
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  createdFrom?: Date;
+  createdToExclusive?: Date;
+}
+
+export interface ExchangeRateHistoryItem extends ExchangeRate {
+  createdByName: string;
+  approvedByName?: string | null;
+}
+
+export interface ExchangeRateHistoryResult {
+  items: ExchangeRateHistoryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface IExchangeRateRepository {
   create(data: CreateExchangeRateData): Promise<ExchangeRate>;
   findById(id: string): Promise<ExchangeRate | null>;
   findMany(filter?: ListRatesFilter): Promise<ExchangeRate[]>;
   findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]>;
+  findHistory(filter: ExchangeRateHistoryFilter): Promise<ExchangeRateHistoryResult>;
 
   // Duyệt: trong 1 transaction — supersede bản ACTIVE cùng identity rồi set bản này ACTIVE
   approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate>;

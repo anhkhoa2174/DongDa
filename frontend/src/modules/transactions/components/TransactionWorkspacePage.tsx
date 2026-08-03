@@ -1,4 +1,5 @@
 import {
+  ArrowLeftOutlined,
   EditOutlined,
   FileSearchOutlined,
   StopOutlined,
@@ -27,6 +28,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { FormInstance } from 'antd';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import {
   exchangeRateInputFormatter,
@@ -67,6 +69,7 @@ export type TransactionField = {
   pattern?: RegExp;
   patternMessage?: string;
   readOnly?: boolean;
+  positive?: boolean;
   visibleWhen?: (values: TransactionFormValues) => boolean;
   disabledWhen?: (values: TransactionFormValues) => boolean;
 };
@@ -92,6 +95,8 @@ type TransactionWorkspacePageProps = {
   ) => void;
   transformFormValues?: (values: TransactionFormValues) => TransactionFormValues;
   createOnly?: boolean;
+  showHistory?: boolean;
+  showBackButton?: boolean;
   onCreated?: () => void;
 };
 
@@ -99,6 +104,8 @@ const statusMeta: Record<TransactionStatus, { color: string; label: string }> = 
   COMPLETED: { color: 'green', label: 'Hoàn tất' },
   PENDING: { color: 'gold', label: 'Chờ xử lý' },
   VOID: { color: 'red', label: 'Đã void' },
+  VOIDED: { color: 'red', label: 'Đã deactive' },
+  DEACTIVATED: { color: 'red', label: 'Đã deactive' },
   ADJUSTED: { color: 'blue', label: 'Đã điều chỉnh' },
 };
 
@@ -119,9 +126,12 @@ export function TransactionWorkspacePage({
   onFormValuesChange,
   transformFormValues,
   createOnly = false,
+  showHistory = true,
+  showBackButton = false,
   onCreated,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
+  const navigate = useNavigate();
   const [createForm] = Form.useForm<TransactionFormValues>();
   const [editorForm] = Form.useForm<TransactionFormValues>();
   const user = useAuthStore((state) => state.user);
@@ -339,6 +349,23 @@ export function TransactionWorkspacePage({
     return createFormCard;
   }
 
+  if (!showHistory) {
+    return (
+      <PageScaffold
+        title={title}
+        description={description}
+        moduleName={moduleName}
+        extra={showBackButton ? (
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>
+            Quay lại Giao Dịch
+          </Button>
+        ) : undefined}
+      >
+        {createFormCard}
+      </PageScaffold>
+    );
+  }
+
   return (
     <PageScaffold
       title={title}
@@ -489,12 +516,7 @@ function TransactionFields({
               className="mb-4! w-full"
               name={field.name}
               label={field.label}
-              rules={[
-                { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
-                ...(field.pattern
-                  ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
-                  : []),
-              ]}
+              rules={buildFieldRules(field, isDisabled, watchedValues)}
             >
               {renderField(field, isDisabled, watchedValues)}
             </Form.Item>
@@ -503,6 +525,78 @@ function TransactionFields({
       })}
     </Row>
   );
+}
+
+function buildFieldRules(
+  field: TransactionField,
+  isDisabled: boolean,
+  values: TransactionFormValues,
+) {
+  return [
+    { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
+    ...(field.pattern
+      ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
+      : []),
+    ...(['number', 'slider'].includes(field.kind)
+      ? [{
+          validator: (_: unknown, value: unknown) => validateNumericField(field, value, values, isDisabled),
+        }]
+      : []),
+  ];
+}
+
+function validateNumericField(
+  field: TransactionField,
+  value: unknown,
+  values: TransactionFormValues,
+  isDisabled: boolean,
+) {
+  if (isDisabled || field.readOnly || value === undefined || value === null || value === '') {
+    return Promise.resolve();
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return Promise.reject(new Error(`${field.label} phải là số hợp lệ`));
+  }
+
+  if (field.positive && numberValue <= 0) {
+    return Promise.reject(new Error(`${field.label} phải lớn hơn 0`));
+  }
+
+  const min = getFieldMin(field, values);
+  const max = getFieldMax(field, values);
+
+  if (typeof min === 'number' && Number.isFinite(min) && numberValue < min) {
+    return Promise.reject(new Error(`${field.label} không được nhỏ hơn ${formatNumberInputTooltip(min, field.precision ?? 0)}`));
+  }
+
+  if (typeof max === 'number' && Number.isFinite(max) && numberValue > max) {
+    return Promise.reject(new Error(`${field.label} không được lớn hơn ${formatNumberInputTooltip(max, field.precision ?? 0)}`));
+  }
+
+  return Promise.resolve();
+}
+
+function getFieldMin(field: TransactionField, values: TransactionFormValues) {
+  if (field.kind !== 'slider' || !field.rangeMinField || !field.rangeMaxField) return field.min;
+
+  const rangeValues = getSliderRangeValues(field, values);
+  return rangeValues.length > 0 ? Math.min(...rangeValues) : field.min;
+}
+
+function getFieldMax(field: TransactionField, values: TransactionFormValues) {
+  if (field.kind !== 'slider' || !field.rangeMinField || !field.rangeMaxField) return field.max;
+
+  const rangeValues = getSliderRangeValues(field, values);
+  return rangeValues.length > 0 ? Math.max(...rangeValues) : field.max;
+}
+
+function getSliderRangeValues(field: TransactionField, values: TransactionFormValues) {
+  return [
+    Number(values[field.rangeMinField ?? ''] ?? field.min ?? 0),
+    Number(values[field.rangeMaxField ?? ''] ?? field.max ?? 0),
+  ].filter((value) => Number.isFinite(value) && value > 0);
 }
 
 function renderField(
@@ -519,10 +613,7 @@ function renderField(
     return <Select className={controlClassName} disabled={disabled || field.readOnly} placeholder={field.placeholder} options={field.options} />;
   }
   if (field.kind === 'slider') {
-    const rangeValues = [
-      Number(values[field.rangeMinField ?? ''] ?? field.min ?? 0),
-      Number(values[field.rangeMaxField ?? ''] ?? field.max ?? 0),
-    ].filter((value) => Number.isFinite(value) && value > 0);
+    const rangeValues = getSliderRangeValues(field, values);
     const min = rangeValues.length > 0 ? Math.min(...rangeValues) : field.min ?? 0;
     const max = rangeValues.length > 0 ? Math.max(...rangeValues) : field.max ?? min;
 

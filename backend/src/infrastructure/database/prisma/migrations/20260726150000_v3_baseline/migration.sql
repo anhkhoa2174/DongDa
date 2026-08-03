@@ -48,13 +48,13 @@ CREATE TYPE operation_code AS ENUM (
     'CASH_COUNT'
 );
 
-CREATE TYPE service_provider AS ENUM ('WU', 'MG', 'BANK', 'INTERNAL');
+CREATE TYPE service_provider AS ENUM ('WU_MG', 'WU', 'MG', 'BANK', 'INTERNAL');
 CREATE TYPE journal_scope AS ENUM ('COMPANY', 'BRANCH');
 CREATE TYPE import_status AS ENUM ('UPLOADED', 'PARSED', 'MATCHED', 'PENDING_REVIEW', 'APPROVED', 'POSTED', 'REJECTED', 'FAILED');
 CREATE TYPE reconciliation_status AS ENUM ('DRAFT', 'MATCHED', 'PENDING_REVIEW', 'APPROVED', 'POSTED', 'REJECTED');
 CREATE TYPE reconciliation_item_status AS ENUM ('MATCHED', 'MISSING_IN_SYSTEM', 'MISSING_IN_JOURNAL', 'AMOUNT_VARIANCE', 'BRANCH_VARIANCE', 'MANUAL_MATCHED', 'IGNORED');
 CREATE TYPE debt_movement_type AS ENUM ('EXPECTED_DEBT', 'ACTUAL_DEBT', 'ADJUSTMENT', 'SETTLEMENT', 'REVERSAL');
-CREATE TYPE exchange_rate_type AS ENUM ('PAID_BUY', 'PAID_SELL', 'WU_SYSTEM', 'WU_PROVIDER', 'MG_SYSTEM', 'FX_BUY', 'FX_SELL');
+CREATE TYPE exchange_rate_type AS ENUM ('PAID_BUY', 'PAID_SELL', 'BANK_RATE', 'WU_SYSTEM', 'WU_PROVIDER', 'MG_SYSTEM', 'FX_BUY', 'FX_SELL');
 CREATE TYPE rate_status AS ENUM ('DRAFT', 'ACTIVE', 'SUPERSEDED', 'REJECTED');
 CREATE TYPE approval_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED');
 CREATE TYPE approval_action AS ENUM ('SUBMIT', 'APPROVE', 'REJECT', 'CANCEL');
@@ -90,7 +90,16 @@ CREATE TYPE currency_code AS ENUM (
     'THB',
     'CNY',
     'HKD',
-    'KRW'
+    'KRW',
+    'CAD',
+    'CHF',
+    'NZD',
+    'TWD',
+    'MYR',
+    'IDR',
+    'PHP',
+    'LAK',
+    'KHR'
 );
 
 CREATE TYPE fund_account_type AS ENUM (
@@ -416,7 +425,7 @@ CREATE INDEX idx_shifts_status ON shifts(status);
 
 CREATE UNIQUE INDEX uq_branch_active_shift
 ON shifts(branch_id)
-WHERE status IN ('OPEN', 'ACTIVE', 'CLOSING');
+WHERE status IN ('OPEN', 'CLOSING');
 
 CREATE TRIGGER trg_shifts_updated_at
 BEFORE UPDATE ON shifts
@@ -480,10 +489,14 @@ CREATE TABLE mg_transaction_details (
     reference_no        VARCHAR(50) NOT NULL,
     payout_currency     currency_code NOT NULL CHECK (payout_currency IN ('USD', 'VND')),
     payout_amount       NUMERIC(20, 2) NOT NULL CHECK (payout_amount > 0),
+    received_usd        NUMERIC(20, 2) NOT NULL DEFAULT 0 CHECK (received_usd >= 0),
+    received_vnd        NUMERIC(20, 2) NOT NULL DEFAULT 0 CHECK (received_vnd >= 0),
     system_rate         NUMERIC(20, 6) NOT NULL,
     applied_rate        NUMERIC(20, 6) NOT NULL,
 
-    CONSTRAINT chk_mg_rate_same CHECK (ABS(system_rate - applied_rate) <= 0.000001)
+    CONSTRAINT chk_mg_rate_same CHECK (ABS(system_rate - applied_rate) <= 0.000001),
+    CONSTRAINT uq_mg_reference_no UNIQUE (reference_no),
+    CONSTRAINT chk_mg_reference_no_format CHECK (reference_no ~ '^[A-Z0-9]{8}$')
 );
 
 CREATE TABLE fx_transaction_details (
@@ -510,6 +523,7 @@ DECLARE
     shift_branch UUID;
     shift_state shift_status;
     user_branch UUID;
+    is_global_user BOOLEAN;
     v_requires_shift BOOLEAN;
 BEGIN
     SELECT ot.requires_shift
@@ -534,12 +548,19 @@ BEGIN
         RAISE EXCEPTION 'Transaction branch must match shift branch';
     END IF;
 
-    IF shift_state NOT IN ('OPEN', 'ACTIVE') THEN
-        RAISE EXCEPTION 'Transactions can only be created in an OPEN or ACTIVE shift';
+    IF shift_state <> 'OPEN' THEN
+        RAISE EXCEPTION 'Transactions can only be created in an OPEN shift';
     END IF;
 
-    SELECT e.branch_id
-    INTO user_branch
+    SELECT e.branch_id,
+           EXISTS (
+               SELECT 1
+               FROM user_roles ur
+               JOIN roles r ON r.id = ur.role_id
+               WHERE ur.user_id = u.id
+                 AND r.code IN ('ADMIN', 'MANAGER')
+           )
+    INTO user_branch, is_global_user
     FROM users u
     JOIN employees e ON e.id = u.employee_id
     WHERE u.id = NEW.created_by_user_id;
@@ -548,7 +569,7 @@ BEGIN
         RAISE EXCEPTION 'User % does not exist or has no employee branch', NEW.created_by_user_id;
     END IF;
 
-    IF user_branch <> NEW.branch_id THEN
+    IF is_global_user IS DISTINCT FROM TRUE AND user_branch <> NEW.branch_id THEN
         RAISE EXCEPTION 'Transaction creator must belong to transaction branch';
     END IF;
 
@@ -1069,7 +1090,7 @@ CREATE TABLE cash_count_lines (
     cash_count_id       UUID NOT NULL REFERENCES cash_counts(id) ON DELETE CASCADE,
     fund_account_id     UUID NOT NULL REFERENCES fund_accounts(id) ON DELETE RESTRICT,
     currency_code       currency_code NOT NULL,
-    system_amount       NUMERIC(20, 2) NOT NULL CHECK (system_amount >= 0),
+    system_amount       NUMERIC(20, 2) NOT NULL,
     actual_amount       NUMERIC(20, 2) NOT NULL CHECK (actual_amount >= 0),
     variance            NUMERIC(20, 2) NOT NULL,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1273,4 +1294,3 @@ CREATE TABLE audit_logs (
 
 CREATE INDEX idx_audit_logs_user ON audit_logs(user_id, created_at DESC);
 CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
-

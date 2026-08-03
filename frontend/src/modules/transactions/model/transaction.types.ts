@@ -1,4 +1,4 @@
-export type TransactionStatus = 'COMPLETED' | 'PENDING' | 'VOID' | 'ADJUSTED';
+export type TransactionStatus = 'COMPLETED' | 'PENDING' | 'VOID' | 'VOIDED' | 'DEACTIVATED' | 'ADJUSTED';
 
 export type TransactionRecord = {
   key: string;
@@ -20,10 +20,13 @@ export type AggregatedTransaction = {
   source: TransactionSource;
   type: string;
   customerName: string;
+  customerPhone: string;
   amountLabel: string;
   vndAmount: number;
   branch: string;
+  branchId: string;
   shiftCode: string;
   createdAt: string;
+  createdAtRaw: string;
   status: TransactionStatus;
 };

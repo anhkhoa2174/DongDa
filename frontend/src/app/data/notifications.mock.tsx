@@ -19,7 +19,7 @@ export const notificationsMock: AppNotification[] = [
   {
     id: 'rate-approval',
     title: 'Tỷ giá mới chờ duyệt',
-    description: 'KTTH vừa gửi bảng gồm Paid Bán, Paid Mua, Giá Bán và Giá Mua.',
+    description: 'KTTH vừa gửi Paid mua/bán, tỷ giá ngân hàng và mua/bán ngoại tệ.',
     meta: '23:48 · Hôm nay',
     tag: 'Tỷ giá',
     color: 'blue',

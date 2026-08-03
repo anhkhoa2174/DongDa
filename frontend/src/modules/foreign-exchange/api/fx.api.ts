@@ -4,7 +4,10 @@ export interface FxTransactionDto {
   id: string;
   transactionNo: string;
   branchId: string;
+  shiftCode?: string;
+  status: string;
   customerName?: string | null;
+  customerPhone?: string | null;
   isBuy: boolean;
   fxCurrency: string;
   fxAmount: number;

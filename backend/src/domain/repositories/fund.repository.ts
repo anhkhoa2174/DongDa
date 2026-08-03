@@ -2,14 +2,16 @@
 // Layer: Domain
 
 import type {
-  FundTransfer, FundAccountBalance, CurrencyCode,
+  FundTransfer, FundAccountBalance, CurrencyCode, CentralFundSummary,
 } from '../entities/fund.entity';
 
 export interface CreateTransferInput {
   sourceBranchId: string;
   destinationBranchId: string;
-  currencyCode: CurrencyCode;
-  amount: number;
+  items: Array<{
+    currencyCode: CurrencyCode;
+    amount: number;
+  }>;
   createdByUserId: string;
 }
 
@@ -22,9 +24,12 @@ export interface IFundRepository {
   // Số dư quỹ (tính từ ledger)
   listBalances(branchId?: string): Promise<FundAccountBalance[]>;
   getBalance(fundAccountId: string): Promise<number>;
+  getCentralSummary(): Promise<CentralFundSummary>;
 
-  // Tìm sổ quỹ tiền mặt của 1 chi nhánh theo loại tiền
-  findCashAccount(branchId: string, currency: CurrencyCode): Promise<{ id: string } | null>;
+  findHeadOfficeBranchId(): Promise<string | null>;
+
+  // VND/USD ưu tiên CASH; ngoại tệ khác có thể nằm ở FUND_A.
+  findTransferAccount(branchId: string, currency: CurrencyCode): Promise<{ id: string } | null>;
 
   createTransfer(input: CreateTransferInput): Promise<FundTransfer>;
   findTransferById(id: string): Promise<FundTransfer | null>;

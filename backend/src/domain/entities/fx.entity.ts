@@ -17,6 +17,8 @@ export interface FxTransaction {
   businessDate: Date;
   status: string;
   customerName?: string | null;
+  customerPhone?: string | null;
+  shiftCode?: string;
   isBuy: boolean;
   fxCurrency: CurrencyCode;
   fxAmount: number;

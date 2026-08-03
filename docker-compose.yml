@@ -1,0 +1,73 @@
+name: dongda
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dongda_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dongda_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: dongda_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/dongda_db?schema=public
+      FRONTEND_URL: http://localhost:5173
+      JWT_SECRET: your-super-secret-jwt-key-min-32-chars
+      JWT_EXPIRES_IN: 30m
+      JWT_REFRESH_SECRET: your-refresh-secret-key-min-32-chars
+      JWT_REFRESH_EXPIRES_IN: 7d
+      SESSION_TIMEOUT_MINUTES: 30
+      UPLOAD_DIR: ./uploads
+      MAX_FILE_SIZE_MB: 20
+      THROTTLE_TTL_SECONDS: 60
+      THROTTLE_LIMIT: 100
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/src
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: dongda_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: /api/v1
+      VITE_DEV_PROXY_TARGET: http://backend:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

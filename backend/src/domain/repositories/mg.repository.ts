@@ -11,6 +11,8 @@ export interface CreateMgInput {
   mgVndAmount: number;
   payoutCurrency: Currency2;
   payoutAmount: number;
+  receivedUsd: number;
+  receivedVnd: number;
   appliedRate: number;
   systemRate: number;
   paidCurrency: Currency2;

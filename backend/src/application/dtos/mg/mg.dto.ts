@@ -1,14 +1,14 @@
 // DTOs: MoneyGram
 // Layer: Application
 
-import { IsUUID, IsString, IsOptional, IsNumber, Min, IsEnum, IsPositive, MinLength } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsNumber, Min, IsEnum, IsPositive, Matches } from 'class-validator';
 
 export class CreateMgDto {
   @IsUUID()
   branchId: string;
 
   @IsString()
-  @MinLength(6, { message: 'Reference Number tối thiểu 6 ký tự' })
+  @Matches(/^[A-Z0-9]{8}$/, { message: 'Reference Number phải gồm đúng 8 ký tự chữ hoa hoặc số' })
   referenceNo: string;
 
   @IsOptional()
@@ -27,8 +27,16 @@ export class CreateMgDto {
   payoutCurrency: string;
 
   @IsNumber()
-  @Min(0)
+  @IsPositive()
   payoutAmount: number;
+
+  @IsNumber()
+  @Min(0)
+  receivedUsd: number;
+
+  @IsNumber()
+  @Min(0)
+  receivedVnd: number;
 
   @IsNumber()
   @IsPositive()

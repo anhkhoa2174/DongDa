@@ -2,6 +2,7 @@ import {
   AlertOutlined,
   AuditOutlined,
   BankOutlined,
+  CalculatorOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
   EyeOutlined,
@@ -11,15 +12,17 @@ import {
   ReloadOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Input, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Input, Progress, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
-import { formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import { branchFundsMock, centralFundMock } from '../data/funds.mock';
+import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { branchFundsMock } from '../data/funds.mock';
 import type { BranchFund, FundACurrencyBalance, FundStatus } from '../model/fund.types';
+import { useCentralFundSummary } from '../hooks/useCentralFund';
 
 const statusMeta: Record<FundStatus, { label: string; color: string; icon: JSX.Element }> = {
   NORMAL: { label: 'Ổn định', color: 'green', icon: <CheckCircleOutlined /> },
@@ -60,6 +63,28 @@ function FundMetric({
     <div className="fund-metric">
       <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">{label}</Typography.Text>
       <div className={`mt-1 truncate text-base font-bold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function FundBreakdownRow({
+  label,
+  value,
+  note,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  strong?: boolean;
+}) {
+  return (
+    <div className={`central-fund-row ${strong ? 'central-fund-row--total' : ''}`}>
+      <div className="min-w-0">
+        <Typography.Text strong={strong}>{label}</Typography.Text>
+        {note && <Typography.Text type="secondary" className="mt-0.5 block text-xs!">{note}</Typography.Text>}
+      </div>
+      <Typography.Text strong className="central-fund-row__value">{value}</Typography.Text>
     </div>
   );
 }
@@ -169,6 +194,7 @@ function BranchFundCard({ branch, compact = false }: { branch: BranchFund; compa
 }
 
 function BranchFundMainPage() {
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const branch = branchFundsMock.find((item) => item.key === user?.branchId) ?? branchFundsMock[0];
 
@@ -177,7 +203,13 @@ function BranchFundMainPage() {
       title="Quỹ Chi Nhánh"
       description="Theo dõi VND, USD, Quỹ A và ca đang mở của chi nhánh."
       moduleName="fund-management"
-      extra={<Button icon={<ReloadOutlined />}>Làm mới quỹ</Button>}
+      extra={(
+        <Space wrap>
+          <Button icon={<ReloadOutlined />}>Làm mới quỹ</Button>
+          <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+          <Button type="primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+        </Space>
+      )}
     >
       <Space direction="vertical" size={16} className="w-full">
         <BranchFundCard branch={branch} />
@@ -286,18 +318,12 @@ function ControlBranchFundsPage() {
 }
 
 export function CentralFundPage() {
-  const totalBranchValue = branchFundsMock.reduce((sum, branch) => sum + getBranchVndValue(branch), 0);
-  const totalFundAValue = centralFundMock.fundA.reduce((sum, item) => sum + item.vndValue, 0);
-  const centralCashValue =
-    centralFundMock.vndCash +
-    centralFundMock.usdCash * activePaidRatesMock.paidBuy +
-    totalFundAValue;
-  const totalDebtValue = centralFundMock.debtVnd + centralFundMock.debtUsd * activePaidRatesMock.paidBuy;
-  const totalCompanyCapital =
-    centralCashValue +
-    centralFundMock.bankBalance +
-    totalBranchValue -
-    totalDebtValue;
+  const navigate = useNavigate();
+  const role = useAuthStore((state) => state.user?.role);
+  const canTransfer = role === 'director' || role === 'accountant';
+  const canViewBranches = role === 'director' || role === 'accountant';
+  const { data: summary, isLoading, isError, isFetching, refetch } = useCentralFundSummary();
+  const fundA = summary?.fundA ?? [];
 
   return (
     <PageScaffold
@@ -306,84 +332,119 @@ export function CentralFundPage() {
       moduleName="fund-management"
       extra={(
         <Space wrap>
-          <Button icon={<ReloadOutlined />}>Đồng bộ số dư</Button>
-          <Button type="primary" icon={<InboxOutlined />}>Tạo tiếp quỹ</Button>
+          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Đồng bộ số dư</Button>
+          {canViewBranches && (
+            <Button icon={<EyeOutlined />} onClick={() => navigate('/branch-management/monitoring')}>Quỹ Chi Nhánh</Button>
+          )}
+          <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
+          {canTransfer && (
+            <Button type="primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          )}
         </Space>
       )}
     >
-      <Space direction="vertical" size={16} className="w-full">
-        <Card className="fund-central-hero overflow-hidden text-white!" classNames={{ body: 'p-0!' }}>
-          <div className="p-6">
-            <div className="mb-6 flex items-start justify-between gap-4 max-lg:flex-col">
-              <div>
-                <Typography.Text className="text-white/75! uppercase tracking-normal!">Tổng vốn kiểm soát</Typography.Text>
-                <Typography.Title level={2} className="mt-1! mb-2! text-white!">{formatVnd(totalCompanyCapital)}</Typography.Title>
-                <Typography.Text className="text-white/75!">
-                  Tiền mặt, ngân hàng, công nợ và tổng quỹ chi nhánh quy đổi theo Paid mua {formatExchangeRate(activePaidRatesMock.paidBuy)}.
-                </Typography.Text>
-              </div>
-              <Tag color="gold" className="m-0!">Đối chiếu {centralFundMock.lastReconciledAt}</Tag>
+      <Space direction="vertical" size={20} className="w-full">
+        {isError && (
+          <Alert
+            type="error"
+            showIcon
+            message="Không thể tải dữ liệu Quỹ Chung"
+            action={<Button size="small" onClick={() => void refetch()}>Thử lại</Button>}
+          />
+        )}
+        {summary?.missingRateCurrencies.length ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={`Chưa có tỷ giá ACTIVE cho: ${summary.missingRateCurrencies.join(', ')}`}
+            description="Giá trị quy đổi của các loại tiền này đang được tính bằng 0."
+          />
+        ) : null}
+        <Card loading={isLoading} className="central-fund-overview overflow-hidden" classNames={{ body: 'p-0!' }}>
+          <div className="central-fund-overview__header">
+            <div className="min-w-0">
+              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn kiểm soát</Typography.Text>
+              <Typography.Title level={2} className="central-fund-overview__amount">{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</Typography.Title>
+              <Typography.Text className="central-fund-overview__caption">
+                Tiền mặt, ngân hàng và công nợ phải thu trên toàn hệ thống.
+              </Typography.Text>
             </div>
+            <div className="central-fund-overview__meta">
+              <div>
+                <span>Paid mua</span>
+                <strong>{formatExchangeRate(summary?.paidBuyRate ?? 0)}</strong>
+              </div>
+              <div>
+                <span>Đối chiếu gần nhất</span>
+                <strong>{summary?.lastReconciledAt ? formatDateTime(summary.lastReconciledAt) : 'Chưa đối chiếu'}</strong>
+              </div>
+            </div>
+          </div>
 
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Tiền mặt</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralCashValue)}</div>
+          <div className="central-fund-kpis">
+            {[
+              { label: 'Tiền mặt quy đổi', value: formatVnd(summary?.centralCashValueVnd ?? 0), icon: <MoneyCollectOutlined /> },
+              { label: 'Số dư ngân hàng', value: formatVnd(summary?.bankValueVnd ?? 0), icon: <BankOutlined /> },
+              { label: 'Công nợ phải thu', value: formatVnd(summary?.debtValueVnd ?? 0), icon: <AuditOutlined /> },
+              { label: 'Quỹ tại chi nhánh', value: formatVnd(summary?.branchFundValueVnd ?? 0), icon: <InboxOutlined /> },
+            ].map((item) => (
+              <div className="central-fund-kpi" key={item.label}>
+                <span className="central-fund-kpi__icon">{item.icon}</span>
+                <div className="min-w-0">
+                  <div className="central-fund-kpi__label">{item.label}</div>
+                  <div className="central-fund-kpi__value">{item.value}</div>
                 </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Ngân hàng</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralFundMock.bankBalance)}</div>
-                </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Công nợ</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalDebtValue)}</div>
-                </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Tổng quỹ chi nhánh</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalBranchValue)}</div>
-                </div>
-              </Col>
-            </Row>
+              </div>
+            ))}
           </div>
         </Card>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={15}>
-            <Card title={<Space><MoneyCollectOutlined />Quỹ Chung</Space>} className="polished-card">
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={8}>
-                  <Statistic title="Tiền mặt VND" value={centralFundMock.vndCash} formatter={(value) => formatVnd(Number(value))} />
-                </Col>
-                <Col xs={24} md={8}>
-                  <Statistic title="Tiền mặt USD" value={centralFundMock.usdCash} formatter={(value) => formatUsd(Number(value))} />
-                </Col>
-                <Col xs={24} md={8}>
-                  <Statistic title="Quỹ A quy đổi" value={totalFundAValue} formatter={(value) => formatVnd(Number(value))} />
-                </Col>
-              </Row>
+        <Row gutter={[20, 20]} align="stretch">
+          <Col xs={24} xl={12} className="flex">
+            <Card
+              title={<Space><MoneyCollectOutlined />Cấu phần tiền mặt</Space>}
+              extra={<Tag color="gold">Quỹ Chung</Tag>}
+              className="central-fund-detail w-full"
+            >
+              <FundBreakdownRow label="Tiền mặt VND" value={formatVnd(summary?.vndCash ?? 0)} />
+              <FundBreakdownRow
+                label="Tiền mặt USD quy đổi"
+                value={formatVnd(summary?.usdCashValueVnd ?? 0)}
+                note={`${formatUsd(summary?.usdCash ?? 0)} × ${formatExchangeRate(summary?.paidBuyRate ?? 0)}`}
+              />
+              <FundBreakdownRow
+                label="Quỹ A quy đổi"
+                value={formatVnd(summary?.fundAValueVnd ?? 0)}
+                note={`${fundA.length} loại ngoại tệ`}
+              />
+              <FundBreakdownRow label="Tổng tiền mặt quy đổi" value={formatVnd(summary?.centralCashValueVnd ?? 0)} strong />
             </Card>
           </Col>
-          <Col xs={24} xl={9}>
-            <Card title={<Space><BankOutlined />Cấu phần kiểm soát</Space>} className="polished-card">
-              <Space direction="vertical" className="w-full">
-                <div className="flex items-center justify-between"><Typography.Text>Tiền mặt quy đổi</Typography.Text><Typography.Text strong>{formatVnd(centralCashValue)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Số dư ngân hàng</Typography.Text><Typography.Text strong>{formatVnd(centralFundMock.bankBalance)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Công nợ quy đổi</Typography.Text><Typography.Text strong>{formatVnd(totalDebtValue)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Tổng quỹ chi nhánh</Typography.Text><Typography.Text strong>{formatVnd(totalBranchValue)}</Typography.Text></div>
-              </Space>
+          <Col xs={24} xl={12} className="flex">
+            <Card
+              title={<Space><BankOutlined />Ngân hàng và công nợ</Space>}
+              extra={<Button type="link" onClick={() => navigate('/bank-management/accounts')}>Xem tài khoản</Button>}
+              className="central-fund-detail w-full"
+            >
+              <FundBreakdownRow label="Số dư ngân hàng" value={formatVnd(summary?.bankValueVnd ?? 0)} />
+              <FundBreakdownRow label="Công nợ VND" value={formatVnd(summary?.debtVnd ?? 0)} />
+              <FundBreakdownRow
+                label="Công nợ USD quy đổi"
+                value={formatVnd((summary?.debtUsd ?? 0) * (summary?.paidBuyRate ?? 0))}
+                note={`${formatUsd(summary?.debtUsd ?? 0)} × ${formatExchangeRate(summary?.paidBuyRate ?? 0)}`}
+              />
+              <FundBreakdownRow label="Tổng công nợ quy đổi" value={formatVnd(summary?.debtValueVnd ?? 0)} strong />
             </Card>
           </Col>
         </Row>
 
-        <Card title="Quỹ A thuộc Quỹ Chung" className="polished-card">
-          <FundAList items={centralFundMock.fundA} />
+        <Card
+          title="Chi tiết Quỹ A"
+          extra={<Tag>{fundA.length} ngoại tệ</Tag>}
+          className="polished-card"
+          loading={isLoading}
+        >
+          <FundAList items={fundA} />
         </Card>
       </Space>
     </PageScaffold>
@@ -392,7 +453,7 @@ export function CentralFundPage() {
 
 export function BranchFundsPage() {
   const role = useAuthStore((state) => state.user?.role);
-  const isControlRole = role === 'director' || role === 'accountant';
+  const isControlRole = role === 'director' || role === 'accountant' || role === 'auditor';
 
-  return isControlRole ? <ControlBranchFundsPage /> : <BranchFundMainPage />;
+  return isControlRole ? <Navigate to="/branch-management/monitoring" replace /> : <BranchFundMainPage />;
 }

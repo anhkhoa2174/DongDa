@@ -15,15 +15,23 @@ export class PrismaFxRepository implements IFxRepository {
     const vndAmount = input.fxAmount * input.rate;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
-      const shift = await this.ensureShift(tx, input.branchId, input.createdByUserId, now);
+      const shift = await this.ensureShift(tx, input.branchId);
       const vndAcc = await this.cashAccount(tx, input.branchId, 'VND');
       const fxAcc = await this.currencyAccount(tx, input.branchId, input.fxCurrency);
 
       // BÁN: kiểm tra tồn ngoại tệ đủ (BR-F5.6)
       if (!input.isBuy) {
+        await this.lockFundAccount(tx, fxAcc);
         const stock = await this.balance(tx, fxAcc);
         if (input.fxAmount > stock) {
           throw new BadRequestException(`Không đủ tồn ${input.fxCurrency} (còn ${stock})`);
+        }
+      }
+      if (input.isBuy) {
+        await this.lockFundAccount(tx, vndAcc);
+        const vndBalance = await this.balance(tx, vndAcc);
+        if (vndAmount > vndBalance) {
+          throw new BadRequestException(`Không đủ tiền mặt VND. Tồn hiện tại ${vndBalance}, cần chi ${vndAmount}`);
         }
       }
 
@@ -89,7 +97,7 @@ export class PrismaFxRepository implements IFxRepository {
   async findById(id: string): Promise<FxTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { fx_transaction_details: true },
+      include: { fx_transaction_details: true, shifts: { select: { shift_code: true } } },
     });
     return row?.fx_transaction_details ? toDomain(row) : null;
   }
@@ -97,7 +105,7 @@ export class PrismaFxRepository implements IFxRepository {
   async list(filter?: ListFxFilter): Promise<FxTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'FX', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { fx_transaction_details: true },
+      include: { fx_transaction_details: true, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.fx_transaction_details).map(toDomain);
@@ -121,16 +129,10 @@ export class PrismaFxRepository implements IFxRepository {
   }
 
   // ── helpers ──
-  private async ensureShift(tx: any, branchId: string, userId: string, now: Date) {
-    const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: { in: ['OPEN', 'ACTIVE'] } } });
+  private async ensureShift(tx: any, branchId: string) {
+    const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: 'OPEN' } });
     if (open) return open;
-    return tx.shifts.create({
-      data: {
-        branch_id: branchId, shift_code: `SH-${branchId.slice(0, 8)}-${Date.now()}`,
-        business_date: now, status: 'OPEN', opened_by_user_id: userId,
-        opening_note: 'Ca tự mở khi phát sinh giao dịch',
-      },
-    });
+    throw new BadRequestException('Chi nhánh chưa mở ca. Vui lòng mở ca và kiểm quỹ đầu ca trước khi tạo giao dịch ngoại tệ.');
   }
 
   private async cashAccount(tx: any, branchId: string, currency: string): Promise<string> {
@@ -140,6 +142,10 @@ export class PrismaFxRepository implements IFxRepository {
     });
     if (!acc) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ tiền mặt ${currency}`);
     return acc.id;
+  }
+
+  private async lockFundAccount(tx: any, fundAccountId: string) {
+    await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
   }
 
   // Sổ ngoại tệ: USD dùng CASH_USD (đã seed), còn lại tạo Quỹ A (FUND_A) khi cần
@@ -178,6 +184,8 @@ function toDomain(row: any): FxTransaction {
     businessDate: row.business_date,
     status: row.status,
     customerName: row.customer_name ?? null,
+    customerPhone: row.customer_phone ?? null,
+    shiftCode: row.shifts?.shift_code,
     isBuy: d.is_buy,
     fxCurrency: d.fx_currency as CurrencyCode,
     fxAmount: Number(d.fx_amount),

@@ -3,8 +3,8 @@ import { wuApi } from '../api/wu.api';
 
 const KEY = ['wu'] as const;
 
-export function useWuTransactions() {
-  return useQuery({ queryKey: [...KEY, 'list'], queryFn: () => wuApi.list() });
+export function useWuTransactions(branchId?: string) {
+  return useQuery({ queryKey: [...KEY, 'list', branchId], queryFn: () => wuApi.list(branchId) });
 }
 export function useBranches() {
   return useQuery({ queryKey: ['branches'], queryFn: () => wuApi.branches() });

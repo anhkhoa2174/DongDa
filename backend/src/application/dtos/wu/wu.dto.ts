@@ -36,6 +36,9 @@ export class CreateWuDto {
   @IsPositive()
   appliedRate: number;
 
+  @IsEnum(['USD', 'VND'] as any, { message: 'payoutCurrency phải là USD hoặc VND' })
+  payoutCurrency: string;
+
   @IsEnum(['USD', 'VND'] as any, { message: 'paidCurrency phải là USD hoặc VND' })
   paidCurrency: string;
 }

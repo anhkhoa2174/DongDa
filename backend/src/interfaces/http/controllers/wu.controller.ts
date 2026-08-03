@@ -8,12 +8,13 @@ import {
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
+import { BranchAccessGuard } from '../guards/branch-access.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { CreateWuUseCase, ListWuUseCase } from '../../../application/use-cases/wu/wu.use-cases';
 import { CreateWuDto, ListWuQueryDto } from '../../../application/dtos/wu/wu.dto';
 
 @Controller('wu/transactions')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BranchAccessGuard)
 export class WuController {
   constructor(
     private readonly createWu: CreateWuUseCase,
@@ -21,15 +22,17 @@ export class WuController {
   ) {}
 
   @Get()
-  list(@Query() query: ListWuQueryDto) {
+  list(@Request() req: any, @Query() query: ListWuQueryDto) {
+    if (req.user?.role === UserRole.STAFF) query.branchId = req.user.branchId;
     return this.listWu.execute(query);
   }
 
-  // Tạo GD — nhân viên chi nhánh / KTTH / GĐ
+  // Tạo GD — Staff tạo tại chi nhánh mình; GĐ/KTTH được tạo tại chi nhánh cần điều chỉnh.
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   create(@Request() req: any, @Body() dto: CreateWuDto) {
+    if (req.user?.role === UserRole.STAFF) dto.branchId = req.user.branchId;
     return this.createWu.execute(dto, req.user.id);
   }
 }

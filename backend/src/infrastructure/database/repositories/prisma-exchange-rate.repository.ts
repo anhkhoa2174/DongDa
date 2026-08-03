@@ -7,7 +7,10 @@ import {
   IExchangeRateRepository,
   CreateExchangeRateData,
   ListRatesFilter,
+  ExchangeRateHistoryFilter,
+  ExchangeRateHistoryResult,
 } from '../../../domain/repositories/exchange-rate.repository';
+import { Prisma } from '@prisma/client';
 import {
   ExchangeRate,
   ExchangeRateType,
@@ -58,6 +61,56 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
 
   findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]> {
     return this.findMany({ ...filter, status: RateStatus.ACTIVE });
+  }
+
+  async findHistory(filter: ExchangeRateHistoryFilter): Promise<ExchangeRateHistoryResult> {
+    const keyword = filter.keyword?.trim();
+    const where: Prisma.exchange_ratesWhereInput = {
+      ...(filter.status && { status: filter.status }),
+      ...(filter.rateType && { rate_type: filter.rateType }),
+      ...((filter.createdFrom || filter.createdToExclusive) && {
+        created_at: {
+          ...(filter.createdFrom && { gte: filter.createdFrom }),
+          ...(filter.createdToExclusive && { lt: filter.createdToExclusive }),
+        },
+      }),
+      ...(keyword && {
+        users_exchange_rates_created_by_user_idTousers: {
+          employees: {
+            full_name: { contains: keyword, mode: 'insensitive' },
+          },
+        },
+      }),
+    };
+
+    const [total, rows] = await this.prisma.$transaction([
+      this.prisma.exchange_rates.count({ where }),
+      this.prisma.exchange_rates.findMany({
+        where,
+        include: {
+          users_exchange_rates_created_by_user_idTousers: {
+            select: { employees: { select: { full_name: true } } },
+          },
+          users_exchange_rates_approved_by_user_idTousers: {
+            select: { employees: { select: { full_name: true } } },
+          },
+        },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        skip: (filter.page - 1) * filter.pageSize,
+        take: filter.pageSize,
+      }),
+    ]);
+
+    return {
+      items: rows.map((row) => ({
+        ...toDomain(row),
+        createdByName: row.users_exchange_rates_created_by_user_idTousers.employees.full_name,
+        approvedByName: row.users_exchange_rates_approved_by_user_idTousers?.employees.full_name ?? null,
+      })),
+      total,
+      page: filter.page,
+      pageSize: filter.pageSize,
+    };
   }
 
   async approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate> {

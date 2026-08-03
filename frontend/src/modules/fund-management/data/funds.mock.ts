@@ -1,23 +1,7 @@
-import type { BranchFund, CentralFund, FundACurrencyBalance } from '../model/fund.types';
+import type { BranchFund, FundACurrencyBalance } from '../model/fund.types';
 
 const buildFundA = (items: Array<Omit<FundACurrencyBalance, 'vndValue'>>) =>
   items.map((item) => ({ ...item, vndValue: Math.round(item.amount * item.buyRate) }));
-
-export const centralFundMock: CentralFund = {
-  vndCash: 1_400_020_000,
-  usdCash: 187_420,
-  bankBalance: 8_235_300_000,
-  debtVnd: 84_000_000,
-  debtUsd: 37_520.64,
-  lastReconciledAt: '26/06/2026 16:55',
-  fundA: buildFundA([
-    { currency: 'EUR', name: 'Euro', amount: 18_450, buyRate: 29_000 },
-    { currency: 'AUD', name: 'Australian Dollar', amount: 12_800, buyRate: 16_650 },
-    { currency: 'JPY', name: 'Japanese Yen', amount: 4_250_000, buyRate: 167 },
-    { currency: 'GBP', name: 'British Pound', amount: 6_240, buyRate: 33_800 },
-    { currency: 'SGD', name: 'Singapore Dollar', amount: 9_600, buyRate: 19_800 },
-  ]),
-};
 
 export const branchFundsMock: BranchFund[] = [
   {

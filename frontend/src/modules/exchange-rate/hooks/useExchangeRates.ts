@@ -1,14 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { exchangeRateApi, type CreateRatePayload } from '../api/exchangeRate.api';
+import {
+  exchangeRateApi,
+  type CreateRatePayload,
+  type ExchangeRateHistoryParams,
+  type ListRatesParams,
+} from '../api/exchangeRate.api';
 
 const KEY = ['exchange-rates'] as const;
 
-export function useExchangeRates() {
-  return useQuery({ queryKey: [...KEY, 'all'], queryFn: () => exchangeRateApi.list() });
+export function useExchangeRates(params?: ListRatesParams) {
+  return useQuery({
+    queryKey: [...KEY, 'list', params],
+    queryFn: () => exchangeRateApi.list(params),
+  });
 }
 
 export function useActiveRates() {
   return useQuery({ queryKey: [...KEY, 'active'], queryFn: () => exchangeRateApi.active() });
+}
+
+export function useExchangeRateHistory(params: ExchangeRateHistoryParams) {
+  return useQuery({
+    queryKey: [...KEY, 'history', params],
+    queryFn: () => exchangeRateApi.history(params),
+  });
 }
 
 function useInvalidate() {

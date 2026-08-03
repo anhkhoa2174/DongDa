@@ -3,13 +3,16 @@
 
 import {
   IsEnum, IsOptional, IsNumber, IsPositive, IsISO8601,
+  IsInt, Min, Max, IsString, MaxLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   ExchangeRateType, RateStatus, ServiceProvider, CurrencyCode,
 } from '../../../domain/entities/exchange-rate.entity';
 
 const CURRENCIES: CurrencyCode[] = [
   'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
+  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
 ];
 
 export class CreateExchangeRateDto {
@@ -58,6 +61,42 @@ export class ListRatesQueryDto {
   @IsOptional()
   @IsEnum(ServiceProvider)
   provider?: ServiceProvider;
+}
+
+export class ExchangeRateHistoryQueryDto {
+  @IsOptional()
+  @IsEnum(RateStatus)
+  status?: RateStatus;
+
+  @IsOptional()
+  @IsEnum(ExchangeRateType)
+  rateType?: ExchangeRateType;
+
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 10;
 }
 
 export interface RateResponseDto {

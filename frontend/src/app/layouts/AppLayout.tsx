@@ -37,11 +37,14 @@ function canAccessMenuItem(
   role: AppRole | undefined,
   permissions: string[] | undefined,
 ) {
-  if (item.requiredPermission) {
-    return hasBackendPermission(permissions, item.requiredPermission) || hasPermission(role, item.requiredPermission);
-  }
+  const matchesRole = !item.allowedRoles || (role && item.allowedRoles.includes(role));
+  const matchesPermission = item.requiredPermission
+    ? permissions?.length
+      ? hasBackendPermission(permissions, item.requiredPermission)
+      : hasPermission(role, item.requiredPermission)
+    : true;
 
-  return !item.allowedRoles || (role && item.allowedRoles.includes(role));
+  return Boolean(matchesRole && matchesPermission);
 }
 
 function filterNavigationByRole(
@@ -71,6 +74,29 @@ export function AppLayout() {
     [user?.permissions, user?.role],
   );
   const openKeys = useMemo(() => findOpenKeys(visibleNavigationItems, location.pathname), [location.pathname, visibleNavigationItems]);
+  const selectedNavigationKey = useMemo(() => {
+    const isTransactionWorkspace = [
+      '/western-union/',
+      '/moneygram/',
+      '/foreign-exchange/',
+      '/domestic-transfer/',
+    ].some((prefix) => location.pathname.startsWith(prefix));
+
+    if (isTransactionWorkspace) return '/transactions';
+
+    const isFundWorkspace = [
+      '/cash-count/',
+      '/fund-transfer',
+      '/fund-management/branch-funds',
+    ].some((prefix) => location.pathname.startsWith(prefix));
+    if (isFundWorkspace) {
+      return user?.role === 'branch'
+        ? '/fund-management/branch-funds'
+        : '/fund-management/central-fund';
+    }
+
+    return location.pathname;
+  }, [location.pathname, user?.role]);
   const roleLabel = {
     director: 'Giám đốc',
     accountant: 'Kế toán tổng hợp',
@@ -150,7 +176,7 @@ export function AppLayout() {
           mode="inline"
           theme="dark"
           items={visibleNavigationItems}
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedNavigationKey]}
           defaultOpenKeys={openKeys}
           onClick={({ key }) => navigate(String(key))}
           className="!h-[calc(100vh-4rem)] !overflow-y-auto !border-e-0"

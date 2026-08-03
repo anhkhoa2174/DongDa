@@ -13,6 +13,7 @@ export type DashboardKpi = {
 
 type KpiGridProps = {
   items: DashboardKpi[];
+  loading?: boolean;
 };
 
 const toneClasses: Record<KpiTone, string> = {
@@ -22,12 +23,12 @@ const toneClasses: Record<KpiTone, string> = {
   teal: 'text-brand-700',
 };
 
-export function KpiGrid({ items }: KpiGridProps) {
+export function KpiGrid({ items, loading = false }: KpiGridProps) {
   return (
     <Row gutter={[16, 16]}>
       {items.map((kpi) => (
         <Col xs={24} sm={12} xl={6} key={kpi.label}>
-          <Card className="h-full [&_.ant-card-body]:p-4">
+          <Card loading={loading} className="h-full [&_.ant-card-body]:p-4">
             <div className="mb-2 flex items-center justify-between gap-3">
               <Typography.Text className="text-xs! font-bold! text-slate-500! uppercase">{kpi.label}</Typography.Text>
               <span className={`text-lg ${toneClasses[kpi.tone]}`}>{kpi.icon}</span>

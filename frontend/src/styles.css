@@ -217,6 +217,239 @@
   padding: 16px;
 }
 
+.central-fund-overview {
+  border-color: #262626 !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+}
+
+.central-fund-overview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 24px;
+}
+
+.central-fund-overview__eyebrow,
+.central-fund-overview__caption {
+  color: #a3a3a3 !important;
+}
+
+.central-fund-overview__eyebrow {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.central-fund-overview__amount {
+  margin: 5px 0 4px !important;
+  color: #ffffff !important;
+  font-size: 34px !important;
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-overview__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  min-width: 390px;
+  border: 1px solid #2f2f2f;
+  border-radius: 6px;
+}
+
+.central-fund-overview__meta div {
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.central-fund-overview__meta div + div {
+  border-left: 1px solid #2f2f2f;
+}
+
+.central-fund-overview__meta span,
+.central-fund-overview__meta strong {
+  display: block;
+}
+
+.central-fund-overview__meta span {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.central-fund-overview__meta strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #262626;
+}
+
+.central-fund-kpi {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 102px;
+  padding: 18px;
+  border-right: 1px solid #262626;
+}
+
+.central-fund-kpi:last-child {
+  border-right: 0;
+}
+
+.central-fund-kpi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid rgba(245, 179, 1, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 17px;
+}
+
+.central-fund-kpi__label {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.central-fund-kpi__value {
+  margin-top: 5px;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-kpi__value--liability {
+  color: #f5b301;
+}
+
+.central-fund-detail {
+  height: 100%;
+}
+
+.central-fund-detail .ant-card-body {
+  padding: 4px 22px 10px;
+}
+
+.central-fund-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 70px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.central-fund-row:last-child {
+  border-bottom: 0;
+}
+
+.central-fund-row--total {
+  margin-top: 2px;
+  border-bottom: 0;
+  color: #111827;
+}
+
+.central-fund-row__value {
+  flex: 0 0 auto;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.fund-transfer-context {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #262626;
+  border-radius: 6px;
+  background: #0b0b0b;
+  color: #ffffff;
+}
+
+.fund-transfer-context__item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 82px;
+  padding: 18px 20px;
+  border-right: 1px solid #262626;
+}
+
+.fund-transfer-context__item:last-child {
+  border-right: 0;
+}
+
+.fund-transfer-context__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid rgba(245, 179, 1, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 16px;
+}
+
+.fund-transfer-context__label {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fund-transfer-context__value {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.fund-transfer-panel {
+  height: 100%;
+}
+
+.fund-transfer-panel .ant-card-body {
+  padding: 22px;
+}
+
+.fund-transfer-line {
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #f5b301;
+  border-radius: 6px;
+  background: #fbfbfc;
+  padding: 15px 16px 12px;
+}
+
+.fund-transfer-line .ant-form-item-extra {
+  min-height: 20px;
+  padding-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
 .branch-monitor-hero {
   overflow: hidden;
   background:
@@ -414,6 +647,41 @@
 }
 
 @media (max-width: 960px) {
+  .central-fund-overview__header {
+    flex-direction: column;
+  }
+
+  .central-fund-overview__meta {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .central-fund-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .central-fund-kpi:nth-child(2) {
+    border-right: 0;
+  }
+
+  .central-fund-kpi:nth-child(-n + 2) {
+    border-bottom: 1px solid #262626;
+  }
+
+  .fund-transfer-context {
+    grid-template-columns: 1fr;
+  }
+
+  .fund-transfer-context__item {
+    min-height: 72px;
+    border-right: 0;
+    border-bottom: 1px solid #262626;
+  }
+
+  .fund-transfer-context__item:last-child {
+    border-bottom: 0;
+  }
+
   .balance-card__content {
     flex-direction: column;
   }
@@ -433,6 +701,44 @@
 }
 
 @media (max-width: 560px) {
+  .central-fund-overview__header {
+    padding: 20px;
+  }
+
+  .central-fund-overview__amount {
+    font-size: 27px !important;
+  }
+
+  .central-fund-overview__meta,
+  .central-fund-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .central-fund-overview__meta div + div {
+    border-top: 1px solid #2f2f2f;
+    border-left: 0;
+  }
+
+  .central-fund-kpi {
+    min-height: 82px;
+    border-right: 0;
+    border-bottom: 1px solid #262626;
+  }
+
+  .central-fund-kpi:nth-child(3) {
+    border-bottom: 1px solid #262626;
+  }
+
+  .central-fund-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .central-fund-row__value {
+    text-align: left;
+  }
+
   .balance-card .ant-card-body {
     padding: 18px;
   }

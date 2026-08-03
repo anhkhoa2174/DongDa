@@ -3,8 +3,8 @@ import { fxApi } from '../api/fx.api';
 
 const KEY = ['fx-trading'] as const;
 
-export function useFxTransactions() {
-  return useQuery({ queryKey: [...KEY, 'list'], queryFn: () => fxApi.list() });
+export function useFxTransactions(branchId?: string) {
+  return useQuery({ queryKey: [...KEY, 'list', branchId], queryFn: () => fxApi.list(branchId) });
 }
 export function useFxStock() {
   return useQuery({ queryKey: [...KEY, 'stock'], queryFn: () => fxApi.stock() });

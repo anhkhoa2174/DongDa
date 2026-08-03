@@ -24,7 +24,14 @@ function formatInputNumber(
 ) {
   if (value === null || value === undefined || value === '') return '';
 
-  const rawValue = String(value).replace(/[^\d.-]/g, '');
+  const escapedGroupSeparator = groupSeparator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stringValue = String(value);
+  const rawValue = typeof value === 'number'
+    ? stringValue
+    : stringValue
+        .replace(new RegExp(escapedGroupSeparator, 'g'), '')
+        .replace(decimalSeparator, '.')
+        .replace(/[^\d.-]/g, '');
   if (!rawValue) return '';
 
   const isNegative = rawValue.startsWith('-');
@@ -65,6 +72,17 @@ export const usdInputFormatter = (value: InputValue) => formatInputNumber(value,
 export const usdInputParser = (value: string | undefined) => parseInputNumber(value, ',', '.');
 export const exchangeRateInputFormatter = numberInputFormatter;
 export const exchangeRateInputParser = numberInputParser;
+
+export function normalizeDigits(value: string | number | null | undefined, maxLength?: number) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return typeof maxLength === 'number' ? digits.slice(0, maxLength) : digits;
+}
+
+export function formatWuMtcn(value: string | number | null | undefined) {
+  const digits = normalizeDigits(value, 10);
+  const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean);
+  return parts.join('-');
+}
 
 /**
  * Format tiền Việt

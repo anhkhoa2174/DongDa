@@ -62,7 +62,7 @@ export function DebtSettlementPage() {
 
   const columns: ColumnsType<DebtAccountSummaryDto> = [
     { title: 'Sổ nợ', dataIndex: 'name' },
-    { title: 'Provider', dataIndex: 'providerCode', render: (v) => <Tag>{v}</Tag> },
+    { title: 'Đối tác', dataIndex: 'providerCode', render: (v) => <Tag>{v}</Tag> },
     { title: 'Loại tiền', dataIndex: 'currencyCode' },
     { title: 'Tổng nợ', dataIndex: 'totalDebt', align: 'right', render: (v, r) => `${money(v)} ${r.currencyCode}` },
     { title: 'Đã trả', dataIndex: 'totalSettled', align: 'right', render: (v, r) => `${money(v)} ${r.currencyCode}` },
@@ -98,7 +98,7 @@ export function DebtSettlementPage() {
                 options={branches.map((b) => ({ value: b.id, label: `${b.code} — ${b.name}` }))} />
             </Form.Item>
             <Form.Item name="providerCode" rules={[{ required: true }]}>
-              <Select placeholder="Provider" style={{ width: 110 }}
+              <Select placeholder="Đối tác" style={{ width: 110 }}
                 options={['WU', 'MG'].map((v) => ({ value: v, label: v }))} />
             </Form.Item>
             <Form.Item name="currencyCode" rules={[{ required: true }]}>

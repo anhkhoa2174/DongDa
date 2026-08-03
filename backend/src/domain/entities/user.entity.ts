@@ -14,16 +14,16 @@ export enum UserRole {
   AUDITOR = 'AUDITOR',
 }
 
-// ADMIN không cần branchId (quản lý toàn bộ)
-export const GLOBAL_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.AUDITOR];
-export const BRANCH_ROLES: UserRole[] = [UserRole.MANAGER, UserRole.STAFF];
+// ADMIN/GĐ, MANAGER/KTTH và AUDITOR được xem toàn hệ thống.
+export const GLOBAL_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR];
+export const BRANCH_ROLES: UserRole[] = [UserRole.STAFF];
 
 // Quyền theo role
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   [UserRole.ADMIN]: ['*'],  // full access
   [UserRole.MANAGER]: [
-    'transaction:read', 'transaction:create', 'transaction:approve',
-    'shift:read', 'shift:open', 'shift:close',
+    'transaction:read', 'transaction:create', 'transaction:update', 'transaction:void', 'transaction:approve',
+    'shift:read',
     'exchange-rate:read',
     'report:read', 'report:export',
     'capital-transfer:create', 'capital-transfer:read',
@@ -33,6 +33,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'transaction:read', 'transaction:create',
     'shift:read', 'shift:open', 'shift:close',
     'exchange-rate:read',
+    'capital-transfer:create', 'capital-transfer:read',
   ],
   [UserRole.AUDITOR]: [
     'transaction:read',

@@ -1,11 +1,11 @@
 // Use Cases: Western Union — Flow WU
 // Layer: Application
 
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { IWuRepository, ListWuFilter } from '../../../domain/repositories/wu.repository';
 import { IExchangeRateRepository } from '../../../domain/repositories/exchange-rate.repository';
 import { WuTransaction, Currency2 } from '../../../domain/entities/wu.entity';
-import { ExchangeRateType } from '../../../domain/entities/exchange-rate.entity';
+import { ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateWuDto } from '../../dtos/wu/wu.dto';
 
 @Injectable()
@@ -16,12 +16,25 @@ export class CreateWuUseCase {
   ) {}
 
   async execute(dto: CreateWuDto, createdByUserId: string): Promise<WuTransaction> {
-    // Snapshot tỷ giá công ty (PAID_SELL WU USD active) tại thời điểm — hỗ trợ so sánh
+    if (Number(dto.receivedUsd ?? 0) <= 0 && Number(dto.receivedVnd ?? 0) <= 0) {
+      throw new BadRequestException('Phải nhập số tiền thực trả cho khách');
+    }
+
+    const rateType = dto.payoutCurrency === 'VND'
+      ? ExchangeRateType.PAID_BUY
+      : ExchangeRateType.PAID_SELL;
     const active = await this.rateRepo.findActive({
-      rateType: ExchangeRateType.PAID_SELL,
+      rateType,
+      provider: ServiceProvider.WU_MG,
       fromCurrency: 'USD',
     });
-    const systemRate = active[0]?.rate ?? dto.appliedRate;
+    const systemRate = active[0]?.rate;
+    if (!systemRate) {
+      throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${rateType} cho WU/MG USD`);
+    }
+    const wuRate = dto.wuUsdAmount > 0 ? dto.wuVndAmount / dto.wuUsdAmount : systemRate;
+    const appliedRate = clampRate(dto.appliedRate, wuRate, systemRate);
+    assertWuPayoutMatches(dto, appliedRate);
 
     return this.wuRepo.create({
       branchId: dto.branchId,
@@ -31,7 +44,7 @@ export class CreateWuUseCase {
       wuVndAmount: dto.wuVndAmount,
       receivedUsd: dto.receivedUsd,
       receivedVnd: dto.receivedVnd,
-      appliedRate: dto.appliedRate,
+      appliedRate,
       systemRate,
       paidCurrency: dto.paidCurrency as Currency2,
       createdByUserId,
@@ -44,5 +57,44 @@ export class ListWuUseCase {
   constructor(@Inject('IWuRepository') private readonly wuRepo: IWuRepository) {}
   execute(filter?: ListWuFilter): Promise<WuTransaction[]> {
     return this.wuRepo.list(filter);
+  }
+}
+
+function clampRate(value: number, firstRate: number, secondRate: number) {
+  const rates = [firstRate, secondRate].filter((rate) => Number.isFinite(rate) && rate > 0);
+  if (rates.length === 0) return value;
+  const min = Math.min(...rates);
+  const max = Math.max(...rates);
+  return Math.min(Math.max(value, min), max);
+}
+
+function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
+  const receivedUsd = Number(dto.receivedUsd ?? 0);
+  const receivedVnd = Number(dto.receivedVnd ?? 0);
+  const wuUsd = Number(dto.wuUsdAmount ?? 0);
+
+  if (receivedUsd > 0 && !Number.isInteger(receivedUsd)) {
+    throw new BadRequestException('WU: USD thực trả phải là số nguyên, phần lẻ sau dấu . quy đổi sang VND');
+  }
+
+  if (dto.payoutCurrency === 'VND') {
+    if (receivedUsd > 0) {
+      throw new BadRequestException('WU: khách nhận VND thì không được ghi USD thực trả');
+    }
+    if (receivedVnd <= 0) {
+      throw new BadRequestException('WU: khách nhận VND thì phải nhập số VND thực trả');
+    }
+    return;
+  }
+
+  const expectedUsd = Math.trunc(Math.max(wuUsd, 0));
+  const fractionalUsd = Math.max(wuUsd - expectedUsd, 0);
+  const expectedVnd = Math.round(fractionalUsd * appliedRate);
+
+  if (receivedUsd !== expectedUsd) {
+    throw new BadRequestException(`WU: USD thực trả phải là phần nguyên của Amount USD (${expectedUsd} USD)`);
+  }
+  if (Math.abs(receivedVnd - expectedVnd) > 1) {
+    throw new BadRequestException(`WU: VND thực trả phải là phần lẻ USD quy đổi theo tỷ giá (${expectedVnd} VND)`);
   }
 }

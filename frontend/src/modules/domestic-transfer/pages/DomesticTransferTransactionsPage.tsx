@@ -58,6 +58,8 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       columns={columns}
       initialRecords={domesticTransferTransactionsMock}
       createOnly={createOnly}
+      showHistory={false}
+      showBackButton
       onCreated={onCreated}
       formNotice={<Alert className="mb-4" type="info" showIcon message="Phí được kiểm soát theo cấu hình cố định, %, min, max hoặc miễn phí." />}
     />

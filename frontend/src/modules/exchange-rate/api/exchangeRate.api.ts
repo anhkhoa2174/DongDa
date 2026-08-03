@@ -2,8 +2,19 @@ import { httpClient } from '@/shared/api/httpClient';
 
 export type RateStatus = 'DRAFT' | 'ACTIVE' | 'SUPERSEDED' | 'REJECTED';
 export type ExchangeRateType =
-  | 'PAID_BUY' | 'PAID_SELL' | 'WU_SYSTEM' | 'WU_PROVIDER' | 'MG_SYSTEM' | 'FX_BUY' | 'FX_SELL';
-export type ServiceProvider = 'WU' | 'MG' | 'BANK' | 'INTERNAL';
+  | 'PAID_BUY' | 'PAID_SELL' | 'BANK_RATE' | 'WU_SYSTEM' | 'WU_PROVIDER' | 'MG_SYSTEM' | 'FX_BUY' | 'FX_SELL';
+export type ServiceProvider = 'WU_MG' | 'WU' | 'MG' | 'BANK' | 'INTERNAL';
+export type ListRatesParams = { status?: RateStatus; rateType?: ExchangeRateType; provider?: ServiceProvider };
+
+export interface ExchangeRateHistoryParams {
+  status?: RateStatus;
+  rateType?: ExchangeRateType;
+  from?: string;
+  to?: string;
+  keyword?: string;
+  page: number;
+  pageSize: number;
+}
 
 export interface ExchangeRateDto {
   id: string;
@@ -23,10 +34,22 @@ export interface ExchangeRateDto {
   createdAt: string;
 }
 
+export interface ExchangeRateHistoryDto extends ExchangeRateDto {
+  createdByName: string;
+  approvedByName?: string | null;
+}
+
+export interface ExchangeRateHistoryResponse {
+  items: ExchangeRateHistoryDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface CreateRatePayload {
   rateType: ExchangeRateType;
   provider?: ServiceProvider;
-  fromCurrency: string;
+  fromCurrency: string | string[];
   toCurrency?: string;
   buyRate?: number;
   sellRate?: number;
@@ -34,11 +57,14 @@ export interface CreateRatePayload {
 }
 
 export const exchangeRateApi = {
-  list: (params?: { status?: RateStatus; rateType?: ExchangeRateType }) =>
+  list: (params?: ListRatesParams) =>
     httpClient.get<ExchangeRateDto[]>('/exchange-rates', { params }).then((r) => r.data),
 
   active: () =>
     httpClient.get<ExchangeRateDto[]>('/exchange-rates/active').then((r) => r.data),
+
+  history: (params: ExchangeRateHistoryParams) =>
+    httpClient.get<ExchangeRateHistoryResponse>('/exchange-rates/history', { params }).then((r) => r.data),
 
   create: (payload: CreateRatePayload) =>
     httpClient.post<ExchangeRateDto>('/exchange-rates', payload).then((r) => r.data),

@@ -5,7 +5,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import {
   IExchangeRateRepository,
 } from '../../../domain/repositories/exchange-rate.repository';
-import { ExchangeRate } from '../../../domain/entities/exchange-rate.entity';
+import { ExchangeRate, ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateExchangeRateDto } from '../../dtos/exchange-rate/exchange-rate.dto';
 
 @Injectable()
@@ -18,7 +18,7 @@ export class CreateExchangeRateUseCase {
   async execute(dto: CreateExchangeRateDto, createdByUserId: string): Promise<ExchangeRate> {
     return this.rateRepo.create({
       rateType: dto.rateType,
-      provider: dto.provider ?? null,
+      provider: resolveProvider(dto.rateType, dto.provider),
       fromCurrency: dto.fromCurrency,
       toCurrency: dto.toCurrency ?? 'VND',
       buyRate: dto.buyRate ?? null,
@@ -28,4 +28,26 @@ export class CreateExchangeRateUseCase {
       createdByUserId,
     });
   }
+}
+
+function resolveProvider(rateType: ExchangeRateType, provider?: ServiceProvider) {
+  if (
+    rateType === ExchangeRateType.PAID_BUY ||
+    rateType === ExchangeRateType.PAID_SELL ||
+    rateType === ExchangeRateType.WU_SYSTEM ||
+    rateType === ExchangeRateType.WU_PROVIDER ||
+    rateType === ExchangeRateType.MG_SYSTEM
+  ) {
+    return ServiceProvider.WU_MG;
+  }
+
+  if (rateType === ExchangeRateType.BANK_RATE) {
+    return ServiceProvider.BANK;
+  }
+
+  if (rateType === ExchangeRateType.FX_BUY || rateType === ExchangeRateType.FX_SELL) {
+    return provider ?? ServiceProvider.INTERNAL;
+  }
+
+  return provider ?? null;
 }

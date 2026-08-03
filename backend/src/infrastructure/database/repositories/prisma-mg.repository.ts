@@ -20,7 +20,7 @@ export class PrismaMgRepository implements IMgRepository {
     const rate = input.appliedRate;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
-      const shift = await this.ensureShift(tx, input.branchId, input.createdByUserId, now);
+      const shift = await this.ensureShift(tx, input.branchId);
 
       const txn = await tx.customer_transactions.create({
         data: {
@@ -44,40 +44,57 @@ export class PrismaMgRepository implements IMgRepository {
           reference_no: input.referenceNo,
           payout_currency: input.payoutCurrency,
           payout_amount: input.payoutAmount,
+          received_usd: input.receivedUsd,
+          received_vnd: input.receivedVnd,
           system_rate: input.systemRate,
           applied_rate: rate,
         },
       });
 
-      // Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT) theo payout_currency
-      if (input.payoutAmount > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, input.payoutCurrency);
-        const baseRate = input.payoutCurrency === 'VND' ? 1 : rate;
-        await tx.ledger_entries.create({
-          data: {
-            entry_no: `MG-${txn.transaction_no}`,
-            business_date: now,
-            branch_id: input.branchId,
-            shift_id: shift.id,
-            source_type: 'CUSTOMER_TRANSACTION',
-            source_id: txn.id,
-            status: 'POSTED',
-            posted_at: now,
-            description: `MG chi trả Ref ${input.referenceNo}`,
-            created_by_user_id: input.createdByUserId,
-            ledger_lines: {
-              create: [{
-                fund_account_id: acc,
-                direction: 'CREDIT',
-                amount: input.payoutAmount,
-                currency_code: input.payoutCurrency,
-                exchange_rate: baseRate,
-                base_amount_vnd: input.payoutAmount * baseRate,
-              }],
-            },
-          },
+      // Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT).
+      // Nếu khách nhận USD lẻ, phần chẵn chi USD và phần lẻ quy đổi chi VND.
+      const lines: any[] = [];
+      if (input.receivedUsd > 0) {
+        const acc = await this.cashAccount(tx, input.branchId, 'USD');
+        await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
+        lines.push({
+          fund_account_id: acc,
+          direction: 'CREDIT',
+          amount: input.receivedUsd,
+          currency_code: 'USD',
+          exchange_rate: rate,
+          base_amount_vnd: input.receivedUsd * rate,
         });
       }
+      if (input.receivedVnd > 0) {
+        const acc = await this.cashAccount(tx, input.branchId, 'VND');
+        await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
+        lines.push({
+          fund_account_id: acc,
+          direction: 'CREDIT',
+          amount: input.receivedVnd,
+          currency_code: 'VND',
+          exchange_rate: 1,
+          base_amount_vnd: input.receivedVnd,
+        });
+      }
+      if (lines.length === 0) throw new BadRequestException('Phải trả khách ít nhất 1 loại tiền (USD hoặc VND)');
+
+      await tx.ledger_entries.create({
+        data: {
+          entry_no: `MG-${txn.transaction_no}`,
+          business_date: now,
+          branch_id: input.branchId,
+          shift_id: shift.id,
+          source_type: 'CUSTOMER_TRANSACTION',
+          source_id: txn.id,
+          status: 'POSTED',
+          posted_at: now,
+          description: `MG chi trả Ref ${input.referenceNo}`,
+          created_by_user_id: input.createdByUserId,
+          ledger_lines: { create: lines },
+        },
+      });
 
       // Công nợ MG tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.mgUsdAmount : input.mgVndAmount;
@@ -108,7 +125,7 @@ export class PrismaMgRepository implements IMgRepository {
   async findById(id: string): Promise<MgTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { mg_transaction_details: true },
+      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
     });
     return row?.mg_transaction_details ? toDomain(row) : null;
   }
@@ -116,26 +133,17 @@ export class PrismaMgRepository implements IMgRepository {
   async list(filter?: ListMgFilter): Promise<MgTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'MG', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { mg_transaction_details: true },
+      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.mg_transaction_details).map(toDomain);
   }
 
   // ── helpers ──
-  private async ensureShift(tx: any, branchId: string, userId: string, now: Date) {
-    const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: { in: ['OPEN', 'ACTIVE'] } } });
+  private async ensureShift(tx: any, branchId: string) {
+    const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: 'OPEN' } });
     if (open) return open;
-    return tx.shifts.create({
-      data: {
-        branch_id: branchId,
-        shift_code: `SH-${branchId.slice(0, 8)}-${Date.now()}`,
-        business_date: now,
-        status: 'OPEN',
-        opened_by_user_id: userId,
-        opening_note: 'Ca tự mở khi phát sinh giao dịch',
-      },
-    });
+    throw new BadRequestException('Chi nhánh chưa mở ca. Vui lòng mở ca và kiểm quỹ đầu ca trước khi tạo giao dịch MG.');
   }
 
   private async cashAccount(tx: any, branchId: string, currency: Currency2): Promise<string> {
@@ -145,6 +153,26 @@ export class PrismaMgRepository implements IMgRepository {
     });
     if (!acc) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ tiền mặt ${currency}`);
     return acc.id;
+  }
+
+  private async ensureEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
+    await this.lockFundAccount(tx, fundAccountId);
+    const balance = await this.balance(tx, fundAccountId);
+    if (amount > balance) {
+      throw new BadRequestException(`Không đủ tiền mặt ${currency}. Tồn hiện tại ${balance}, cần chi ${amount}`);
+    }
+  }
+
+  private async lockFundAccount(tx: any, fundAccountId: string) {
+    await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+  }
+
+  private async balance(tx: any, fundAccountId: string): Promise<number> {
+    const lines = await tx.ledger_lines.findMany({
+      where: { fund_account_id: fundAccountId, ledger_entries: { status: 'POSTED' } },
+      select: { direction: true, amount: true },
+    });
+    return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
   private async ensureDebtAccount(tx: any, branchId: string, provider: string, currency: Currency2): Promise<string> {
@@ -173,11 +201,15 @@ function toDomain(row: any): MgTransaction {
     businessDate: row.business_date,
     status: row.status,
     customerName: row.customer_name ?? null,
+    customerPhone: row.customer_phone ?? null,
+    shiftCode: row.shifts?.shift_code,
     referenceNo: d.reference_no,
     mgUsdAmount: mgUsd,
     mgVndAmount: mgVnd,
     payoutCurrency: d.payout_currency,
     payoutAmount: Number(d.payout_amount),
+    receivedUsd: Number(d.received_usd ?? 0),
+    receivedVnd: Number(d.received_vnd ?? 0),
     mgRate,
     systemRate: Number(d.system_rate),
     appliedRate: applied,
