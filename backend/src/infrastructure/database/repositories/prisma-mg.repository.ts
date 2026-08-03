@@ -98,7 +98,7 @@ export class PrismaMgRepository implements IMgRepository {
 
       // Công nợ MG tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.mgUsdAmount : input.mgVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency);
+      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency, now);
       await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc,
@@ -175,15 +175,25 @@ export class PrismaMgRepository implements IMgRepository {
     return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
-  private async ensureDebtAccount(tx: any, branchId: string, provider: string, currency: Currency2): Promise<string> {
-    const existing = await tx.debt_accounts.findUnique({
-      where: { branch_id_provider_code_currency_code: { branch_id: branchId, provider_code: provider, currency_code: currency } },
+  private async ensureDebtAccount(
+    tx: any, branchId: string, provider: string, currency: Currency2, businessDate: Date,
+  ): Promise<string> {
+    const account = await tx.debt_accounts.upsert({
+      where: {
+        branch_id_provider_code_currency_code_business_date: {
+          branch_id: branchId, provider_code: provider, currency_code: currency, business_date: businessDate,
+        },
+      },
+      update: {},
+      create: {
+        branch_id: branchId,
+        provider_code: provider,
+        currency_code: currency,
+        business_date: businessDate,
+        name: `Công nợ ${provider} ${currency} ngày ${businessDate.toISOString().slice(0, 10)}`,
+      },
     });
-    if (existing) return existing.id;
-    const created = await tx.debt_accounts.create({
-      data: { branch_id: branchId, provider_code: provider, currency_code: currency, name: `Công nợ ${provider} ${currency}` },
-    });
-    return created.id;
+    return account.id;
   }
 }
 

@@ -1,7 +1,9 @@
 // DTOs: Công nợ
 // Layer: Application
 
-import { IsEnum, IsOptional, IsNumber, IsPositive, IsString, IsUUID } from 'class-validator';
+import {
+  IsDateString, IsEnum, IsInt, IsOptional, IsNumber, IsPositive, IsString, IsUUID, Max, Min,
+} from 'class-validator';
 
 const CURRENCIES = ['VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW'];
 const PROVIDERS = ['WU', 'MG'];
@@ -21,6 +23,10 @@ export class RecordDebtDto {
   amount: number;
 
   @IsOptional()
+  @IsDateString()
+  businessDate?: string;
+
+  @IsOptional()
   @IsString()
   description?: string;
 }
@@ -29,6 +35,21 @@ export class SettleDebtDto {
   @IsNumber()
   @IsPositive()
   amount: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class SettleUsdCashDebtDto {
+  @IsInt()
+  @Min(0)
+  cashUsdAmount: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(0.99)
+  oddUsdAmount: number;
 
   @IsOptional()
   @IsString()
@@ -47,4 +68,16 @@ export class ListDebtsQueryDto {
   @IsOptional()
   @IsEnum(CURRENCIES as any)
   currencyCode?: string;
+
+  @IsOptional()
+  @IsDateString()
+  businessDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 }

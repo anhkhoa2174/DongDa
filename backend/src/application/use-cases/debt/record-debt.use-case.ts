@@ -18,6 +18,7 @@ export class RecordDebtUseCase {
       providerCode: dto.providerCode,
       currencyCode: dto.currencyCode as CurrencyCode,
       amount: dto.amount,
+      businessDate: dto.businessDate ? new Date(dto.businessDate) : undefined,
       description: dto.description,
       sourceType: 'CUSTOMER_TRANSACTION',
       createdByUserId,

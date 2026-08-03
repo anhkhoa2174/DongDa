@@ -27,8 +27,33 @@ export interface CentralFundSummaryDto {
   missingRateCurrencies: string[];
 }
 
+export interface CreateCentralFundMovementPayload {
+  direction: 'IN' | 'OUT';
+  sourceType: 'CASH' | 'BANK';
+  items: Array<{
+    currencyCode: string;
+    amount: number;
+    bankAccountId?: string;
+  }>;
+  note?: string;
+}
+
+export interface CentralFundMovementDto extends CreateCentralFundMovementPayload {
+  items: Array<CreateCentralFundMovementPayload['items'][number] & {
+    id: string;
+    movementNo: string;
+  }>;
+  postedAt: string;
+}
+
 export const centralFundApi = {
   getSummary: () => httpClient
     .get<CentralFundSummaryDto>('/fund/central-summary')
+    .then((response) => response.data),
+  createMovement: (payload: CreateCentralFundMovementPayload) => httpClient
+    .post<CentralFundMovementDto>('/fund/central-movements', payload)
+    .then((response) => response.data),
+  createBranchMovement: (payload: CreateCentralFundMovementPayload) => httpClient
+    .post<CentralFundMovementDto>('/fund/branch-movements', payload)
     .then((response) => response.data),
 };

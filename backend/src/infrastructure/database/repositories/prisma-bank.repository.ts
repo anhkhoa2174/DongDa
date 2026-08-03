@@ -12,9 +12,9 @@ const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
 export class PrismaBankRepository implements IBankRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listAccounts(): Promise<BankAccount[]> {
+  async listAccounts(branchId?: string): Promise<BankAccount[]> {
     const rows = await this.prisma.bank_accounts.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', ...(branchId && { branch_id: branchId }) },
       include: { banks: true },
       orderBy: [{ bank_id: 'asc' }, { currency_code: 'asc' }],
     });
@@ -30,9 +30,9 @@ export class PrismaBankRepository implements IBankRepository {
     }));
   }
 
-  async listMovements(bankAccountId?: string): Promise<BankMovement[]> {
+  async listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]> {
     const rows = await this.prisma.bank_balance_movements.findMany({
-      where: { ...(bankAccountId && { bank_account_id: bankAccountId }) },
+      where: { ...(bankAccountId && { bank_account_id: bankAccountId }), ...(branchId && { branch_id: branchId }) },
       orderBy: { occurred_at: 'desc' },
       take: 100,
     });

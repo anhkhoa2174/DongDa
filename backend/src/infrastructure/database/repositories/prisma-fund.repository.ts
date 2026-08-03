@@ -9,7 +9,9 @@ import {
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundTransferStatus, FundAccountBalance, CurrencyCode, CentralFundSummary,
+  CentralFundMovement,
 } from '../../../domain/entities/fund.entity';
+import type { CreateFundMovementInput } from '../../../domain/repositories/fund.repository';
 
 const CURRENCY_NAMES: Partial<Record<CurrencyCode, string>> = {
   VND: 'Việt Nam đồng', USD: 'Đô la Mỹ', EUR: 'Euro', AUD: 'Đô la Úc', JPY: 'Yên Nhật',
@@ -178,6 +180,188 @@ export class PrismaFundRepository implements IFundRepository {
       totalCompanyFundVnd: centralCashValueVnd + bankValueVnd + branchFundValueVnd + debtValueVnd,
       missingRateCurrencies: Array.from(missingRates).sort(),
     };
+  }
+
+  async createFundMovement(input: CreateFundMovementInput): Promise<CentralFundMovement> {
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const targetBranch = await tx.branch.findFirst({
+        where: input.targetBranchId
+          ? { id: input.targetBranchId, status: 'ACTIVE' }
+          : { type: 'HEAD_OFFICE', status: 'ACTIVE' },
+        orderBy: { created_at: 'asc' },
+        select: { id: true, name: true, type: true },
+      });
+      if (!targetBranch) {
+        throw new BadRequestException(input.targetBranchId
+          ? 'Không tìm thấy chi nhánh đang hoạt động'
+          : 'Chưa cấu hình chi nhánh Hội sở (HO)');
+      }
+      const fundLabel = targetBranch.type === 'HEAD_OFFICE' ? 'Quỹ Chung' : `Quỹ ${targetBranch.name}`;
+
+      const itemKeys = input.items.map((item) => input.sourceType === 'BANK' ? item.bankAccountId : item.currencyCode);
+      if (itemKeys.some((key) => !key)) {
+        throw new BadRequestException('Mỗi khoản ngân hàng phải chọn một tài khoản');
+      }
+      if (new Set(itemKeys).size !== itemKeys.length) {
+        throw new BadRequestException(input.sourceType === 'BANK'
+          ? 'Mỗi tài khoản ngân hàng chỉ được thêm một lần trong phiếu'
+          : 'Mỗi loại tiền chỉ được thêm một lần trong phiếu');
+      }
+
+      const resultItems: CentralFundMovement['items'] = [];
+      for (const [index, item] of input.items.entries()) {
+        if (input.sourceType === 'BANK') {
+          const bankAccount = await tx.bank_accounts.findFirst({
+            where: { id: item.bankAccountId, branch_id: targetBranch.id, status: 'ACTIVE' },
+          });
+          if (!bankAccount) throw new BadRequestException('Không tìm thấy tài khoản ngân hàng của chi nhánh đang hoạt động');
+          if (bankAccount.currency_code !== item.currencyCode) {
+            throw new BadRequestException(
+              `Tài khoản ngân hàng ${bankAccount.account_no} sử dụng ${bankAccount.currency_code}, không phải ${item.currencyCode}`,
+            );
+          }
+
+          await this.lockBankAccount(tx, bankAccount.id);
+          const lockedBankAccount = await tx.bank_accounts.findUniqueOrThrow({ where: { id: bankAccount.id } });
+          const balanceBefore = Number(lockedBankAccount.current_balance);
+          if (input.direction === 'OUT' && item.amount > balanceBefore) {
+            throw new BadRequestException(
+              `Số dư tài khoản ${bankAccount.account_no} không đủ (còn ${balanceBefore} ${item.currencyCode})`,
+            );
+          }
+          const balanceAfter = balanceBefore + (input.direction === 'IN' ? item.amount : -item.amount);
+          const movement = await tx.bank_balance_movements.create({
+            data: {
+              movement_no: `CF-BM-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+              bank_account_id: bankAccount.id,
+              branch_id: bankAccount.branch_id,
+              movement_type: input.direction === 'IN' ? 'DEPOSIT' : 'WITHDRAW',
+              business_date: now,
+              occurred_at: now,
+              amount: item.amount,
+              currency_code: item.currencyCode,
+              balance_before: balanceBefore,
+              balance_after: balanceAfter,
+              description: input.note ?? (input.direction === 'IN' ? `Thu vào ${fundLabel}` : `Chi từ ${fundLabel}`),
+              status: 'POSTED',
+              created_by_user_id: input.createdByUserId,
+              approved_by_user_id: input.createdByUserId,
+              posted_at: now,
+            },
+          });
+          await tx.bank_accounts.update({
+            where: { id: bankAccount.id },
+            data: { current_balance: balanceAfter, available_balance: balanceAfter },
+          });
+          resultItems.push({
+            id: movement.id,
+            movementNo: movement.movement_no,
+            currencyCode: item.currencyCode,
+            amount: item.amount,
+            bankAccountId: bankAccount.id,
+          });
+          continue;
+        }
+
+        const accounts = await tx.fund_accounts.findMany({
+          where: {
+            branch_id: targetBranch.id,
+            currency_code: item.currencyCode,
+            account_type: { in: ['CASH', 'FUND_A'] },
+            status: 'ACTIVE',
+          },
+          select: { id: true, account_type: true },
+        });
+        let account = accounts.find((candidate) => candidate.account_type === 'CASH') ?? accounts[0];
+
+        if (!account) {
+          if (input.direction === 'OUT') {
+            throw new BadRequestException(`${fundLabel} chưa có sổ ${item.currencyCode} để thực hiện chi`);
+          }
+          const isCash = item.currencyCode === 'VND' || item.currencyCode === 'USD';
+          account = await tx.fund_accounts.create({
+            data: {
+              branch_id: targetBranch.id,
+              code: isCash ? `CASH_${item.currencyCode}` : `FUND_A_${item.currencyCode}`,
+              name: isCash ? `Quỹ tiền mặt ${item.currencyCode}` : `Quỹ A ${item.currencyCode}`,
+              account_type: isCash ? 'CASH' : 'FUND_A',
+              currency_code: item.currencyCode,
+            },
+            select: { id: true, account_type: true },
+          });
+        }
+
+        await this.lockFundAccount(tx, account.id);
+        if (input.direction === 'OUT') {
+          const currentBalance = await this.balance(tx, account.id);
+          if (item.amount > currentBalance) {
+            throw new BadRequestException(
+              `Số dư ${fundLabel} không đủ (còn ${currentBalance} ${item.currencyCode})`,
+            );
+          }
+        }
+
+        const exchangeRate = await this.activeConversionRate(tx, item.currencyCode);
+        const movement = await tx.cash_movements.create({
+          data: {
+            movement_no: `CF-CM-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+            branch_id: targetBranch.id,
+            fund_account_id: account.id,
+            movement_type: input.direction === 'IN' ? 'CASH_IN' : 'CASH_OUT',
+            business_date: now,
+            amount: item.amount,
+            currency_code: item.currencyCode,
+            source_name: 'Tiền mặt',
+            description: input.note ?? null,
+            status: 'POSTED',
+            approved_by_user_id: input.createdByUserId,
+            created_by_user_id: input.createdByUserId,
+            posted_at: now,
+          },
+        });
+
+        await tx.ledger_entries.create({
+          data: {
+            entry_no: `LE-${movement.movement_no}`,
+            business_date: now,
+            branch_id: targetBranch.id,
+            source_type: 'CASH_MOVEMENT',
+            source_id: movement.id,
+            status: 'POSTED',
+            posted_at: now,
+            description: `${input.direction === 'IN' ? 'Thu tiền mặt' : 'Chi tiền mặt'}${input.note ? ` - ${input.note}` : ''}`,
+            created_by_user_id: input.createdByUserId,
+            approved_by_user_id: input.createdByUserId,
+            ledger_lines: {
+              create: [{
+                fund_account_id: account.id,
+                direction: input.direction === 'IN' ? 'DEBIT' : 'CREDIT',
+                amount: item.amount,
+                currency_code: item.currencyCode,
+                exchange_rate: exchangeRate,
+                base_amount_vnd: item.amount * exchangeRate,
+              }],
+            },
+          },
+        });
+        resultItems.push({
+          id: movement.id,
+          movementNo: movement.movement_no,
+          currencyCode: item.currencyCode,
+          amount: item.amount,
+        });
+      }
+
+      return {
+        direction: input.direction,
+        sourceType: input.sourceType,
+        items: resultItems,
+        note: input.note ?? null,
+        postedAt: now,
+      };
+    });
   }
 
   async findHeadOfficeBranchId(): Promise<string | null> {
@@ -358,6 +542,10 @@ export class PrismaFundRepository implements IFundRepository {
 
   private async lockFundAccount(db: any, fundAccountId: string) {
     await db.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+  }
+
+  private async lockBankAccount(db: any, bankAccountId: string) {
+    await db.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${bankAccountId}::uuid FOR UPDATE`;
   }
 
   private async balance(db: any, fundAccountId: string): Promise<number> {

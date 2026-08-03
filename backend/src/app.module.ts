@@ -25,6 +25,7 @@ import { FundController } from './interfaces/http/controllers/fund.controller';
 import { PrismaFundRepository } from './infrastructure/database/repositories/prisma-fund.repository';
 import {
   CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
+  CreateFundMovementUseCase,
 } from './application/use-cases/fund/fund-transfer.use-cases';
 import { WuController } from './interfaces/http/controllers/wu.controller';
 import { PrismaWuRepository } from './infrastructure/database/repositories/prisma-wu.repository';
@@ -67,7 +68,7 @@ import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/
 
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
 import { RecordDebtUseCase } from './application/use-cases/debt/record-debt.use-case';
-import { SettleDebtUseCase } from './application/use-cases/debt/settle-debt.use-case';
+import { SettleDebtUseCase, SettleUsdCashDebtUseCase } from './application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-case';
 
 @Module({
@@ -146,12 +147,14 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     RecordDebtUseCase,
     SettleDebtUseCase,
+    SettleUsdCashDebtUseCase,
     ListDebtsUseCase,
 
     CreateTransferUseCase,
     ConfirmTransferUseCase,
     RejectTransferUseCase,
     ListFundUseCase,
+    CreateFundMovementUseCase,
 
     CreateWuUseCase,
     ListWuUseCase,

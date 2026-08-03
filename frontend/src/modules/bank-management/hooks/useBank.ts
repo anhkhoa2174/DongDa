@@ -3,8 +3,8 @@ import { bankApi } from '../api/bank.api';
 
 const KEY = ['bank'] as const;
 
-export function useBankAccounts() {
-  return useQuery({ queryKey: [...KEY, 'accounts'], queryFn: () => bankApi.accounts() });
+export function useBankAccounts(enabled = true) {
+  return useQuery({ queryKey: [...KEY, 'accounts'], queryFn: () => bankApi.accounts(), enabled });
 }
 export function useBankMovements(bankAccountId?: string) {
   return useQuery({

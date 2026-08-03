@@ -15,8 +15,11 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import {
   CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
+  CreateFundMovementUseCase,
 } from '../../../application/use-cases/fund/fund-transfer.use-cases';
-import { CreateTransferDto, ListTransfersQueryDto } from '../../../application/dtos/fund/fund.dto';
+import {
+  CreateCentralFundMovementDto, CreateTransferDto, ListTransfersQueryDto,
+} from '../../../application/dtos/fund/fund.dto';
 
 @Controller('fund')
 @UseGuards(JwtAuthGuard)
@@ -26,6 +29,7 @@ export class FundController {
     private readonly confirmTransfer: ConfirmTransferUseCase,
     private readonly rejectTransfer: RejectTransferUseCase,
     private readonly listFund: ListFundUseCase,
+    private readonly createFundMovement: CreateFundMovementUseCase,
   ) {}
 
   @Get('balances')
@@ -39,6 +43,20 @@ export class FundController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
   centralSummary() {
     return this.listFund.centralSummary();
+  }
+
+  @Post('central-movements')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  centralFundMovement(@Request() req: any, @Body() dto: CreateCentralFundMovementDto) {
+    return this.createFundMovement.execute(dto, req.user.id);
+  }
+
+  @Post('branch-movements')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF)
+  branchFundMovement(@Request() req: any, @Body() dto: CreateCentralFundMovementDto) {
+    return this.createFundMovement.execute(dto, req.user.id, req.user.branchId);
   }
 
   @Get('transfers')

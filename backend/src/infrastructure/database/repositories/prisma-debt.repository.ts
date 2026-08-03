@@ -1,10 +1,10 @@
 // Prisma Debt Repository Implementation
 // Layer: Infrastructure
 
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
-  IDebtRepository, RecordDebtInput, SettleDebtInput, ListDebtsFilter,
+  IDebtRepository, RecordDebtInput, SettleDebtInput, SettleUsdCashDebtInput, ListDebtsFilter,
 } from '../../../domain/repositories/debt.repository';
 import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
@@ -19,8 +19,9 @@ export class PrismaDebtRepository implements IDebtRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async recordDebt(input: RecordDebtInput): Promise<DebtMovement> {
+    const businessDate = input.businessDate ?? new Date();
     const account = await this.ensureAccount(
-      input.branchId, input.providerCode, input.currencyCode,
+      input.branchId, input.providerCode, input.currencyCode, businessDate,
     );
     const now = new Date();
     const row = await this.prisma.debt_movements.create({
@@ -30,7 +31,7 @@ export class PrismaDebtRepository implements IDebtRepository {
         movement_type: 'EXPECTED_DEBT',
         source_type: (input.sourceType as any) ?? null,
         source_id: input.sourceId ?? null,
-        business_date: input.businessDate ?? now,
+        business_date: businessDate,
         amount: input.amount,
         currency_code: input.currencyCode,
         description: input.description ?? null,
@@ -43,25 +44,172 @@ export class PrismaDebtRepository implements IDebtRepository {
   }
 
   async settle(input: SettleDebtInput): Promise<DebtMovement> {
-    const account = await this.prisma.debt_accounts.findUniqueOrThrow({
-      where: { id: input.debtAccountId },
-    });
     const now = new Date();
-    const row = await this.prisma.debt_movements.create({
-      data: {
-        debt_account_id: account.id,
-        branch_id: account.branch_id,
-        movement_type: 'SETTLEMENT',
-        business_date: input.businessDate ?? now,
-        amount: input.amount,
-        currency_code: account.currency_code,
-        description: input.description ?? null,
-        status: 'POSTED',
-        posted_at: now,
-        created_by_user_id: input.createdByUserId,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
+      const account = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
+      const grouped = await tx.debt_movements.groupBy({
+        by: ['movement_type'],
+        where: { debt_account_id: account.id, status: 'POSTED' },
+        _sum: { amount: true },
+      });
+      let outstanding = 0;
+      for (const group of grouped) {
+        const amount = Number(group._sum.amount ?? 0);
+        if (INCREASE_TYPES.includes(group.movement_type)) outstanding += amount;
+        if (group.movement_type === 'SETTLEMENT') outstanding -= amount;
+      }
+      if (input.amount > outstanding) {
+        throw new BadRequestException(
+          `Số tiền xử lý (${input.amount}) vượt số còn nợ (${outstanding} ${account.currency_code})`,
+        );
+      }
+
+      return tx.debt_movements.create({
+        data: {
+          debt_account_id: account.id,
+          branch_id: account.branch_id,
+          movement_type: 'SETTLEMENT',
+          business_date: input.businessDate ?? now,
+          amount: input.amount,
+          currency_code: account.currency_code,
+          description: input.description ?? null,
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
     });
     return toMovement(row);
+  }
+
+  async settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement> {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
+      const debtAccount = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
+      if (debtAccount.currency_code !== 'USD') {
+        throw new BadRequestException('Form tiền mặt USD chỉ áp dụng cho công nợ USD');
+      }
+
+      const settlementAmount = Number((input.cashUsdAmount + input.oddUsdAmount).toFixed(2));
+      const outstanding = await this.outstanding(tx, debtAccount.id);
+      if (settlementAmount > outstanding) {
+        throw new BadRequestException(
+          `Số tiền xử lý (${settlementAmount}) vượt số còn nợ (${outstanding} USD)`,
+        );
+      }
+
+      const bankRate = await tx.exchange_rates.findFirst({
+        where: {
+          rate_type: 'BANK_RATE',
+          from_currency: 'USD',
+          to_currency: 'VND',
+          status: 'ACTIVE',
+          effective_from: { lte: now },
+          OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+        },
+        orderBy: { effective_from: 'desc' },
+      });
+      if (!bankRate) throw new BadRequestException('Chưa có tỷ giá ngân hàng USD/VND đang active');
+      const rate = Number(bankRate.rate);
+      const oddVndAmount = Math.round(input.oddUsdAmount * rate);
+
+      const headOffice = await tx.branch.findFirst({
+        where: { type: 'HEAD_OFFICE', status: 'ACTIVE' },
+        orderBy: { created_at: 'asc' },
+        select: { id: true },
+      });
+      if (!headOffice) throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO)');
+
+      const receipts = [
+        ...(input.cashUsdAmount > 0 ? [{ currency: 'USD' as const, amount: input.cashUsdAmount, exchangeRate: rate }] : []),
+        ...(oddVndAmount > 0 ? [{ currency: 'VND' as const, amount: oddVndAmount, exchangeRate: 1 }] : []),
+      ];
+      const accountRows = await Promise.all(receipts.map(async (receipt) => {
+        return tx.fund_accounts.upsert({
+          where: {
+            branch_id_code: { branch_id: headOffice.id, code: `CASH_${receipt.currency}` },
+          },
+          update: {},
+          create: {
+            branch_id: headOffice.id,
+            code: `CASH_${receipt.currency}`,
+            name: `Quỹ tiền mặt ${receipt.currency}`,
+            account_type: 'CASH',
+            currency_code: receipt.currency,
+          },
+        });
+      }));
+      for (const account of [...accountRows].sort((left, right) => left.id.localeCompare(right.id))) {
+        await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${account.id}::uuid FOR UPDATE`;
+      }
+
+      let firstCashMovementId: string | null = null;
+      for (const [index, receipt] of receipts.entries()) {
+        const account = accountRows[index];
+        const movement = await tx.cash_movements.create({
+          data: {
+            movement_no: `DEBT-CASH-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+            branch_id: headOffice.id,
+            fund_account_id: account.id,
+            movement_type: 'CASH_IN',
+            business_date: now,
+            amount: receipt.amount,
+            currency_code: receipt.currency,
+            source_name: `${debtAccount.provider_code} - công nợ ${debtAccount.business_date.toISOString().slice(0, 10)}`,
+            description: input.description ?? 'Thu tiền giải quyết công nợ USD',
+            status: 'POSTED',
+            approved_by_user_id: input.createdByUserId,
+            created_by_user_id: input.createdByUserId,
+            posted_at: now,
+          },
+        });
+        firstCashMovementId ??= movement.id;
+        await tx.ledger_entries.create({
+          data: {
+            entry_no: `LE-${movement.movement_no}`,
+            business_date: now,
+            branch_id: headOffice.id,
+            source_type: 'CASH_MOVEMENT',
+            source_id: movement.id,
+            status: 'POSTED',
+            posted_at: now,
+            description: input.description ?? 'Thu tiền giải quyết công nợ USD',
+            created_by_user_id: input.createdByUserId,
+            approved_by_user_id: input.createdByUserId,
+            ledger_lines: {
+              create: [{
+                fund_account_id: account.id,
+                direction: 'DEBIT',
+                amount: receipt.amount,
+                currency_code: receipt.currency,
+                exchange_rate: receipt.exchangeRate,
+                base_amount_vnd: receipt.amount * receipt.exchangeRate,
+              }],
+            },
+          },
+        });
+      }
+
+      const settlement = await tx.debt_movements.create({
+        data: {
+          debt_account_id: debtAccount.id,
+          branch_id: debtAccount.branch_id,
+          movement_type: 'SETTLEMENT',
+          source_type: 'CASH_MOVEMENT',
+          source_id: firstCashMovementId,
+          business_date: now,
+          amount: settlementAmount,
+          currency_code: 'USD',
+          description: `${input.description ?? 'Thu tiền mặt USD'}; phần lẻ ${input.oddUsdAmount} USD = ${oddVndAmount} VND @ ${rate}`,
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
+      return toMovement(settlement);
+    });
   }
 
   async findAccountById(id: string): Promise<DebtAccount | null> {
@@ -81,8 +229,15 @@ export class PrismaDebtRepository implements IDebtRepository {
         ...(filter?.branchId && { branch_id: filter.branchId }),
         ...(filter?.providerCode && { provider_code: filter.providerCode }),
         ...(filter?.currencyCode && { currency_code: filter.currencyCode }),
+        ...(filter?.businessDate && { business_date: filter.businessDate }),
+        ...(!filter?.businessDate && (filter?.dateFrom || filter?.dateTo) && {
+          business_date: {
+            ...(filter.dateFrom && { gte: filter.dateFrom }),
+            ...(filter.dateTo && { lte: filter.dateTo }),
+          },
+        }),
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ business_date: 'desc' }, { created_at: 'desc' }],
     });
     return Promise.all(accounts.map((a) => this.buildSummary(a)));
   }
@@ -98,22 +253,24 @@ export class PrismaDebtRepository implements IDebtRepository {
   // ── helpers ──────────────────────────────────────────────
 
   private async ensureAccount(
-    branchId: string, providerCode: string, currencyCode: CurrencyCode,
+    branchId: string, providerCode: string, currencyCode: CurrencyCode, businessDate: Date,
   ) {
-    const existing = await this.prisma.debt_accounts.findUnique({
+    return this.prisma.debt_accounts.upsert({
       where: {
-        branch_id_provider_code_currency_code: {
-          branch_id: branchId, provider_code: providerCode, currency_code: currencyCode,
+        branch_id_provider_code_currency_code_business_date: {
+          branch_id: branchId,
+          provider_code: providerCode,
+          currency_code: currencyCode,
+          business_date: businessDate,
         },
       },
-    });
-    if (existing) return existing;
-    return this.prisma.debt_accounts.create({
-      data: {
+      update: {},
+      create: {
         branch_id: branchId,
         provider_code: providerCode,
         currency_code: currencyCode,
-        name: `Công nợ ${providerCode} ${currencyCode}`,
+        business_date: businessDate,
+        name: `Công nợ ${providerCode} ${currencyCode} ngày ${businessDate.toISOString().slice(0, 10)}`,
       },
     });
   }
@@ -140,6 +297,20 @@ export class PrismaDebtRepository implements IDebtRepository {
       status: computeDebtStatus(totalDebt, totalSettled),
     };
   }
+
+  private async outstanding(tx: any, debtAccountId: string): Promise<number> {
+    const grouped = await tx.debt_movements.groupBy({
+      by: ['movement_type'],
+      where: { debt_account_id: debtAccountId, status: 'POSTED' },
+      _sum: { amount: true },
+    });
+    return grouped.reduce((balance: number, group: any) => {
+      const amount = Number(group._sum.amount ?? 0);
+      if (INCREASE_TYPES.includes(group.movement_type)) return balance + amount;
+      if (group.movement_type === 'SETTLEMENT') return balance - amount;
+      return balance;
+    }, 0);
+  }
 }
 
 function toAccount(row: any): DebtAccount {
@@ -148,6 +319,7 @@ function toAccount(row: any): DebtAccount {
     branchId: row.branch_id,
     providerCode: row.provider_code,
     currencyCode: row.currency_code as CurrencyCode,
+    businessDate: row.business_date,
     name: row.name,
   };
 }

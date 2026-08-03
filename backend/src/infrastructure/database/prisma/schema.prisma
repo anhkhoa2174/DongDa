@@ -417,6 +417,7 @@ model cash_movements {
   business_date                                   DateTime           @db.Date
   amount                                          Decimal            @db.Decimal(20, 2)
   currency_code                                   currency_code
+  source_name                                     String             @db.VarChar(255)
   description                                     String?
   status                                          workflow_status    @default(DRAFT)
   created_by_user_id                              String             @db.Uuid
@@ -577,6 +578,7 @@ model debt_accounts {
   branch_id      String           @db.Uuid
   provider_code  String           @db.VarChar(50)
   currency_code  currency_code
+  business_date  DateTime         @db.Date
   name           String           @db.VarChar(255)
   status         record_status    @default(ACTIVE)
   created_at     DateTime         @default(now()) @db.Timestamptz(6)
@@ -584,7 +586,8 @@ model debt_accounts {
   branches       Branch           @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
   debt_movements debt_movements[]
 
-  @@unique([branch_id, provider_code, currency_code], map: "uq_debt_account")
+  @@unique([branch_id, provider_code, currency_code, business_date], map: "uq_debt_account_day")
+  @@index([business_date, status], map: "idx_debt_accounts_date_status")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

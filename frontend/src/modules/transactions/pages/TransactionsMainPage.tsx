@@ -35,11 +35,11 @@ import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useShiftStore } from '@/modules/shift-management/model/shift.store';
 import { useBranches as useWuBranches, useWuTransactions } from '@/modules/western-union/hooks/useWu';
 import { useMgTransactions } from '@/modules/moneygram/hooks/useMg';
 import { useFxTransactions } from '@/modules/foreign-exchange/hooks/useFx';
 import { transactionAdminApi } from '../api/transactionAdmin.api';
+import { useTransactionShift } from '../hooks/useTransactionShift';
 import { getTransactionAccess } from '../model/transactionAccess';
 import type { AggregatedTransaction, TransactionSource, TransactionStatus } from '../model/transaction.types';
 
@@ -87,7 +87,7 @@ export function TransactionsMainPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const role = user?.role;
-  const currentShift = useShiftStore((state) => state.currentShift);
+  const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(role, currentShift);
   const { data: branches = [] } = useWuBranches();
   const isControlUser = role === 'director' || role === 'accountant';

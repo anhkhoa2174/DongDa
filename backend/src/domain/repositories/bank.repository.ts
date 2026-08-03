@@ -13,8 +13,8 @@ export interface ReceiveFromProviderInput {
 }
 
 export interface IBankRepository {
-  listAccounts(): Promise<BankAccount[]>;
-  listMovements(bankAccountId?: string): Promise<BankMovement[]>;
+  listAccounts(branchId?: string): Promise<BankAccount[]>;
+  listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]>;
   // Ghi nhận tiền WU/MG về: NH tăng + công nợ giảm (1 transaction)
   receiveFromProvider(input: ReceiveFromProviderInput): Promise<BankMovement>;
 }

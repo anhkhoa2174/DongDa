@@ -41,7 +41,8 @@ import {
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useShiftStore } from '@/modules/shift-management/model/shift.store';
+import type { Shift } from '@/modules/shift-management/model/shift.types';
+import { useTransactionShift } from '../hooks/useTransactionShift';
 import { getTransactionAccess } from '../model/transactionAccess';
 import type { TransactionRecord, TransactionStatus } from '../model/transaction.types';
 
@@ -135,7 +136,7 @@ export function TransactionWorkspacePage({
   const [createForm] = Form.useForm<TransactionFormValues>();
   const [editorForm] = Form.useForm<TransactionFormValues>();
   const user = useAuthStore((state) => state.user);
-  const currentShift = useShiftStore((state) => state.currentShift);
+  const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(user?.role, currentShift);
   const canCreate = access.canCreate || isUiTestMode;
   const canUpdate = access.canUpdate || isUiTestMode;
@@ -446,7 +447,7 @@ function ShiftReadOnlyHeader({
   currentShift,
   fallbackUserName,
 }: {
-  currentShift: ReturnType<typeof useShiftStore.getState>['currentShift'];
+  currentShift: Shift | null;
   fallbackUserName?: string;
 }) {
   const openedAt = currentShift?.openedAt

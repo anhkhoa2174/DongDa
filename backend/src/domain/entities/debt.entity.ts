@@ -2,7 +2,7 @@
 // Layer: Domain
 //
 // Mô hình v3: sổ + biến động
-//   debt_accounts  = 1 sổ nợ / (chi nhánh + provider + loại tiền)
+//   debt_accounts  = 1 khoản nợ ngày / (ngày + chi nhánh + provider + loại tiền)
 //   debt_movements = từng lần tăng (EXPECTED_DEBT) / giảm (SETTLEMENT)
 // "Status" công nợ (Pending/Partially/Settled) là GIÁ TRỊ SUY RA từ số dư còn lại.
 
@@ -30,6 +30,7 @@ export interface DebtAccount {
   branchId: string;
   providerCode: string; // 'WU' | 'MG'
   currencyCode: CurrencyCode;
+  businessDate: Date;
   name: string;
 }
 

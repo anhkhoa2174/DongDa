@@ -75,3 +75,20 @@ export interface CentralFundSummary {
   totalCompanyFundVnd: number;
   missingRateCurrencies: CurrencyCode[];
 }
+
+export type CentralCashMovementDirection = 'IN' | 'OUT';
+export type CentralFundSourceType = 'CASH' | 'BANK';
+
+export interface CentralFundMovement {
+  direction: CentralCashMovementDirection;
+  sourceType: CentralFundSourceType;
+  items: Array<{
+    id: string;
+    movementNo: string;
+    currencyCode: CurrencyCode;
+    amount: number;
+    bankAccountId?: string;
+  }>;
+  note?: string | null;
+  postedAt: Date;
+}

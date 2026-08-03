@@ -9,17 +9,24 @@ import {
   FilterOutlined,
   InboxOutlined,
   MoneyCollectOutlined,
+  MinusCircleOutlined,
+  PlusCircleOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SwapOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Card, Col, Input, Progress, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
 import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { useBranches as useFundBranches, useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
+import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
 import { branchFundsMock } from '../data/funds.mock';
 import type { BranchFund, FundACurrencyBalance, FundStatus } from '../model/fund.types';
 import { useCentralFundSummary } from '../hooks/useCentralFund';
@@ -196,25 +203,103 @@ function BranchFundCard({ branch, compact = false }: { branch: BranchFund; compa
 function BranchFundMainPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const branch = branchFundsMock.find((item) => item.key === user?.branchId) ?? branchFundsMock[0];
+  const branchId = user?.branchId;
+  const { data: balances = [], isLoading, isFetching, isError, refetch } = useFundBalances(branchId);
+  const { data: currentShift, isFetching: isFetchingShift, refetch: refetchShift } = useCurrentShift(branchId);
+  const { data: branches = [] } = useFundBranches();
+  const branch = branches.find((item) => item.id === branchId);
+  const shift = currentShift?.shift;
+  const cashBalances = balances.filter((item) => item.accountType === 'CASH');
+  const fundABalances = balances.filter((item) => item.accountType === 'FUND_A');
+  const vndCash = cashBalances
+    .filter((item) => item.currencyCode === 'VND')
+    .reduce((sum, item) => sum + item.balance, 0);
+  const usdCash = cashBalances
+    .filter((item) => item.currencyCode === 'USD')
+    .reduce((sum, item) => sum + item.balance, 0);
+  const refresh = async () => {
+    await Promise.all([refetch(), refetchShift()]);
+  };
+  const balanceRows = balances.map((item) => ({
+    key: item.id,
+    currencyCode: item.currencyCode,
+    accountType: item.accountType,
+    accountName: item.name,
+    accountCode: item.code,
+    balance: item.balance,
+  }));
 
   return (
     <PageScaffold
       title="Quỹ Chi Nhánh"
-      description="Theo dõi VND, USD, Quỹ A và ca đang mở của chi nhánh."
+      description="Theo dõi số dư ledger và ghi nhận phiếu thu, chi của chi nhánh đang làm việc."
       moduleName="fund-management"
       extra={(
-        <Space wrap>
-          <Button icon={<ReloadOutlined />}>Làm mới quỹ</Button>
-          <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
-          <Button type="primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
-        </Space>
+        <Button icon={<ReloadOutlined />} loading={isFetching || isFetchingShift} onClick={() => void refresh()}>
+          Đồng bộ số dư
+        </Button>
       )}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <BranchFundCard branch={branch} />
+        {isError && <Alert type="error" showIcon message="Không thể tải số dư Quỹ Chi Nhánh" />}
+        <Card className="branch-fund-overview" classNames={{ body: 'p-0!' }} loading={isLoading}>
+          <div className="branch-fund-overview__header">
+            <div className="branch-fund-overview__identity">
+              <span className="branch-fund-overview__icon"><WalletOutlined /></span>
+              <div className="min-w-0">
+                <Typography.Text className="branch-fund-overview__eyebrow">Quỹ tiền mặt chi nhánh</Typography.Text>
+                <Typography.Title level={2} className="branch-fund-overview__name">
+                  {branch?.name ?? user?.branchName ?? 'Chi nhánh đang làm việc'}
+                </Typography.Title>
+                <Typography.Text className="branch-fund-overview__code">{branch?.code ?? branchId}</Typography.Text>
+              </div>
+            </div>
+            <Tag className="branch-fund-overview__status" color={shift ? 'green' : 'gold'} icon={<SafetyCertificateOutlined />}>
+              {shift ? `CA ${shift.shiftCode} ĐANG MỞ` : 'KHÔNG CÓ CA MỞ'}
+            </Tag>
+          </div>
+
+          <div className="branch-fund-overview__metrics">
+            <BranchFundOverviewMetric label="Tiền mặt VND" value={formatVnd(vndCash)} note={`${cashBalances.filter((item) => item.currencyCode === 'VND').length} tài khoản`} />
+            <BranchFundOverviewMetric label="Tiền mặt USD" value={formatUsd(usdCash)} note={`${cashBalances.filter((item) => item.currencyCode === 'USD').length} tài khoản`} />
+            <BranchFundOverviewMetric label="Quỹ A" value={`${fundABalances.length} ngoại tệ`} note="Tồn thực tế theo từng loại tiền" />
+            <BranchFundOverviewMetric label="Tổng sổ quỹ" value={`${balances.length} tài khoản`} note="Dữ liệu ledger đã ghi sổ" />
+          </div>
+        </Card>
+
+        <div className="branch-fund-actions">
+          <div>
+            <Typography.Text strong>Thao tác quỹ</Typography.Text>
+            <Typography.Text type="secondary">Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh</Typography.Text>
+          </div>
+          <Space wrap size={8}>
+            <Button className="branch-fund-action branch-fund-action--in" icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
+            <Button className="branch-fund-action branch-fund-action--out" icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
+            <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+            <Button icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          </Space>
+        </div>
+
+        <Card
+          className="branch-fund-table-card"
+          title={<span className="shift-card-title"><MoneyCollectOutlined /> Chi tiết tồn quỹ</span>}
+          extra={<Space><Tag color="green">LEDGER</Tag><Typography.Text type="secondary">{balances.length} tài khoản</Typography.Text></Space>}
+          loading={isLoading}
+        >
+          <FundBalanceTable items={balanceRows} emptyText="Chi nhánh chưa có tài khoản quỹ" />
+        </Card>
       </Space>
     </PageScaffold>
+  );
+}
+
+function BranchFundOverviewMetric({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="branch-fund-overview__metric">
+      <Typography.Text>{label}</Typography.Text>
+      <strong>{value}</strong>
+      <span>{note}</span>
+    </div>
   );
 }
 
@@ -321,7 +406,7 @@ export function CentralFundPage() {
   const navigate = useNavigate();
   const role = useAuthStore((state) => state.user?.role);
   const canTransfer = role === 'director' || role === 'accountant';
-  const canViewBranches = role === 'director' || role === 'accountant';
+  const canCreateCashMovement = role === 'director' || role === 'accountant';
   const { data: summary, isLoading, isError, isFetching, refetch } = useCentralFundSummary();
   const fundA = summary?.fundA ?? [];
 
@@ -333,8 +418,11 @@ export function CentralFundPage() {
       extra={(
         <Space wrap>
           <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Đồng bộ số dư</Button>
-          {canViewBranches && (
-            <Button icon={<EyeOutlined />} onClick={() => navigate('/branch-management/monitoring')}>Quỹ Chi Nhánh</Button>
+          {canCreateCashMovement && (
+            <>
+              <Button icon={<MoneyCollectOutlined />} onClick={() => navigate('/fund-management/central-fund/receipts')}>Tạo Phiếu Thu</Button>
+              <Button type="primary" icon={<MoneyCollectOutlined />} onClick={() => navigate('/fund-management/central-fund/expenses')}>Tạo Phiếu Chi</Button>
+            </>
           )}
           <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
           {canTransfer && (
@@ -447,6 +535,7 @@ export function CentralFundPage() {
           <FundAList items={fundA} />
         </Card>
       </Space>
+
     </PageScaffold>
   );
 }

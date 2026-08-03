@@ -14,9 +14,11 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { RecordDebtUseCase } from '../../../application/use-cases/debt/record-debt.use-case';
-import { SettleDebtUseCase } from '../../../application/use-cases/debt/settle-debt.use-case';
+import { SettleDebtUseCase, SettleUsdCashDebtUseCase } from '../../../application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from '../../../application/use-cases/debt/list-debts.use-case';
-import { RecordDebtDto, SettleDebtDto, ListDebtsQueryDto } from '../../../application/dtos/debt/debt.dto';
+import {
+  RecordDebtDto, SettleDebtDto, SettleUsdCashDebtDto, ListDebtsQueryDto,
+} from '../../../application/dtos/debt/debt.dto';
 
 @Controller('debts')
 @UseGuards(JwtAuthGuard)
@@ -24,6 +26,7 @@ export class DebtController {
   constructor(
     private readonly recordDebt: RecordDebtUseCase,
     private readonly settleDebt: SettleDebtUseCase,
+    private readonly settleUsdCashDebt: SettleUsdCashDebtUseCase,
     private readonly listDebts: ListDebtsUseCase,
   ) {}
 
@@ -39,7 +42,12 @@ export class DebtController {
   @Get()
   list(@Request() req: any, @Query() query: ListDebtsQueryDto) {
     if (req.user?.role === UserRole.STAFF) query.branchId = req.user.branchId;
-    return this.listDebts.list(query as any);
+    return this.listDebts.list({
+      ...query,
+      businessDate: query.businessDate ? new Date(query.businessDate) : undefined,
+      dateFrom: query.dateFrom ? new Date(query.dateFrom) : undefined,
+      dateTo: query.dateTo ? new Date(query.dateTo) : undefined,
+    } as any);
   }
 
   // Lịch sử biến động 1 sổ
@@ -54,5 +62,12 @@ export class DebtController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   settle(@Request() req: any, @Param('id') id: string, @Body() dto: SettleDebtDto) {
     return this.settleDebt.execute(id, dto, req.user.id);
+  }
+
+  @Post(':id/settle-usd-cash')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  settleUsdCash(@Request() req: any, @Param('id') id: string, @Body() dto: SettleUsdCashDebtDto) {
+    return this.settleUsdCashDebt.execute(id, dto, req.user.id);
   }
 }

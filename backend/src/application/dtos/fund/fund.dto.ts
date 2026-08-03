@@ -3,7 +3,7 @@
 
 import {
   ArrayMaxSize, ArrayMinSize, IsEnum, IsOptional, IsNumber, IsPositive,
-  IsUUID, ValidateNested,
+  IsUUID, ValidateNested, IsIn, IsString, MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -39,4 +39,36 @@ export class ListTransfersQueryDto {
 
   @IsOptional()
   status?: string;
+}
+
+export class CreateCentralFundMovementItemDto {
+  @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
+  currencyCode: string;
+
+  @IsNumber()
+  @IsPositive()
+  amount: number;
+
+  @IsOptional()
+  @IsUUID()
+  bankAccountId?: string;
+}
+
+export class CreateCentralFundMovementDto {
+  @IsIn(['IN', 'OUT'])
+  direction: 'IN' | 'OUT';
+
+  @IsIn(['CASH', 'BANK'])
+  sourceType: 'CASH' | 'BANK';
+
+  @ArrayMinSize(1, { message: 'Phiếu phải có ít nhất một khoản tiền' })
+  @ArrayMaxSize(20, { message: 'Phiếu có tối đa 20 khoản tiền' })
+  @ValidateNested({ each: true })
+  @Type(() => CreateCentralFundMovementItemDto)
+  items: CreateCentralFundMovementItemDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }

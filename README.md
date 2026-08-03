@@ -306,9 +306,9 @@ Thống kê tại thời điểm cập nhật README:
 | --- | ---: |
 | Thư mục module frontend | 19 |
 | Controller backend | 17 |
-| API endpoint | 58 |
+| API endpoint | 59 |
 | `GET` | 28 |
-| `POST` | 22 |
+| `POST` | 23 |
 | `PATCH` | 8 |
 | `PUT` / `DELETE` | 0 |
 
@@ -328,14 +328,14 @@ Số endpoint được đếm từ các decorator HTTP trong `backend/src/interf
 | MoneyGram | Tạo và liệt kê MG; Reference 8 ký tự duy nhất; quy đổi theo Paid Currency/Payout Currency; ghi ledger và công nợ | **API THẬT** |
 | Mua/Bán ngoại tệ | Tạo giao dịch FX, lấy tỷ giá mua/bán active, cập nhật quỹ VND và tồn Quỹ A, không bán vượt tồn | **API THẬT** |
 | Chuyển tiền trong nước | Form tạo và danh sách giao dịch chuyển tiền khách hàng | **MOCK DATA**, chưa có controller/API backend |
-| Ca làm việc | Staff kiểm tiền đầu ca để mở ca; WU/MG/FX yêu cầu ca mở; kiểm tiền cuối ca để đóng và lưu sai lệch | Trang `active-shift` dùng **API THẬT**; trang `open-shift` cũ còn **MOCK DATA** |
+| Ca làm việc | Staff kiểm tiền đầu ca để mở ca; WU/MG/FX yêu cầu ca mở; kiểm tiền cuối ca để đóng và lưu sai lệch | Một page `active-shift` dùng **API THẬT**; route mở/đóng ca cũ redirect về page này |
 | Kiểm quỹ | Nhập mệnh giá, so sánh số thực đếm với ledger, theo dõi kiểm quỹ chi nhánh/toàn công ty | Kiểm đầu/cuối ca đã có trong API ca; hai page kiểm quỹ độc lập còn **MOCK DATA** |
-| Quỹ chung | Tổng hợp tiền mặt HO, Quỹ A, ngân hàng, công nợ phải thu và quỹ chi nhánh; quy đổi theo tỷ giá active | **API THẬT** |
-| Quỹ chi nhánh | Xem VND, USD, Quỹ A và trạng thái ca của chi nhánh | GĐ/KTTH dùng API Theo dõi chi nhánh; page riêng của Staff còn **MOCK DATA** |
+| Quỹ chung | Tổng hợp tiền mặt HO, Quỹ A, ngân hàng, công nợ phải thu và quỹ chi nhánh; tạo phiếu thu/chi không cần mở ca | **API THẬT** |
+| Quỹ chi nhánh | Staff xem số dư ledger VND, USD, Quỹ A và trạng thái ca; tạo phiếu thu/chi tiền mặt theo đúng chi nhánh | **API THẬT**, branch scope lấy từ JWT |
 | Tiếp quỹ | Một phiếu có nhiều loại tiền; nguồn cố định theo tài khoản; chờ duyệt, xác nhận hoặc từ chối; xác nhận mới post ledger | **API THẬT** |
 | Tỷ giá | Tạo, duyệt, từ chối, lấy tỷ giá active và lịch sử; duyệt tỷ giá mới sẽ supersede bản active cùng loại | Trang tạo/duyệt và lịch sử dùng **API THẬT**; hai route legacy `wu-mg-rates`, `fx-rates` còn **MOCK DATA** |
 | Ngân hàng | Danh sách tài khoản, số dư, lịch sử biến động; nhận tiền WU/MG về làm tăng ngân hàng và giảm công nợ | **API THẬT** |
-| Công nợ | Công nợ WU/MG phát sinh theo giao dịch; tính còn nợ; tất toán một phần/toàn bộ; xem lịch sử biến động | Page `settlement` dùng **API THẬT**; page `debt-list` cũ còn **MOCK DATA** |
+| Công nợ | Mỗi ngày tạo một khoản theo chi nhánh + WU/MG + loại tiền; giao dịch trong ngày cộng dồn; xử lý một phần/toàn bộ và xem lịch sử | Page `debt-list` dùng **API THẬT**; route `settlement` quy về danh sách chung |
 | Đối chiếu Journal | Nhận dòng Journal đã parse, đối chiếu theo provider/reference/amount, lưu run và item sai lệch | Page `journal` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
 | Báo cáo | Tổng hợp WU/MG/FX, quỹ, công nợ và cảnh báo theo database | Page `summary` dùng **API THẬT**; page tạo/xuất báo cáo cũ còn **MOCK DATA**, chưa xuất Excel/PDF thật |
 | Audit Log | Đọc nhật ký append-only từ database, lọc theo action/entity/user | Page `live` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
@@ -395,7 +395,7 @@ GET  /api/v1/fund/balances?branchId=:branchId
 
 Ràng buộc ca đã được kiểm tra lại tại backend khi tạo WU/MG/FX; không chỉ dựa vào trạng thái UI. Tiếp quỹ, thu/chi ngân hàng và nghiệp vụ tiền mặt ngoài giao dịch khách hàng không bắt buộc mở ca.
 
-Chưa có API riêng cho lịch sử kiểm quỹ, kiểm quỹ trung tâm và bảng mệnh giá ngoài luồng mở/đóng ca. Các route `/cash-count/branch`, `/cash-count/central` và page `/shift-management/open-shift` cũ còn dùng mock data.
+Chưa có API riêng cho lịch sử kiểm quỹ, kiểm quỹ trung tâm và bảng mệnh giá ngoài luồng mở/đóng ca. Các route `/cash-count/branch` và `/cash-count/central` còn dùng mock data. Module Ca làm việc chỉ còn page `/shift-management/active-shift`; `/open-shift` và `/close-shift` redirect về page này.
 
 ### 4. Giao dịch khách hàng
 
@@ -454,6 +454,8 @@ Các nhóm chính: `PAID_BUY`, `PAID_SELL`, `BANK_RATE`, `FX_BUY`, `FX_SELL`. Ha
 ```txt
 GET   /api/v1/fund/balances?branchId=:branchId
 GET   /api/v1/fund/central-summary
+POST  /api/v1/fund/central-movements
+POST  /api/v1/fund/branch-movements
 GET   /api/v1/fund/transfers?branchId=:branchId&status=:status
 POST  /api/v1/fund/transfers
 PATCH /api/v1/fund/transfers/:id/confirm
@@ -465,30 +467,38 @@ GET   /api/v1/branch-monitoring/:branchId/activity?period=day|month|year&date=YY
 ```
 
 - `central-summary` cộng tiền mặt HO, Quỹ A, ngân hàng, công nợ phải thu và quỹ các chi nhánh; USD dùng `PAID_BUY`, ngoại tệ dùng tỷ giá mua active.
+- `central-movements` cho ADMIN/MANAGER tạo phiếu thu hoặc chi gồm nhiều loại tiền. Nguồn `CASH` ghi `cash_movements` và ledger; nguồn `BANK` ghi biến động và cập nhật số dư tài khoản ngân hàng. Backend kiểm tra số dư từng khoản khi chi và rollback toàn phiếu nếu có một khoản không hợp lệ; nghiệp vụ này không yêu cầu mở ca.
+- `branch-movements` cho STAFF tạo phiếu tiền mặt tại chi nhánh đang làm việc. Backend lấy branch từ JWT, không nhận branch từ form và từ chối nguồn `BANK`. Sau khi post, page Quỹ Chi nhánh tự tải lại số dư ledger.
 - Một phiếu tiếp quỹ chứa nhiều loại tiền. ADMIN/MANAGER gửi từ HO; Staff gửi từ branch được gán.
 - Phiếu mới ở trạng thái chờ. Chỉ khi confirm backend mới khóa sổ nguồn, kiểm tra đủ số dư và post một ledger entry gồm các dòng giảm nguồn/tăng đích.
 - Theo dõi chi nhánh trả về số nhân viên active, tồn VND/USD/Quỹ A, ca đang mở, số lượng/giá trị giao dịch và xu hướng tiền vào/ra.
 
-Page Quỹ Chung và Chi Nhánh của GĐ/KTTH đã dùng API thật. Page Quỹ Chi Nhánh riêng dành cho Staff trong `FundManagementPage` vẫn dùng `funds.mock.ts` và cần được chuyển sang `/fund/balances` hoặc API monitoring có branch scope.
+Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành cho Staff đều dùng API thật. Staff chỉ đọc `/fund/balances` và `/bank/accounts` trong branch scope của token.
 
 ### 7. Ngân hàng và công nợ
 
-**Nghiệp vụ:** giao dịch WU/MG tạo `EXPECTED_DEBT`. Khi tiền nhà cung cấp về ngân hàng, backend khóa tài khoản ngân hàng và sổ nợ, kiểm tra không nhận vượt số còn nợ, tăng số dư ngân hàng và tạo `SETTLEMENT` trong cùng database transaction.
+**Nghiệp vụ:** giao dịch WU/MG tạo `EXPECTED_DEBT`. Khóa duy nhất của một khoản nợ ngày là `business_date + branch_id + provider_code + currency_code`; nhiều giao dịch cùng khóa được cộng vào một khoản, ngày mới tự tạo khoản mới. Trạng thái `PENDING`, `PARTIALLY_SETTLED`, `SETTLED` được suy ra từ tổng phát sinh và tổng đã xử lý. Khi tiền nhà cung cấp về ngân hàng, backend khóa tài khoản ngân hàng và khoản nợ, kiểm tra không nhận vượt số còn nợ, tăng số dư ngân hàng và tạo `SETTLEMENT` trong cùng database transaction.
 
 ```txt
 GET  /api/v1/bank/accounts
 GET  /api/v1/bank/movements?bankAccountId=:id
 POST /api/v1/bank/receive
 
-GET  /api/v1/debts?branchId=:branchId
+GET  /api/v1/debts?branchId=:branchId&providerCode=WU&currencyCode=USD
+GET  /api/v1/debts?businessDate=YYYY-MM-DD
+GET  /api/v1/debts?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
 GET  /api/v1/debts/:id/movements
 POST /api/v1/debts/:id/settle
+POST /api/v1/debts/:id/settle-usd-cash
 POST /api/v1/debts/record
 ```
 
-`POST /debts/record` hiện được giữ để test/ghi nhận công nợ thủ công. Luồng production chính phải để WU/MG hoặc kết quả đối chiếu Journal sinh công nợ.
+`POST /debts/record` hiện được giữ để test/ghi nhận công nợ thủ công và nhận `businessDate` tùy chọn. Luồng production chính để WU/MG hoặc kết quả đối chiếu Journal sinh công nợ.
 
-Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. Page `/debt-management/settlement` dùng API thật; page danh sách công nợ cũ `/debt-management/debt-list` vẫn dùng `debts.mock.ts` và tỷ giá ngân hàng mock.
+Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có lọc khoảng ngày, chi nhánh, đối tác, loại tiền, trạng thái; thao tác xử lý và lịch sử nằm ngay trên từng khoản. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng.
+
+- Công nợ VND: form chọn tài khoản VND và gọi `POST /bank/receive`; số dư ngân hàng tăng và công nợ giảm trong cùng transaction.
+- Công nợ USD: form tách phần nguyên USD tiền mặt và phần lẻ dưới `1 USD`; backend lấy `BANK_RATE` USD/VND active, tăng quỹ tiền mặt USD/VND, ghi ledger và giảm công nợ trong cùng transaction qua `POST /debts/:id/settle-usd-cash`.
 
 ### 8. Đối chiếu Journal
 
@@ -523,7 +533,6 @@ Audit log được thiết kế append-only: thao tác quan trọng ghi actor, a
 | Dashboard Staff | `branchDashboard.mock.tsx` | Snapshot dashboard có branch scope |
 | Kiểm quỹ độc lập | `cashCount.mock.ts` | Danh sách lần kiểm, chi tiết mệnh giá, duyệt sai lệch |
 | Quỹ riêng của Staff | `funds.mock.ts` | Có thể tái sử dụng `/fund/balances` và thêm API snapshot chi nhánh scoped |
-| Tổng quan công nợ cũ | `debts.mock.ts` | Nên thay page bằng hook `/debts` đang có |
 | Tổng quan đối chiếu cũ | `reconciliation.mock.ts` | Nên thay page bằng `/reconciliation/runs` và items |
 | Tạo/xuất báo cáo | Dữ liệu hard-code | API preview, export Excel/PDF, lưu lịch sử export |
 | Tổng quan Audit cũ | `auditLog.mock.ts` | Nên hợp nhất vào `/audit-logs` |

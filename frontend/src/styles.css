@@ -165,6 +165,593 @@
   background: linear-gradient(135deg, #fff8db, #ffffff);
 }
 
+.shift-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.shift-hero {
+  overflow: hidden;
+  border: 1px solid #222222 !important;
+  border-radius: 8px !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.16) !important;
+}
+
+.shift-hero .ant-card-body {
+  padding: 0;
+}
+
+.shift-hero__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+}
+
+.shift-hero__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
+}
+
+.shift-hero__status-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  border: 1px solid rgba(245, 179, 1, 0.45);
+  border-radius: 50%;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 22px;
+}
+
+.shift-hero__status-icon.is-open {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.shift-hero__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.shift-hero__branch {
+  max-width: 680px;
+  margin: 0 0 7px !important;
+  color: #ffffff !important;
+  font-size: 26px !important;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere;
+}
+
+.shift-hero__tag {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.shift-hero__open-button {
+  border-color: #f5b301 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
+  font-weight: 700;
+  box-shadow: 0 8px 22px rgba(245, 179, 1, 0.2);
+}
+
+.shift-hero__close-button {
+  border-color: #ef4444 !important;
+  background: transparent !important;
+  color: #fca5a5 !important;
+  font-weight: 700;
+}
+
+.shift-hero__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: #121212;
+}
+
+.shift-hero__metric {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.shift-hero__metric:last-child {
+  border-right: 0;
+}
+
+.shift-hero__metric-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.12);
+  color: #f5b301;
+}
+
+.shift-hero__metric .ant-typography {
+  display: block;
+  color: #8f8f8f !important;
+  font-size: 11px;
+}
+
+.shift-hero__metric strong {
+  display: block;
+  margin-top: 2px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.shift-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shift-card-title .anticon {
+  color: #d99a00;
+}
+
+.shift-fund-panel .ant-card-body,
+.shift-process-panel .ant-card-body {
+  padding: 18px;
+}
+
+.shift-process-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shift-process-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  border: 1px solid #e8eaee;
+  border-radius: 7px;
+  padding: 10px;
+}
+
+.shift-process-step.is-active {
+  border-color: rgba(245, 179, 1, 0.55);
+  background: #fffaf0;
+}
+
+.shift-process-step.is-done {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.shift-process-step__number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.shift-process-step.is-active .shift-process-step__number {
+  background: #f5b301;
+  color: #111111;
+}
+
+.shift-process-step.is-done .shift-process-step__number {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.shift-process-step .ant-typography {
+  display: block;
+}
+
+.shift-process-step .ant-typography-secondary {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.shift-process-step__arrow {
+  color: #a3a3a3;
+  font-size: 11px;
+}
+
+.shift-count-history.is-divided {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #eceef1;
+}
+
+.shift-count-history__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.shift-count-header,
+.shift-count-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.7fr) minmax(210px, 0.9fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.shift-count-header {
+  padding: 0 12px 8px;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.shift-count-row {
+  min-height: 70px;
+  border-top: 1px solid #eceef1;
+  padding: 10px 12px;
+}
+
+.shift-count-row:last-child {
+  border-bottom: 1px solid #eceef1;
+}
+
+.shift-count-row__currency strong,
+.shift-count-row__currency .ant-typography {
+  display: block;
+}
+
+.shift-count-row__currency strong {
+  margin-bottom: 2px;
+  font-size: 14px;
+}
+
+.shift-count-row__system {
+  color: #111827 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 650;
+}
+
+.shift-count-row .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .shift-hero__top {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .shift-hero__identity {
+    align-items: flex-start;
+  }
+
+  .shift-hero__branch {
+    font-size: 22px !important;
+  }
+
+  .shift-hero__open-button,
+  .shift-hero__close-button {
+    width: 100%;
+  }
+
+  .shift-hero__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .shift-hero__metric {
+    padding: 13px 18px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .shift-hero__metric:last-child {
+    border-bottom: 0;
+  }
+
+  .shift-count-header {
+    display: none;
+  }
+
+  .shift-count-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 4px;
+  }
+
+  .shift-count-row__system::before {
+    margin-right: 6px;
+    color: #6b7280;
+    content: "Hệ thống:";
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .shift-count-history__heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
+.branch-fund-overview {
+  overflow: hidden;
+  border: 1px solid #242424 !important;
+  border-radius: 8px !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
+}
+
+.branch-fund-overview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+}
+
+.branch-fund-overview__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 16px;
+}
+
+.branch-fund-overview__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  border: 1px solid rgba(245, 179, 1, 0.42);
+  border-radius: 7px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 21px;
+}
+
+.branch-fund-overview__eyebrow {
+  display: block;
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.branch-fund-overview__name {
+  max-width: 720px;
+  margin: 3px 0 2px !important;
+  color: #ffffff !important;
+  font-size: 26px !important;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere;
+}
+
+.branch-fund-overview__code {
+  color: #8f8f8f !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.branch-fund-overview__status {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.branch-fund-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #282828;
+  background: #121212;
+}
+
+.branch-fund-overview__metric {
+  min-width: 0;
+  min-height: 108px;
+  padding: 18px 20px;
+  border-right: 1px solid #282828;
+}
+
+.branch-fund-overview__metric:last-child {
+  border-right: 0;
+}
+
+.branch-fund-overview__metric .ant-typography,
+.branch-fund-overview__metric strong,
+.branch-fund-overview__metric span {
+  display: block;
+}
+
+.branch-fund-overview__metric .ant-typography {
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-fund-overview__metric strong {
+  margin-top: 7px;
+  color: #ffffff;
+  font-size: 19px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.branch-fund-overview__metric > span {
+  margin-top: 5px;
+  color: #737373;
+  font-size: 11px;
+}
+
+.branch-fund-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 0;
+  border-top: 1px solid #eceef1;
+  border-bottom: 1px solid #eceef1;
+}
+
+.branch-fund-actions > div:first-child .ant-typography {
+  display: block;
+}
+
+.branch-fund-actions > div:first-child .ant-typography-secondary {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.branch-fund-action {
+  border-color: #e0a500 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
+  font-weight: 650;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.16);
+}
+
+.branch-fund-action--out {
+  border-color: #111111 !important;
+  background: #111111 !important;
+  color: #f5b301 !important;
+  box-shadow: 0 5px 14px rgba(17, 24, 39, 0.14);
+}
+
+.branch-fund-table-card .ant-card-body {
+  padding: 0 20px 18px;
+}
+
+.fund-balance-currency {
+  display: inline-grid;
+  min-width: 46px;
+  height: 28px;
+  place-items: center;
+  border-radius: 5px;
+  background: #111111;
+  color: #f5b301;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fund-balance-row--negative td {
+  background: #fff7f7 !important;
+}
+
+.fund-balance-row--negative td:last-child .ant-typography {
+  color: #b91c1c !important;
+}
+
+.fund-balance-table .ant-table-thead > tr > th {
+  background: #f7f7f8 !important;
+  color: #4b5563 !important;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.fund-balance-table .ant-table-tbody > tr > td {
+  min-height: 58px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.fund-balance-table .ant-table-tbody > tr:hover > td {
+  background: #fffaf0 !important;
+}
+
+@media (max-width: 991px) {
+  .branch-fund-overview__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .branch-fund-overview__metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .branch-fund-overview__metric:nth-child(-n + 2) {
+    border-bottom: 1px solid #282828;
+  }
+
+  .branch-fund-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 575px) {
+  .branch-fund-overview__header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .branch-fund-overview__identity {
+    align-items: flex-start;
+  }
+
+  .branch-fund-overview__name {
+    font-size: 21px !important;
+  }
+
+  .branch-fund-overview__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-fund-overview__metric {
+    min-height: 0;
+    padding: 14px 18px;
+    border-right: 0;
+    border-bottom: 1px solid #282828;
+  }
+
+  .branch-fund-overview__metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .branch-fund-overview__metric:last-child {
+    border-bottom: 0;
+  }
+
+  .branch-fund-actions .ant-space,
+  .branch-fund-actions .ant-space-item,
+  .branch-fund-actions .ant-btn {
+    width: 100%;
+  }
+
+  .branch-fund-table-card .ant-card-body {
+    padding: 0 12px 12px;
+  }
+}
+
 .fund-branch-card {
   border-radius: 14px !important;
 }
@@ -450,23 +1037,393 @@
   font-size: 12px;
 }
 
-.branch-monitor-hero {
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.28), transparent 300px),
-    linear-gradient(135deg, #080808, #171717);
+.branch-monitor-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto minmax(150px, auto);
+  align-items: end;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e7e9ed;
+  border-radius: 7px;
+  background: #fafafa;
 }
 
-.branch-monitor-hero .ant-statistic-title,
-.branch-monitor-hero .ant-statistic-content {
+.branch-monitor-toolbar__field > .ant-typography,
+.branch-monitor-toolbar__date .ant-typography {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b7280 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-monitor-toolbar__field--branch .ant-select {
+  width: 100%;
+}
+
+.branch-monitor-toolbar__date {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 9px;
+  padding-left: 18px;
+  border-left: 1px solid #e1e3e7;
+}
+
+.branch-monitor-toolbar__date > .anticon {
+  color: #d99a00;
+  font-size: 17px;
+}
+
+.branch-monitor-toolbar__date .ant-typography {
+  margin-bottom: 0;
+}
+
+.branch-monitor-toolbar__date strong {
+  display: block;
+  margin-top: 1px;
+  color: #111827;
+  font-size: 13px;
+}
+
+.branch-monitor-overview {
+  overflow: hidden;
+  border: 1px solid #242424 !important;
+  border-radius: 8px !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
+}
+
+.branch-monitor-overview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 22px 24px;
+}
+
+.branch-monitor-overview__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 15px;
+}
+
+.branch-monitor-overview__icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  place-items: center;
+  border: 1px solid rgba(245, 179, 1, 0.42);
+  border-radius: 7px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 21px;
+}
+
+.branch-monitor-overview__eyebrow {
+  display: block;
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.branch-monitor-overview__name {
+  max-width: 620px;
+  margin: 3px 0 5px !important;
+  color: #ffffff !important;
+  font-size: 25px !important;
+  line-height: 1.24 !important;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-overview__code,
+.branch-monitor-overview__employees {
+  color: #8f8f8f !important;
+  font-size: 12px;
+}
+
+.branch-monitor-overview__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.branch-monitor-overview__total {
+  flex: 0 1 460px;
+  text-align: right;
+}
+
+.branch-monitor-overview__total .ant-typography,
+.branch-monitor-overview__total strong,
+.branch-monitor-overview__total span {
+  display: block;
+}
+
+.branch-monitor-overview__total .ant-typography {
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-monitor-overview__total strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 28px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-overview__total span {
+  margin-top: 4px;
+  color: #8f8f8f;
+  font-size: 11px;
+}
+
+.branch-monitor-overview__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #282828;
+  background: #121212;
+}
+
+.branch-monitor-overview__metric {
+  display: flex;
+  min-width: 0;
+  min-height: 104px;
+  align-items: center;
+  gap: 11px;
+  padding: 16px 18px;
+  border-right: 1px solid #282828;
+}
+
+.branch-monitor-overview__metric:last-child {
+  border-right: 0;
+}
+
+.branch-monitor-overview__metric-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+}
+
+.branch-monitor-overview__metric .ant-typography,
+.branch-monitor-overview__metric strong,
+.branch-monitor-overview__metric div > span {
+  display: block;
+}
+
+.branch-monitor-overview__metric .ant-typography {
+  color: #999999 !important;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-monitor-overview__metric strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-overview__metric div > span {
+  margin-top: 4px;
+  color: #737373;
+  font-size: 10px;
+}
+
+.branch-monitor-chart,
+.branch-monitor-shift {
+  height: 100%;
+}
+
+.branch-monitor-chart__canvas {
+  height: 300px;
+}
+
+.branch-monitor-chart__empty {
+  padding-top: 90px;
+}
+
+.branch-monitor-shift__content {
+  display: grid;
+  gap: 0;
+}
+
+.branch-monitor-shift__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 7px;
+  background: #f0fdf4;
+}
+
+.branch-monitor-shift__status > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 6px;
+  background: #16a34a;
   color: #ffffff;
 }
 
-.branch-monitor-hero .ant-statistic-title {
-  color: rgba(255, 255, 255, 0.66);
+.branch-monitor-shift__status .ant-typography,
+.branch-monitor-shift__status strong {
+  display: block;
+}
+
+.branch-monitor-shift__status .ant-typography {
+  color: #15803d !important;
   font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
+}
+
+.branch-monitor-shift__status strong {
+  color: #14532d;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-shift__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  border-bottom: 1px solid #eceef1;
+}
+
+.branch-monitor-shift__row:last-child {
+  border-bottom: 0;
+}
+
+.branch-monitor-shift__row .ant-typography:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-shift__closed {
+  display: flex;
+  min-height: 258px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  text-align: center;
+}
+
+.branch-monitor-shift__closed > .anticon {
+  margin-bottom: 4px;
+  color: #d99a00;
+  font-size: 32px;
+}
+
+.branch-monitor-shift__closed .ant-typography-secondary {
+  max-width: 240px;
+  font-size: 12px;
+}
+
+@media (max-width: 991px) {
+  .branch-monitor-toolbar {
+    grid-template-columns: minmax(240px, 1fr) auto;
+  }
+
+  .branch-monitor-toolbar__date {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid #e1e3e7;
+    border-left: 0;
+  }
+
+  .branch-monitor-overview__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .branch-monitor-overview__metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .branch-monitor-overview__metric:nth-child(-n + 2) {
+    border-bottom: 1px solid #282828;
+  }
+}
+
+@media (max-width: 575px) {
+  .branch-monitor-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-monitor-toolbar__field .ant-segmented {
+    width: 100%;
+  }
+
+  .branch-monitor-toolbar__field .ant-segmented-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .branch-monitor-toolbar__date {
+    grid-column: auto;
+  }
+
+  .branch-monitor-overview__header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .branch-monitor-overview__identity {
+    align-items: flex-start;
+  }
+
+  .branch-monitor-overview__name {
+    font-size: 21px !important;
+  }
+
+  .branch-monitor-overview__total {
+    width: 100%;
+    flex: none;
+    padding-top: 14px;
+    border-top: 1px solid #282828;
+    text-align: left;
+  }
+
+  .branch-monitor-overview__total strong {
+    font-size: 23px;
+  }
+
+  .branch-monitor-overview__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-monitor-overview__metric {
+    min-height: 82px;
+    border-right: 0;
+    border-bottom: 1px solid #282828;
+  }
+
+  .branch-monitor-overview__metric:last-child {
+    border-bottom: 0;
+  }
+
+  .branch-monitor-chart__canvas {
+    height: 260px;
+  }
 }
 
 .header-user-trigger {

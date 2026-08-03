@@ -2,7 +2,7 @@ import { Button, Result, Spin } from 'antd';
 import type { PropsWithChildren } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
+import { useTransactionShift } from '../hooks/useTransactionShift';
 import { getTransactionAccess } from '../model/transactionAccess';
 
 export function TransactionAccessGuard({ children }: PropsWithChildren) {
@@ -10,20 +10,7 @@ export function TransactionAccessGuard({ children }: PropsWithChildren) {
   const user = useAuthStore((state) => state.user);
   const role = user?.role;
   const branchId = user?.branchId;
-  const { data: current, isLoading } = useCurrentShift(role === 'branch' ? branchId : undefined);
-  const currentShift = current?.shift
-    ? {
-        id: current.shift.id,
-        code: current.shift.shiftCode,
-        branchId: current.shift.branchId,
-        branchName: user?.branchName ?? '',
-        openedBy: '',
-        openedAt: current.shift.openedAt,
-        closedBy: null,
-        closedAt: current.shift.closedAt ?? null,
-        status: current.shift.status as 'OPEN' | 'CLOSED',
-      }
-    : null;
+  const { currentShift, isLoading } = useTransactionShift();
   const access = getTransactionAccess(role, currentShift);
 
   if (role === 'branch' && branchId && isLoading) {

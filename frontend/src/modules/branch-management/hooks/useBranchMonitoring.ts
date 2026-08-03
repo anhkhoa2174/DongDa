@@ -25,6 +25,7 @@ export function useBranchFunds(branchId?: string) {
     queryKey: [...KEY, 'funds', branchId],
     queryFn: () => branchMonitoringApi.getFunds(branchId!),
     enabled: Boolean(branchId),
+    refetchInterval: 15_000,
   });
 }
 
@@ -33,5 +34,6 @@ export function useBranchActivity(branchId: string | undefined, period: Monitori
     queryKey: [...KEY, 'activity', branchId, period, date],
     queryFn: () => branchMonitoringApi.getActivity(branchId!, period, date),
     enabled: Boolean(branchId),
+    refetchInterval: 15_000,
   });
 }

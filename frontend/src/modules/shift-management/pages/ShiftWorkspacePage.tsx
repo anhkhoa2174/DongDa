@@ -6,22 +6,30 @@ import {
   Button,
   Card,
   Col,
-  Descriptions,
   Form,
   InputNumber,
   Modal,
   Result,
   Row,
   Spin,
-  Statistic,
   Table,
   Tag,
   Typography,
 } from 'antd';
 import type { FormInstance } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { LockOutlined, PlayCircleOutlined, WalletOutlined } from '@ant-design/icons';
+import {
+  ArrowRightOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  LockOutlined,
+  PlayCircleOutlined,
+  SafetyCertificateOutlined,
+  UserOutlined,
+  WalletOutlined,
+} from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import type { FundBalanceDto } from '@/modules/fund-transfer/api/fundTransfer.api';
 import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
@@ -152,6 +160,9 @@ export function ShiftWorkspacePage() {
   const shift = current?.shift;
   const openCount = current?.cashCounts?.[0];
   const latestCount = current?.cashCounts?.[current.cashCounts.length - 1];
+  const hasDistinctLatestCount = Boolean(
+    latestCount && (!openCount || latestCount.id !== openCount.id),
+  );
   const isBusy = isLoading || isLoadingBalances;
 
   const showOpenModal = () => {
@@ -212,89 +223,82 @@ export function ShiftWorkspacePage() {
           <Spin /> <Typography.Text className="ml-2">Đang tải trạng thái ca và tồn quỹ...</Typography.Text>
         </Card>
       ) : (
-        <>
-          <Card className="mb-4 shift-status-card">
-            <Row gutter={[20, 20]} align="middle">
-              <Col xs={24} lg={10}>
-                <Typography.Text type="secondary">Chi nhánh</Typography.Text>
-                <Typography.Title level={3} className="!mt-1 !mb-2">
-                  {branchName}
-                </Typography.Title>
-                {shift ? (
-                  <Tag color="green">CA ĐANG MỞ</Tag>
-                ) : (
-                  <Tag color="gold">CHƯA MỞ CA</Tag>
-                )}
-              </Col>
-              <Col xs={24} lg={14}>
-                <Row gutter={[12, 12]}>
-                  <Col xs={24} md={8}>
-                    <Statistic title="Trạng thái ca" value={shift ? 'OPEN' : 'Chưa mở'} />
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Statistic title="Mã ca" value={shift?.shiftCode ?? '—'} />
-                  </Col>
-                  <Col xs={24} md={8}>
-                    <Statistic title="Mở lúc" value={shift ? formatDateTime(shift.openedAt) : '—'} />
-                  </Col>
-                </Row>
-              </Col>
-            </Row>
+        <div className="shift-workspace">
+          <Card className="shift-hero" bordered={false}>
+            <div className="shift-hero__top">
+              <div className="shift-hero__identity">
+                <div className={`shift-hero__status-icon ${shift ? 'is-open' : ''}`}>
+                  {shift ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+                </div>
+                <div>
+                  <Typography.Text className="shift-hero__eyebrow">Ca làm việc hiện tại</Typography.Text>
+                  <Typography.Title level={2} className="shift-hero__branch">{branchName}</Typography.Title>
+                  <Tag className="shift-hero__tag" color={shift ? 'green' : 'gold'}>
+                    {shift ? 'ĐANG HOẠT ĐỘNG' : 'CHƯA MỞ CA'}
+                  </Tag>
+                </div>
+              </div>
+
+              <Button
+                className={shift ? 'shift-hero__close-button' : 'shift-hero__open-button'}
+                type={shift ? 'default' : 'primary'}
+                danger={Boolean(shift)}
+                icon={shift ? <LockOutlined /> : <PlayCircleOutlined />}
+                onClick={shift ? showCloseModal : showOpenModal}
+                disabled={!shift && countItems.length === 0}
+                size="large"
+              >
+                {shift ? 'Kiểm quỹ và đóng ca' : 'Kiểm quỹ và mở ca'}
+              </Button>
+            </div>
+
+            <div className="shift-hero__metrics">
+              <ShiftMetric icon={<SafetyCertificateOutlined />} label="Mã ca" value={shift?.shiftCode ?? 'Chưa cấp mã'} />
+              <ShiftMetric icon={<UserOutlined />} label="Nhân viên phụ trách" value={user?.name ?? '—'} />
+              <ShiftMetric icon={<ClockCircleOutlined />} label="Thời điểm mở" value={shift ? formatDateTime(shift.openedAt) : 'Chưa ghi nhận'} />
+            </div>
           </Card>
 
           <Row gutter={[16, 16]}>
-            <Col xs={24} lg={shift ? 14 : 16}>
+            <Col xs={24} xl={16} className="flex">
               <Card
-                title={<span><WalletOutlined /> Tồn quỹ hệ thống</span>}
-                extra={<Typography.Text type="secondary">VND, USD và Quỹ A</Typography.Text>}
+                className="shift-fund-panel w-full"
+                title={<span className="shift-card-title"><WalletOutlined /> Chi tiết tồn quỹ</span>}
+                extra={<Tag>{countItems.length} loại tiền</Tag>}
               >
                 <FundBalanceSummary items={countItems} />
               </Card>
             </Col>
 
-            <Col xs={24} lg={shift ? 10 : 8}>
-              {shift ? (
-                <Card title={<span><LockOutlined /> Đóng ca</span>}>
-                  <Descriptions column={1} size="small" className="mb-3">
-                    <Descriptions.Item label="Mã ca">{shift.shiftCode}</Descriptions.Item>
-                    <Descriptions.Item label="Mở lúc">{formatDateTime(shift.openedAt)}</Descriptions.Item>
-                  </Descriptions>
-                  <Alert
-                    type="info"
-                    showIcon
-                    className="mb-4"
-                    message="Khi đóng ca, nhập số thực đếm. Hệ thống sẽ đối chiếu và thông báo sai lệch cho GĐ/KTTH."
-                  />
-                  <Button danger icon={<LockOutlined />} onClick={showCloseModal} block>
-                    Kiểm quỹ và đóng ca
-                  </Button>
-                </Card>
-              ) : (
-                <Card title={<span><PlayCircleOutlined /> Mở ca</span>}>
-                  <Alert
-                    type="warning"
-                    showIcon
-                    className="mb-4"
-                    message="Chưa mở ca nên trang giao dịch sẽ yêu cầu mở ca trước."
-                    description="Bấm mở ca để xác nhận tồn quỹ đang ghi nhận trên hệ thống."
-                  />
-                  <Button type="primary" icon={<PlayCircleOutlined />} onClick={showOpenModal} disabled={countItems.length === 0} block>
-                    Mở ca
-                  </Button>
-                </Card>
-              )}
+            <Col xs={24} xl={8} className="flex">
+              <Card className="shift-process-panel w-full" title="Quy trình trong ca">
+                <div className="shift-process-list">
+                  <ShiftProcessStep number="01" title="Kiểm quỹ đầu ca" detail={openCount ? 'Đã xác nhận số dư thực tế' : 'Xác nhận trước khi mở ca'} done={Boolean(openCount)} />
+                  <ShiftProcessStep number="02" title="Thực hiện giao dịch" detail={shift ? 'WU, MG, ngoại tệ và chuyển tiền' : 'Khả dụng sau khi mở ca'} active={Boolean(shift)} />
+                  <ShiftProcessStep number="03" title="Kiểm quỹ cuối ca" detail="Đối chiếu thực đếm với hệ thống" />
+                </div>
+                <Alert
+                  type={shift ? 'info' : 'warning'}
+                  showIcon
+                  className="mt-4"
+                  message={shift ? 'Giao dịch đang được phép thực hiện trong ca này.' : 'Các nghiệp vụ giao dịch đang tạm khóa.'}
+                  description={shift
+                    ? 'Khi kết thúc, thực hiện kiểm quỹ để ghi nhận mọi chênh lệch.'
+                    : 'Xác nhận tồn tiền thực tế để bắt đầu ca làm việc.'}
+                />
+              </Card>
             </Col>
           </Row>
 
-          {openCount && (
-            <Card title="Kiểm quỹ đầu ca" className="mt-4">
-              <Table size="small" rowKey="currencyCode" pagination={false} columns={countCols} dataSource={openCount.lines} />
-            </Card>
-          )}
-
-          {latestCount && latestCount.id !== openCount?.id && (
-            <Card title="Kiểm quỹ gần nhất" className="mt-4">
-              <Table size="small" rowKey="currencyCode" pagination={false} columns={countCols} dataSource={latestCount.lines} />
+          {(openCount || hasDistinctLatestCount) && (
+            <Card
+              title={<span className="shift-card-title"><SafetyCertificateOutlined /> Lịch sử kiểm quỹ trong ca</span>}
+              extra={<Typography.Text type="secondary">Số liệu đã lưu trên hệ thống</Typography.Text>}
+            >
+              {openCount && <CountHistorySection title="Kiểm quỹ đầu ca" count={openCount} />}
+              {hasDistinctLatestCount && latestCount && (
+                <CountHistorySection title="Kiểm quỹ gần nhất" count={latestCount} divider={Boolean(openCount)} />
+              )}
             </Card>
           )}
 
@@ -324,7 +328,7 @@ export function ShiftWorkspacePage() {
             onCancel={() => setIsCloseModalOpen(false)}
             onFinish={onClose}
           />
-        </>
+        </div>
       )}
     </PageScaffold>
   );
@@ -336,19 +340,16 @@ function FundBalanceSummary({ items }: { items: CountItem[] }) {
   }
 
   return (
-    <Row gutter={[12, 12]}>
-      {items.map((item) => (
-        <Col xs={24} sm={12} xl={8} key={item.key}>
-          <Card size="small" className="h-full">
-            <Typography.Text type="secondary">{accountTypeLabel(item.accountType)}</Typography.Text>
-            <Typography.Title level={4} className="!mt-1 !mb-0">
-              {money(item.balance, item.code)}
-            </Typography.Title>
-            <Typography.Text type="secondary">{item.name}</Typography.Text>
-          </Card>
-        </Col>
-      ))}
-    </Row>
+    <FundBalanceTable
+      items={items.map((item) => ({
+        key: item.key,
+        currencyCode: item.code,
+        accountType: item.accountType,
+        accountName: item.name,
+        balance: item.balance,
+      }))}
+      emptyText="Chi nhánh chưa có sổ tiền mặt hoặc Quỹ A để kiểm quỹ"
+    />
   );
 }
 
@@ -378,21 +379,27 @@ function CountModal({
   onFinish: (values: CountFormValues) => void;
 }) {
   return (
-    <Modal title={title} open={open} onCancel={onCancel} footer={null} width={760} destroyOnClose>
+    <Modal className="shift-count-modal" title={title} open={open} onCancel={onCancel} footer={null} width={820} destroyOnClose>
       <Alert type={alertType} showIcon className="mb-4" message={alertMessage} />
       <Form form={form} layout="vertical" onFinish={onFinish}>
-        <Row gutter={[12, 12]}>
+        <div className="shift-count-header">
+          <span>Loại quỹ</span>
+          <span>Tồn hệ thống</span>
+          <span>Thực đếm</span>
+        </div>
+        <div className="shift-count-list">
           {items.map((item) => (
-            <Col xs={24} md={12} key={item.key}>
-              <Card size="small">
-                <Typography.Text type="secondary">
-                  {accountTypeLabel(item.accountType)} · {item.name}
-                </Typography.Text>
+            <div className="shift-count-row" key={item.key}>
+              <div className="shift-count-row__currency">
+                <strong>{item.code}</strong>
+                <Typography.Text type="secondary">{accountTypeLabel(item.accountType)} · {item.name}</Typography.Text>
+              </div>
+              <Typography.Text className="shift-count-row__system">{money(item.balance, item.code)}</Typography.Text>
+              <div>
                 <Form.Item
                   name={['counts', item.code]}
-                  label={`Thực đếm ${item.code}`}
                   rules={[{ required: true, message: `Nhập số thực đếm ${item.code}` }]}
-                  className="!mb-0 !mt-2"
+                  className="!mb-0"
                 >
                   <InputNumber
                     min={0}
@@ -401,17 +408,17 @@ function CountModal({
                     {...inputProps(item.code)}
                   />
                 </Form.Item>
-              </Card>
-            </Col>
+              </div>
+            </div>
           ))}
-        </Row>
+        </div>
         <Button
           type={danger ? 'default' : 'primary'}
           danger={danger}
           htmlType="submit"
           icon={danger ? <LockOutlined /> : <PlayCircleOutlined />}
           loading={loading}
-          className="mt-4"
+          className="mt-5"
           disabled={items.length === 0}
           block
         >
@@ -419,5 +426,69 @@ function CountModal({
         </Button>
       </Form>
     </Modal>
+  );
+}
+
+function ShiftMetric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="shift-hero__metric">
+      <span className="shift-hero__metric-icon">{icon}</span>
+      <div>
+        <Typography.Text>{label}</Typography.Text>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+function ShiftProcessStep({
+  number,
+  title,
+  detail,
+  done = false,
+  active = false,
+}: {
+  number: string;
+  title: string;
+  detail: string;
+  done?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <div className={`shift-process-step ${done ? 'is-done' : ''} ${active ? 'is-active' : ''}`}>
+      <span className="shift-process-step__number">{done ? <CheckCircleOutlined /> : number}</span>
+      <div>
+        <Typography.Text strong>{title}</Typography.Text>
+        <Typography.Text type="secondary">{detail}</Typography.Text>
+      </div>
+      <ArrowRightOutlined className="shift-process-step__arrow" />
+    </div>
+  );
+}
+
+function CountHistorySection({
+  title,
+  count,
+  divider = false,
+}: {
+  title: string;
+  count: { countedAt: string; lines: CashCountLineDto[] };
+  divider?: boolean;
+}) {
+  return (
+    <section className={divider ? 'shift-count-history is-divided' : 'shift-count-history'}>
+      <div className="shift-count-history__heading">
+        <Typography.Text strong>{title}</Typography.Text>
+        <Typography.Text type="secondary">{formatDateTime(count.countedAt)}</Typography.Text>
+      </div>
+      <Table
+        size="small"
+        rowKey="currencyCode"
+        pagination={false}
+        columns={countCols}
+        dataSource={count.lines}
+        scroll={{ x: 640 }}
+      />
+    </section>
   );
 }

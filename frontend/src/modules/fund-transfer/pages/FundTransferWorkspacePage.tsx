@@ -1,4 +1,5 @@
 import {
+  ArrowLeftOutlined,
   DeleteOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
@@ -24,8 +25,9 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import {
   formatCurrency,
@@ -43,7 +45,6 @@ import {
 } from '../hooks/useFundTransfers';
 import type {
   CreateFundTransferPayload,
-  FundBalanceDto,
   FundTransferDto,
   FundTransferStatus,
 } from '../api/fundTransfer.api';
@@ -64,6 +65,7 @@ const EMPTY_ITEM = { currencyCode: 'VND', amount: undefined };
 
 export function FundTransferWorkspacePage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const presetDestinationBranchId = searchParams.get('destinationBranchId');
   const isBranchCreationFlow = searchParams.get('origin') === 'branch-creation';
@@ -144,18 +146,16 @@ export function FundTransferWorkspacePage() {
     }
   };
 
-  const balanceColumns: ColumnsType<FundBalanceDto> = [
-    { title: 'Sổ quỹ', dataIndex: 'name' },
-    { title: 'Loại tiền', dataIndex: 'currencyCode', width: 100 },
-    {
-      title: 'Số dư',
-      dataIndex: 'balance',
-      align: 'right',
-      render: (value: number, record) => (
-        <Typography.Text strong>{formatCurrency(value, record.currencyCode)}</Typography.Text>
-      ),
-    },
-  ];
+  const sourceBalanceRows = sourceBalances
+    .filter((balance) => balance.accountType === 'CASH' || balance.accountType === 'FUND_A')
+    .map((balance) => ({
+      key: balance.id,
+      currencyCode: balance.currencyCode,
+      accountType: balance.accountType,
+      accountName: balance.name,
+      accountCode: balance.code,
+      balance: balance.balance,
+    }));
 
   const transferColumns: ColumnsType<FundTransferDto> = [
     { title: 'Mã phiếu', dataIndex: 'transferNo', width: 170 },
@@ -216,6 +216,14 @@ export function FundTransferWorkspacePage() {
       title="Tiếp Quỹ"
       description="Lập và theo dõi phiếu tiếp quỹ giữa Hội sở và các chi nhánh."
       moduleName="fund-transfer"
+      extra={(
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate(isBranchUser ? '/fund-management/branch-funds' : '/fund-management/central-fund')}
+        >
+          {isBranchUser ? 'Quay lại Quỹ Chi Nhánh' : 'Quay lại Quỹ Chung'}
+        </Button>
+      )}
     >
       {isBranchCreationFlow && (
         <div className="mb-5 rounded-md border border-brand-100 bg-brand-50 px-5 py-4">
@@ -391,18 +399,11 @@ export function FundTransferWorkspacePage() {
 
         <Col xs={24} xl={12} className="flex">
           <Card
-            title="Số dư đơn vị gửi"
+            title="Chi tiết tồn quỹ"
             extra={<Tag>{sourceBalances.length} sổ quỹ</Tag>}
             className="fund-transfer-panel w-full"
           >
-            <Table<FundBalanceDto>
-              rowKey="id"
-              columns={balanceColumns}
-              dataSource={sourceBalances.filter((balance) => balance.accountType === 'CASH' || balance.accountType === 'FUND_A')}
-              pagination={false}
-              locale={{ emptyText: 'Chưa có số dư quỹ' }}
-              scroll={{ x: 480, y: 460 }}
-            />
+            <FundBalanceTable items={sourceBalanceRows} scrollY={460} />
           </Card>
         </Col>
 

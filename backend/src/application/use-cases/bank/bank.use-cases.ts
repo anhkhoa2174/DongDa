@@ -9,11 +9,11 @@ import type { ReceiveFromProviderDto } from '../../dtos/bank/bank.dto';
 @Injectable()
 export class ListBankUseCase {
   constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
-  accounts(): Promise<BankAccount[]> {
-    return this.bankRepo.listAccounts();
+  accounts(branchId?: string): Promise<BankAccount[]> {
+    return this.bankRepo.listAccounts(branchId);
   }
-  movements(bankAccountId?: string): Promise<BankMovement[]> {
-    return this.bankRepo.listMovements(bankAccountId);
+  movements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]> {
+    return this.bankRepo.listMovements(bankAccountId, branchId);
   }
 }
 

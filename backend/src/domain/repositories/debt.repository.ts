@@ -25,10 +25,21 @@ export interface SettleDebtInput {
   createdByUserId: string;
 }
 
+export interface SettleUsdCashDebtInput {
+  debtAccountId: string;
+  cashUsdAmount: number;
+  oddUsdAmount: number;
+  description?: string;
+  createdByUserId: string;
+}
+
 export interface ListDebtsFilter {
   branchId?: string;
   providerCode?: string;
   currencyCode?: CurrencyCode;
+  businessDate?: Date;
+  dateFrom?: Date;
+  dateTo?: Date;
 }
 
 export interface IDebtRepository {
@@ -37,6 +48,7 @@ export interface IDebtRepository {
 
   // Trả nợ (giảm) — SETTLEMENT
   settle(input: SettleDebtInput): Promise<DebtMovement>;
+  settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement>;
 
   findAccountById(id: string): Promise<DebtAccount | null>;
   getAccountSummary(id: string): Promise<DebtAccountSummary | null>;

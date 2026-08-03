@@ -20,13 +20,16 @@ export class BankController {
   ) {}
 
   @Get('accounts')
-  accounts() {
-    return this.listBank.accounts();
+  accounts(@Request() req: any) {
+    return this.listBank.accounts(req.user?.role === UserRole.STAFF ? req.user.branchId : undefined);
   }
 
   @Get('movements')
-  movements(@Query('bankAccountId') bankAccountId?: string) {
-    return this.listBank.movements(bankAccountId);
+  movements(@Request() req: any, @Query('bankAccountId') bankAccountId?: string) {
+    return this.listBank.movements(
+      bankAccountId,
+      req.user?.role === UserRole.STAFF ? req.user.branchId : undefined,
+    );
   }
 
   // Ghi nhận tiền về — KTTH/GĐ

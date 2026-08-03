@@ -39,6 +39,6 @@ export const bankApi = {
   movements: (bankAccountId?: string) =>
     httpClient.get<BankMovementDto[]>('/bank/movements', { params: { bankAccountId } }).then((r) => r.data),
   debts: () => httpClient.get<DebtAccountDto[]>('/debts').then((r) => r.data),
-  receive: (payload: { bankAccountId: string; debtAccountId: string; amount: number; bankReference?: string }) =>
+  receive: (payload: { bankAccountId: string; debtAccountId: string; amount: number; bankReference?: string; description?: string }) =>
     httpClient.post('/bank/receive', payload).then((r) => r.data),
 };
