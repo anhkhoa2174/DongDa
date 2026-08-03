@@ -30,6 +30,8 @@ import {
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
+import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import type { FundBalanceDto } from '@/modules/fund-transfer/api/fundTransfer.api';
 import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
@@ -224,21 +226,17 @@ export function ShiftWorkspacePage() {
         </Card>
       ) : (
         <div className="shift-workspace">
-          <Card className="shift-hero" bordered={false}>
-            <div className="shift-hero__top">
-              <div className="shift-hero__identity">
-                <div className={`shift-hero__status-icon ${shift ? 'is-open' : ''}`}>
-                  {shift ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
-                </div>
-                <div>
-                  <Typography.Text className="shift-hero__eyebrow">Ca làm việc hiện tại</Typography.Text>
-                  <Typography.Title level={2} className="shift-hero__branch">{branchName}</Typography.Title>
-                  <Tag className="shift-hero__tag" color={shift ? 'green' : 'gold'}>
-                    {shift ? 'ĐANG HOẠT ĐỘNG' : 'CHƯA MỞ CA'}
-                  </Tag>
-                </div>
-              </div>
-
+          <OperationalOverviewCard
+            eyebrow="Ca làm việc hiện tại"
+            title={branchName}
+            icon={shift ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
+            iconTone={shift ? 'success' : 'brand'}
+            meta={(
+              <Tag className="shift-hero__tag" color={shift ? 'green' : 'gold'}>
+                {shift ? 'ĐANG HOẠT ĐỘNG' : 'CHƯA MỞ CA'}
+              </Tag>
+            )}
+            aside={(
               <Button
                 className={shift ? 'shift-hero__close-button' : 'shift-hero__open-button'}
                 type={shift ? 'default' : 'primary'}
@@ -250,20 +248,19 @@ export function ShiftWorkspacePage() {
               >
                 {shift ? 'Kiểm quỹ và đóng ca' : 'Kiểm quỹ và mở ca'}
               </Button>
-            </div>
-
-            <div className="shift-hero__metrics">
-              <ShiftMetric icon={<SafetyCertificateOutlined />} label="Mã ca" value={shift?.shiftCode ?? 'Chưa cấp mã'} />
-              <ShiftMetric icon={<UserOutlined />} label="Nhân viên phụ trách" value={user?.name ?? '—'} />
-              <ShiftMetric icon={<ClockCircleOutlined />} label="Thời điểm mở" value={shift ? formatDateTime(shift.openedAt) : 'Chưa ghi nhận'} />
-            </div>
-          </Card>
+            )}
+            metrics={[
+              { icon: <SafetyCertificateOutlined />, label: 'Mã ca', value: shift?.shiftCode ?? 'Chưa cấp mã' },
+              { icon: <UserOutlined />, label: 'Nhân viên phụ trách', value: user?.name ?? '—' },
+              { icon: <ClockCircleOutlined />, label: 'Thời điểm mở', value: shift ? formatDateTime(shift.openedAt) : 'Chưa ghi nhận' },
+            ]}
+          />
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16} className="flex">
               <Card
                 className="shift-fund-panel w-full"
-                title={<span className="shift-card-title"><WalletOutlined /> Chi tiết tồn quỹ</span>}
+                title={<SectionCardTitle icon={<WalletOutlined />}>Chi tiết tồn quỹ</SectionCardTitle>}
                 extra={<Tag>{countItems.length} loại tiền</Tag>}
               >
                 <FundBalanceSummary items={countItems} />
@@ -292,7 +289,7 @@ export function ShiftWorkspacePage() {
 
           {(openCount || hasDistinctLatestCount) && (
             <Card
-              title={<span className="shift-card-title"><SafetyCertificateOutlined /> Lịch sử kiểm quỹ trong ca</span>}
+              title={<SectionCardTitle icon={<SafetyCertificateOutlined />}>Lịch sử kiểm quỹ trong ca</SectionCardTitle>}
               extra={<Typography.Text type="secondary">Số liệu đã lưu trên hệ thống</Typography.Text>}
             >
               {openCount && <CountHistorySection title="Kiểm quỹ đầu ca" count={openCount} />}
@@ -426,18 +423,6 @@ function CountModal({
         </Button>
       </Form>
     </Modal>
-  );
-}
-
-function ShiftMetric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="shift-hero__metric">
-      <span className="shift-hero__metric-icon">{icon}</span>
-      <div>
-        <Typography.Text>{label}</Typography.Text>
-        <strong>{value}</strong>
-      </div>
-    </div>
   );
 }
 

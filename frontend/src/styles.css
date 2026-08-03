@@ -170,54 +170,54 @@
   gap: 16px;
 }
 
-.shift-hero {
+.operational-overview {
   overflow: hidden;
-  border: 1px solid #222222 !important;
+  border: 1px solid #242424 !important;
   border-radius: 8px !important;
   background: #0b0b0b !important;
   color: #ffffff;
-  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.16) !important;
+  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
 }
 
-.shift-hero .ant-card-body {
+.operational-overview .ant-card-body {
   padding: 0;
 }
 
-.shift-hero__top {
+.operational-overview__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 32px;
   padding: 24px;
 }
 
-.shift-hero__identity {
+.operational-overview__identity {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 16px;
 }
 
-.shift-hero__status-icon {
+.operational-overview__icon {
   display: grid;
   width: 48px;
   height: 48px;
   flex: 0 0 48px;
   place-items: center;
-  border: 1px solid rgba(245, 179, 1, 0.45);
-  border-radius: 50%;
+  border: 1px solid rgba(245, 179, 1, 0.42);
+  border-radius: 7px;
   background: rgba(245, 179, 1, 0.1);
   color: #f5b301;
-  font-size: 22px;
+  font-size: 21px;
 }
 
-.shift-hero__status-icon.is-open {
+.operational-overview__icon.is-success {
   border-color: rgba(52, 211, 153, 0.42);
   background: rgba(16, 185, 129, 0.12);
   color: #6ee7b7;
 }
 
-.shift-hero__eyebrow {
+.operational-overview__eyebrow {
   display: block;
   margin-bottom: 3px;
   color: #a3a3a3 !important;
@@ -226,19 +226,32 @@
   text-transform: uppercase;
 }
 
-.shift-hero__branch {
-  max-width: 680px;
-  margin: 0 0 7px !important;
+.operational-overview__title {
+  max-width: 720px;
+  margin: 0 0 5px !important;
   color: #ffffff !important;
   font-size: 26px !important;
   line-height: 1.25 !important;
   overflow-wrap: anywhere;
 }
 
+.operational-overview__meta,
+.operational-overview__meta .ant-typography {
+  color: #8f8f8f !important;
+  font-size: 12px;
+}
+
+.operational-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.operational-overview__aside {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .shift-hero__tag {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 750;
+  margin-inline-end: 0;
 }
 
 .shift-hero__open-button {
@@ -256,27 +269,35 @@
   font-weight: 700;
 }
 
-.shift-hero__metrics {
+.operational-overview__metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid #282828;
   background: #121212;
 }
 
-.shift-hero__metric {
+.operational-overview__metrics--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operational-overview__metrics--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.operational-overview__metric {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: 12px;
-  padding: 16px 24px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 104px;
+  padding: 16px 20px;
+  border-right: 1px solid #282828;
 }
 
-.shift-hero__metric:last-child {
+.operational-overview__metric:last-child {
   border-right: 0;
 }
 
-.shift-hero__metric-icon {
+.operational-overview__metric-icon {
   display: grid;
   width: 34px;
   height: 34px;
@@ -287,28 +308,40 @@
   color: #f5b301;
 }
 
-.shift-hero__metric .ant-typography {
+.operational-overview__metric .ant-typography,
+.operational-overview__metric strong,
+.operational-overview__metric div > span {
   display: block;
-  color: #8f8f8f !important;
-  font-size: 11px;
 }
 
-.shift-hero__metric strong {
-  display: block;
-  margin-top: 2px;
+.operational-overview__metric .ant-typography {
+  color: #999999 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.operational-overview__metric strong {
+  margin-top: 4px;
   color: #ffffff;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 17px;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
-.shift-card-title {
+.operational-overview__metric div > span {
+  margin-top: 4px;
+  color: #737373;
+  font-size: 10px;
+}
+
+.section-card-title {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.shift-card-title .anticon {
+.section-card-title .anticon {
   color: #d99a00;
 }
 
@@ -440,18 +473,22 @@
 }
 
 @media (max-width: 767px) {
-  .shift-hero__top {
+  .operational-overview__header {
     align-items: stretch;
     flex-direction: column;
     padding: 18px;
   }
 
-  .shift-hero__identity {
+  .operational-overview__identity {
     align-items: flex-start;
   }
 
-  .shift-hero__branch {
+  .operational-overview__title {
     font-size: 22px !important;
+  }
+
+  .operational-overview__aside {
+    width: 100%;
   }
 
   .shift-hero__open-button,
@@ -459,17 +496,17 @@
     width: 100%;
   }
 
-  .shift-hero__metrics {
+  .operational-overview__metrics {
     grid-template-columns: 1fr;
   }
 
-  .shift-hero__metric {
+  .operational-overview__metric {
     padding: 13px 18px;
     border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid #282828;
   }
 
-  .shift-hero__metric:last-child {
+  .operational-overview__metric:last-child {
     border-bottom: 0;
   }
 
@@ -499,116 +536,11 @@
   }
 }
 
-.branch-fund-overview {
-  overflow: hidden;
-  border: 1px solid #242424 !important;
-  border-radius: 8px !important;
-  background: #0b0b0b !important;
-  color: #ffffff;
-  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
-}
-
-.branch-fund-overview__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 24px;
-}
-
-.branch-fund-overview__identity {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 16px;
-}
-
-.branch-fund-overview__icon {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  place-items: center;
-  border: 1px solid rgba(245, 179, 1, 0.42);
-  border-radius: 7px;
-  background: rgba(245, 179, 1, 0.1);
-  color: #f5b301;
-  font-size: 21px;
-}
-
-.branch-fund-overview__eyebrow {
-  display: block;
-  color: #a3a3a3 !important;
-  font-size: 11px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-
-.branch-fund-overview__name {
-  max-width: 720px;
-  margin: 3px 0 2px !important;
-  color: #ffffff !important;
-  font-size: 26px !important;
-  line-height: 1.25 !important;
-  overflow-wrap: anywhere;
-}
-
-.branch-fund-overview__code {
-  color: #8f8f8f !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-}
-
 .branch-fund-overview__status {
   flex: 0 0 auto;
   margin: 0;
   font-size: 11px;
   font-weight: 750;
-}
-
-.branch-fund-overview__metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid #282828;
-  background: #121212;
-}
-
-.branch-fund-overview__metric {
-  min-width: 0;
-  min-height: 108px;
-  padding: 18px 20px;
-  border-right: 1px solid #282828;
-}
-
-.branch-fund-overview__metric:last-child {
-  border-right: 0;
-}
-
-.branch-fund-overview__metric .ant-typography,
-.branch-fund-overview__metric strong,
-.branch-fund-overview__metric span {
-  display: block;
-}
-
-.branch-fund-overview__metric .ant-typography {
-  color: #a3a3a3 !important;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.branch-fund-overview__metric strong {
-  margin-top: 7px;
-  color: #ffffff;
-  font-size: 19px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.branch-fund-overview__metric > span {
-  margin-top: 5px;
-  color: #737373;
-  font-size: 11px;
 }
 
 .branch-fund-actions {
@@ -689,18 +621,6 @@
 }
 
 @media (max-width: 991px) {
-  .branch-fund-overview__metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .branch-fund-overview__metric:nth-child(2) {
-    border-right: 0;
-  }
-
-  .branch-fund-overview__metric:nth-child(-n + 2) {
-    border-bottom: 1px solid #282828;
-  }
-
   .branch-fund-actions {
     align-items: flex-start;
     flex-direction: column;
@@ -708,39 +628,6 @@
 }
 
 @media (max-width: 575px) {
-  .branch-fund-overview__header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 18px;
-  }
-
-  .branch-fund-overview__identity {
-    align-items: flex-start;
-  }
-
-  .branch-fund-overview__name {
-    font-size: 21px !important;
-  }
-
-  .branch-fund-overview__metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .branch-fund-overview__metric {
-    min-height: 0;
-    padding: 14px 18px;
-    border-right: 0;
-    border-bottom: 1px solid #282828;
-  }
-
-  .branch-fund-overview__metric:nth-child(2) {
-    border-right: 0;
-  }
-
-  .branch-fund-overview__metric:last-child {
-    border-bottom: 0;
-  }
-
   .branch-fund-actions .ant-space,
   .branch-fund-actions .ant-space-item,
   .branch-fund-actions .ant-btn {
@@ -750,58 +637,6 @@
   .branch-fund-table-card .ant-card-body {
     padding: 0 12px 12px;
   }
-}
-
-.fund-branch-card {
-  border-radius: 14px !important;
-}
-
-.fund-branch-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.28), transparent 180px),
-    linear-gradient(135deg, #080808, #161616);
-}
-
-.fund-metric {
-  min-width: 0;
-  border: 1px solid #eceff3;
-  border-radius: 10px;
-  background: #fbfbfc;
-  padding: 12px;
-}
-
-.fund-detail-list {
-  display: grid;
-  gap: 10px;
-}
-
-.fund-command-center,
-.fund-central-hero {
-  overflow: hidden;
-  border-color: rgba(245, 179, 1, 0.28) !important;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.26), transparent 260px),
-    linear-gradient(135deg, #090909, #171717);
-}
-
-.fund-command-metric {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 14px;
-}
-
-.fund-central-tile {
-  min-height: 112px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 16px;
 }
 
 .central-fund-overview {
@@ -1087,70 +922,6 @@
   font-size: 13px;
 }
 
-.branch-monitor-overview {
-  overflow: hidden;
-  border: 1px solid #242424 !important;
-  border-radius: 8px !important;
-  background: #0b0b0b !important;
-  color: #ffffff;
-  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
-}
-
-.branch-monitor-overview__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
-  padding: 22px 24px;
-}
-
-.branch-monitor-overview__identity {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 15px;
-}
-
-.branch-monitor-overview__icon {
-  display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  place-items: center;
-  border: 1px solid rgba(245, 179, 1, 0.42);
-  border-radius: 7px;
-  background: rgba(245, 179, 1, 0.1);
-  color: #f5b301;
-  font-size: 21px;
-}
-
-.branch-monitor-overview__eyebrow {
-  display: block;
-  color: #a3a3a3 !important;
-  font-size: 11px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-
-.branch-monitor-overview__name {
-  max-width: 620px;
-  margin: 3px 0 5px !important;
-  color: #ffffff !important;
-  font-size: 25px !important;
-  line-height: 1.24 !important;
-  overflow-wrap: anywhere;
-}
-
-.branch-monitor-overview__code,
-.branch-monitor-overview__employees {
-  color: #8f8f8f !important;
-  font-size: 12px;
-}
-
-.branch-monitor-overview__code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
 .branch-monitor-overview__total {
   flex: 0 1 460px;
   text-align: right;
@@ -1181,65 +952,6 @@
   margin-top: 4px;
   color: #8f8f8f;
   font-size: 11px;
-}
-
-.branch-monitor-overview__metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-top: 1px solid #282828;
-  background: #121212;
-}
-
-.branch-monitor-overview__metric {
-  display: flex;
-  min-width: 0;
-  min-height: 104px;
-  align-items: center;
-  gap: 11px;
-  padding: 16px 18px;
-  border-right: 1px solid #282828;
-}
-
-.branch-monitor-overview__metric:last-child {
-  border-right: 0;
-}
-
-.branch-monitor-overview__metric-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  place-items: center;
-  border-radius: 6px;
-  background: rgba(245, 179, 1, 0.1);
-  color: #f5b301;
-}
-
-.branch-monitor-overview__metric .ant-typography,
-.branch-monitor-overview__metric strong,
-.branch-monitor-overview__metric div > span {
-  display: block;
-}
-
-.branch-monitor-overview__metric .ant-typography {
-  color: #999999 !important;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.branch-monitor-overview__metric strong {
-  margin-top: 4px;
-  color: #ffffff;
-  font-size: 17px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.branch-monitor-overview__metric div > span {
-  margin-top: 4px;
-  color: #737373;
-  font-size: 10px;
 }
 
 .branch-monitor-chart,
@@ -1337,7 +1049,7 @@
   font-size: 12px;
 }
 
-@media (max-width: 991px) {
+@media (min-width: 768px) and (max-width: 991px) {
   .branch-monitor-toolbar {
     grid-template-columns: minmax(240px, 1fr) auto;
   }
@@ -1350,15 +1062,15 @@
     border-left: 0;
   }
 
-  .branch-monitor-overview__metrics {
+  .operational-overview__metrics--4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .branch-monitor-overview__metric:nth-child(2) {
+  .operational-overview__metrics--4 .operational-overview__metric:nth-child(2) {
     border-right: 0;
   }
 
-  .branch-monitor-overview__metric:nth-child(-n + 2) {
+  .operational-overview__metrics--4 .operational-overview__metric:nth-child(-n + 2) {
     border-bottom: 1px solid #282828;
   }
 }
@@ -1381,20 +1093,6 @@
     grid-column: auto;
   }
 
-  .branch-monitor-overview__header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 18px;
-  }
-
-  .branch-monitor-overview__identity {
-    align-items: flex-start;
-  }
-
-  .branch-monitor-overview__name {
-    font-size: 21px !important;
-  }
-
   .branch-monitor-overview__total {
     width: 100%;
     flex: none;
@@ -1405,20 +1103,6 @@
 
   .branch-monitor-overview__total strong {
     font-size: 23px;
-  }
-
-  .branch-monitor-overview__metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .branch-monitor-overview__metric {
-    min-height: 82px;
-    border-right: 0;
-    border-bottom: 1px solid #282828;
-  }
-
-  .branch-monitor-overview__metric:last-child {
-    border-bottom: 0;
   }
 
   .branch-monitor-chart__canvas {

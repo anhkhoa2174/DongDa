@@ -28,6 +28,8 @@ import {
 } from 'recharts';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
+import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import {
   formatExchangeRate,
@@ -55,29 +57,6 @@ function getErrorMessage(error: unknown) {
     return Array.isArray(message) ? message.join(', ') : message || 'Không thể tạo chi nhánh';
   }
   return 'Không thể tạo chi nhánh';
-}
-
-function BranchMonitorMetric({
-  icon,
-  label,
-  value,
-  note,
-}: {
-  icon: JSX.Element;
-  label: string;
-  value: string;
-  note: string;
-}) {
-  return (
-    <div className="branch-monitor-overview__metric">
-      <span className="branch-monitor-overview__metric-icon">{icon}</span>
-      <div className="min-w-0">
-        <Typography.Text>{label}</Typography.Text>
-        <strong>{value}</strong>
-        <span>{note}</span>
-      </div>
-    </div>
-  );
 }
 
 function BranchShiftRow({ label, value }: { label: string; value: string }) {
@@ -193,39 +172,35 @@ export function BranchMonitoringPage() {
             </div>
           </div>
 
-          <Card loading={isFundsLoading || isActivityLoading} className="branch-monitor-overview" classNames={{ body: 'p-0!' }}>
-            <div className="branch-monitor-overview__header">
-              <div className="branch-monitor-overview__identity">
-                <span className="branch-monitor-overview__icon"><BankOutlined /></span>
-                <div className="min-w-0">
-                  <Typography.Text className="branch-monitor-overview__eyebrow">Chi nhánh đang theo dõi</Typography.Text>
-                  <Typography.Title level={2} className="branch-monitor-overview__name">
-                    {selectedBranch?.name ?? 'Đang tải chi nhánh'}
-                  </Typography.Title>
-                  <Space size={8} wrap>
-                    <Typography.Text className="branch-monitor-overview__code">{selectedBranch?.code ?? '—'}</Typography.Text>
-                    <Typography.Text className="branch-monitor-overview__employees"><TeamOutlined /> {selectedBranch?.employeeCount ?? 0} nhân viên</Typography.Text>
-                  </Space>
-                </div>
-              </div>
+          <OperationalOverviewCard
+            loading={isFundsLoading || isActivityLoading}
+            eyebrow="Chi nhánh đang theo dõi"
+            title={selectedBranch?.name ?? 'Đang tải chi nhánh'}
+            icon={<BankOutlined />}
+            meta={(
+              <Space size={8} wrap>
+                <Typography.Text className="operational-code">{selectedBranch?.code ?? '—'}</Typography.Text>
+                <Typography.Text><TeamOutlined /> {selectedBranch?.employeeCount ?? 0} nhân viên</Typography.Text>
+              </Space>
+            )}
+            aside={(
               <div className="branch-monitor-overview__total">
                 <Typography.Text>Tổng quỹ hiện tại</Typography.Text>
                 <strong>{formatVnd(funds?.currentFundValueVnd ?? 0)}</strong>
                 <span>Paid mua USD: {funds?.usdBuyRate ? formatExchangeRate(funds.usdBuyRate) : 'Chưa có tỷ giá'}</span>
               </div>
-            </div>
-
-            <div className="branch-monitor-overview__metrics">
-              <BranchMonitorMetric icon={<WalletOutlined />} label="Tiền mặt VND" value={formatVnd(funds?.vndCash ?? 0)} note="Tồn tại chi nhánh" />
-              <BranchMonitorMetric icon={<DollarOutlined />} label="Tiền mặt USD" value={`${(funds?.usdCash ?? 0).toLocaleString('en-US')} USD`} note="Tồn tại chi nhánh" />
-              <BranchMonitorMetric icon={<BarChartOutlined />} label="Số giao dịch" value={String(activity?.transactionCount ?? 0)} note={`${activity?.completedCount ?? 0} giao dịch hoàn tất`} />
-              <BranchMonitorMetric icon={<BankOutlined />} label="Giá trị giao dịch" value={formatVnd(activity?.transactionValueVnd ?? 0)} note="Theo kỳ đang chọn" />
-            </div>
-          </Card>
+            )}
+            metrics={[
+              { icon: <WalletOutlined />, label: 'Tiền mặt VND', value: formatVnd(funds?.vndCash ?? 0), note: 'Tồn tại chi nhánh' },
+              { icon: <DollarOutlined />, label: 'Tiền mặt USD', value: `${(funds?.usdCash ?? 0).toLocaleString('en-US')} USD`, note: 'Tồn tại chi nhánh' },
+              { icon: <BarChartOutlined />, label: 'Số giao dịch', value: String(activity?.transactionCount ?? 0), note: `${activity?.completedCount ?? 0} giao dịch hoàn tất` },
+              { icon: <BankOutlined />, label: 'Giá trị giao dịch', value: formatVnd(activity?.transactionValueVnd ?? 0), note: 'Theo kỳ đang chọn' },
+            ]}
+          />
 
           <Row gutter={[16, 16]} align="stretch">
             <Col xs={24} xl={16} className="flex">
-              <Card loading={isActivityLoading} title={<span className="shift-card-title"><LineChartOutlined /> Dòng tiền vào/ra</span>} extra={<Tag>{periodOptions.find((item) => item.value === period)?.label}</Tag>} className="branch-monitor-chart w-full">
+              <Card loading={isActivityLoading} title={<SectionCardTitle icon={<LineChartOutlined />}>Dòng tiền vào/ra</SectionCardTitle>} extra={<Tag>{periodOptions.find((item) => item.value === period)?.label}</Tag>} className="branch-monitor-chart w-full">
                 <div className="branch-monitor-chart__canvas">
                   {trend.length ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -244,7 +219,7 @@ export function BranchMonitoringPage() {
               </Card>
             </Col>
             <Col xs={24} xl={8} className="flex">
-              <Card loading={isFundsLoading} title={<span className="shift-card-title"><FieldTimeOutlined /> Trạng thái ca</span>} className="branch-monitor-shift w-full">
+              <Card loading={isFundsLoading} title={<SectionCardTitle icon={<FieldTimeOutlined />}>Trạng thái ca</SectionCardTitle>} className="branch-monitor-shift w-full">
                 {funds?.openShift ? (
                   <div className="branch-monitor-shift__content">
                     <div className="branch-monitor-shift__status">
@@ -271,7 +246,7 @@ export function BranchMonitoringPage() {
 
           <Card
             loading={isFundsLoading}
-            title={<span className="shift-card-title"><WalletOutlined /> Chi tiết tồn quỹ</span>}
+            title={<SectionCardTitle icon={<WalletOutlined />}>Chi tiết tồn quỹ</SectionCardTitle>}
             extra={funds && <Tag color={statusMeta[funds.status].color}>{statusMeta[funds.status].label}</Tag>}
             className="polished-card"
           >
