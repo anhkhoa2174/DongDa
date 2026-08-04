@@ -906,7 +906,9 @@ model ledger_entries {
   shifts                                          shifts?             @relation(fields: [shift_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   ledger_lines                                    ledger_lines[]
 
-  @@unique([source_type, source_id], map: "uq_ledger_source")
+  // Partial UNIQUE uq_ledger_source(source_type, source_id) WHERE reversed_entry_id IS NULL
+  // được quản qua raw SQL trong migration (Prisma không diễn đạt được partial index):
+  // mỗi giao dịch nguồn 1 bút toán GỐC, bút toán đảo dùng lại source_id để truy vết.
   @@index([branch_id, business_date], map: "idx_ledger_entries_branch_date")
   @@index([shift_id], map: "idx_ledger_entries_shift")
 }

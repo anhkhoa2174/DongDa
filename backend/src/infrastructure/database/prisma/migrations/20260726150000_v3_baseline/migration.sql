@@ -839,11 +839,15 @@ CREATE TABLE ledger_entries (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_ledger_source UNIQUE (source_type, source_id),
     CONSTRAINT chk_ledger_posting CHECK (
         (status <> 'POSTED') OR (posted_at IS NOT NULL)
     )
 );
+
+-- Mỗi giao dịch nguồn chỉ có 1 bút toán GỐC; bút toán đảo (reversed_entry_id != NULL)
+-- được dùng lại source_id để truy vết nguồn nên loại khỏi ràng buộc unique.
+CREATE UNIQUE INDEX uq_ledger_source ON ledger_entries(source_type, source_id)
+    WHERE reversed_entry_id IS NULL;
 
 CREATE INDEX idx_ledger_entries_branch_date ON ledger_entries(branch_id, business_date);
 CREATE INDEX idx_ledger_entries_shift ON ledger_entries(shift_id);
