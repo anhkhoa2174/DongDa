@@ -34,17 +34,34 @@ export class ShiftController {
 
   @Post('open')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.STAFF)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   open(@Request() req: any, @Body() dto: OpenShiftDto) {
-    dto.branchId = req.user.branchId;
+    dto.branchId = this.resolveBranchId(req.user, dto.branchId);
     return this.openShift.execute(dto, req.user.id);
   }
 
   @Post(':id/close')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.STAFF)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   close(@Request() req: any, @Param('id') id: string, @Body() dto: CloseShiftDto) {
-    dto.branchId = req.user.branchId;
+    // STAFF: khóa về chi nhánh mình. GĐ/KTTH: shiftId đã xác định chi nhánh, branchId optional.
+    if (req.user.role === UserRole.STAFF) {
+      dto.branchId = req.user.branchId;
+    }
     return this.closeShift.execute(id, dto, req.user.id);
+  }
+
+  // STAFF: khóa về chi nhánh của mình. GĐ/KTTH: dùng branchId chỉ định (BranchAccessGuard đã cho phép global role).
+  private resolveBranchId(user: any, bodyBranchId?: string): string {
+    if (user.role === UserRole.STAFF) {
+      if (!user.branchId) {
+        throw new BadRequestException('Nhân viên chưa được gán chi nhánh');
+      }
+      return user.branchId;
+    }
+    if (!bodyBranchId) {
+      throw new BadRequestException('GĐ/KTTH vui lòng chọn chi nhánh để mở ca');
+    }
+    return bodyBranchId;
   }
 }
