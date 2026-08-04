@@ -141,7 +141,6 @@ model approval_requests {
   users                User               @relation(fields: [requested_by_user_id], references: [id], onUpdate: NoAction)
   approval_steps       approval_steps[]
 
-  @@unique([entity_type, entity_id], map: "uq_approval_request_entity")
   @@index([status, requested_at(sort: Desc)], map: "idx_approval_requests_status")
 }
 
@@ -613,9 +612,25 @@ model debt_movements {
   branches                                        Branch              @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
   users_debt_movements_created_by_user_idTousers  User                @relation("debt_movements_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
   debt_accounts                                   debt_accounts       @relation(fields: [debt_account_id], references: [id], onUpdate: NoAction)
+  debt_settlement_allocations_as_debt             debt_settlement_allocations[] @relation("debt_settlement_allocations_debt")
+  debt_settlement_allocations_as_settlement       debt_settlement_allocations[] @relation("debt_settlement_allocations_settlement")
 
   @@index([debt_account_id, business_date], map: "idx_debt_movements_account_date")
   @@index([source_type, source_id], map: "idx_debt_movements_source")
+}
+
+model debt_settlement_allocations {
+  id                                            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  settlement_movement_id                        String         @db.Uuid
+  debt_movement_id                              String         @db.Uuid
+  amount                                        Decimal        @db.Decimal(20, 2)
+  created_at                                    DateTime       @default(now()) @db.Timestamptz(6)
+  settlement_movement                           debt_movements @relation("debt_settlement_allocations_settlement", fields: [settlement_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  debt_movement                                 debt_movements @relation("debt_settlement_allocations_debt", fields: [debt_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([settlement_movement_id, debt_movement_id], map: "uq_debt_settlement_allocation")
+  @@index([debt_movement_id], map: "idx_debt_settlement_allocations_debt")
+  @@index([settlement_movement_id], map: "idx_debt_settlement_allocations_settlement")
 }
 
 model domestic_transfer_details {

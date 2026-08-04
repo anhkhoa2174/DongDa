@@ -3,7 +3,7 @@
 //
 // Phân quyền đơn giản — giai đoạn đầu:
 //   ADMIN       : 1 tài khoản, toàn quyền hệ thống
-//   MANAGER     : Trưởng chi nhánh / KTTH — quản lý chi nhánh mình
+//   MANAGER     : KTTH — quản lý nghiệp vụ toàn hệ thống
 //   STAFF       : Nhân viên chi nhánh — nhập giao dịch, kiểm tiền
 //   AUDITOR     : Chỉ đọc, không tác động dữ liệu
 
@@ -51,7 +51,7 @@ export interface User {
   password: string;   // bcrypt hashed, không bao giờ expose ra ngoài
   fullName: string;
   role: UserRole;
-  branchId?: string;  // undefined nếu ADMIN hoặc AUDITOR
+  branchId?: string;  // ADMIN/MANAGER/AUDITOR thường gắn Hội sở; STAFF gắn chi nhánh làm việc
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;

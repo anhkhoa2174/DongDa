@@ -55,55 +55,40 @@ Xóa luôn volume database dev:
 docker compose down -v
 ```
 
-## Tài Khoản Test
+## Tài Khoản Khởi Tạo
 
-Backend seed mặc định tạo 1 Hội sở, 5 chi nhánh và các tài khoản vận hành sau:
-
-```txt
-GĐ:
-Username: giamdoc
-Password: Giamdoc@123456
-Role:     ADMIN
-Chi nhánh: Hội sở
-```
-
-```txt
-KTTH:
-Username: ktth
-Password: Ktth@123456
-Role:     MANAGER
-Chi nhánh: Hội sở
-```
-
-```txt
-Nhân viên chi nhánh:
-Username: nv_nct       Password: Staff@123456  Chi nhánh: NCT - Nguyễn Chí Thanh
-Username: nv_tao_dan   Password: Staff@123456  Chi nhánh: TAO_DAN - Tao Đàn
-Username: nv_lhp       Password: Staff@123456  Chi nhánh: LHP - Lê Hồng Phong
-Username: nv_bay_hien  Password: Staff@123456  Chi nhánh: BAY_HIEN - Bảy Hiền
-Username: nv_an_dong   Password: Staff@123456  Chi nhánh: AN_DONG - An Đông
-```
-
-Tài khoản kỹ thuật cũ vẫn được seed để tương thích môi trường dev:
+Backend chỉ seed hai tài khoản gốc tại Hội sở:
 
 ```txt
 Username: admin
 Password: Admin@123456
 Role:     ADMIN
 Chi nhánh: Hội sở
+
+Username: auditor
+Password: Auditor@123456
+Role:     AUDITOR
+Chi nhánh: Hội sở
 ```
+
+Cả hai tài khoản đều phải đổi mật khẩu sau lần đăng nhập đầu tiên. Admin sử dụng module Chi nhánh và Tài khoản để khởi tạo dữ liệu vận hành thực tế.
 
 ## Dữ Liệu Database Dev
 
 ```txt
 Company: DONGDA - Công ty TNHH TM DV PT Đống Đa
 HeadOffice: HO - Hội sở
-Branches:
-- NCT - Chi nhánh Nguyễn Chí Thanh
-- TAO_DAN - Chi nhánh Tao Đàn
-- LHP - Chi nhánh Lê Hồng Phong
-- BAY_HIEN - Chi nhánh Bảy Hiền
-- AN_DONG - Chi nhánh An Đông
+Roles: ADMIN, MANAGER, STAFF, AUDITOR
+Users: admin, auditor
+```
+
+Không seed chi nhánh giao dịch, tỷ giá, tài khoản quỹ, số dư, giao dịch hoặc công nợ mẫu.
+
+Database đã được squash về một migration baseline. Với database dev từng chạy migration cũ, cần tạo lại volume trước khi khởi động:
+
+```bash
+docker compose down -v
+docker compose up --build
 ```
 
 Thông tin kết nối database khi chạy Docker Compose:

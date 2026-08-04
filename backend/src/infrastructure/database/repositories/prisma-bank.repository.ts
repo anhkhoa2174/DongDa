@@ -5,6 +5,8 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma.service';
 import { IBankRepository, ReceiveFromProviderInput } from '../../../domain/repositories/bank.repository';
 import { BankAccount, BankMovement, CurrencyCode } from '../../../domain/entities/bank.entity';
+import { toVietnamBusinessDate } from '../business-date';
+import { allocateDebtSettlement } from './debt-settlement-allocation';
 
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
 
@@ -41,6 +43,7 @@ export class PrismaBankRepository implements IBankRepository {
 
   async receiveFromProvider(input: ReceiveFromProviderInput): Promise<BankMovement> {
     const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
 
     const movementId = await this.prisma.$transaction(async (tx) => {
       await this.lockBankAccount(tx, input.bankAccountId);
@@ -74,7 +77,7 @@ export class PrismaBankRepository implements IBankRepository {
           bank_account_id: bankAcc.id,
           branch_id: bankAcc.branch_id,
           movement_type: 'DEPOSIT',
-          business_date: now,
+          business_date: businessDate,
           amount: input.amount,
           currency_code: bankAcc.currency_code,
           balance_before: before,
@@ -94,14 +97,14 @@ export class PrismaBankRepository implements IBankRepository {
       });
 
       // 3. Trừ công nợ (SETTLEMENT)
-      await tx.debt_movements.create({
+      const settlement = await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc.id,
           branch_id: debtAcc.branch_id,
           movement_type: 'SETTLEMENT',
           source_type: 'BANK_MOVEMENT',
           source_id: movement.id,
-          business_date: now,
+          business_date: businessDate,
           amount: input.amount,
           currency_code: debtAcc.currency_code,
           status: 'POSTED',
@@ -110,6 +113,7 @@ export class PrismaBankRepository implements IBankRepository {
           created_by_user_id: input.createdByUserId,
         },
       });
+      await allocateDebtSettlement(tx, debtAcc.id, settlement.id, input.amount);
 
       return movement.id;
     });
@@ -129,7 +133,7 @@ export class PrismaBankRepository implements IBankRepository {
     for (const g of grouped) {
       const s = Number(g._sum.amount ?? 0);
       if (INCREASE_TYPES.includes(g.movement_type)) debt += s;
-      else if (g.movement_type === 'SETTLEMENT') settled += s;
+      else if (g.movement_type === 'SETTLEMENT' || g.movement_type === 'REVERSAL') settled += s;
     }
     return debt - settled;
   }

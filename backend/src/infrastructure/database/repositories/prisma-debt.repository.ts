@@ -10,6 +10,8 @@ import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
   CurrencyCode, computeDebtStatus,
 } from '../../../domain/entities/debt.entity';
+import { toVietnamBusinessDate } from '../business-date';
+import { allocateDebtSettlement } from './debt-settlement-allocation';
 
 // movement_type nào là "tăng nợ"
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
@@ -19,26 +21,28 @@ export class PrismaDebtRepository implements IDebtRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async recordDebt(input: RecordDebtInput): Promise<DebtMovement> {
-    const businessDate = input.businessDate ?? new Date();
-    const account = await this.ensureAccount(
-      input.branchId, input.providerCode, input.currencyCode, businessDate,
-    );
+    const businessDate = toVietnamBusinessDate(input.businessDate ?? new Date());
     const now = new Date();
-    const row = await this.prisma.debt_movements.create({
-      data: {
-        debt_account_id: account.id,
-        branch_id: input.branchId,
-        movement_type: 'EXPECTED_DEBT',
-        source_type: (input.sourceType as any) ?? null,
-        source_id: input.sourceId ?? null,
-        business_date: businessDate,
-        amount: input.amount,
-        currency_code: input.currencyCode,
-        description: input.description ?? null,
-        status: 'POSTED',
-        posted_at: now,
-        created_by_user_id: input.createdByUserId,
-      },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const account = await this.ensureAccount(
+        tx, input.branchId, input.providerCode, input.currencyCode, businessDate,
+      );
+      return tx.debt_movements.create({
+        data: {
+          debt_account_id: account.id,
+          branch_id: input.branchId,
+          movement_type: 'EXPECTED_DEBT',
+          source_type: (input.sourceType as any) ?? null,
+          source_id: input.sourceId ?? null,
+          business_date: businessDate,
+          amount: input.amount,
+          currency_code: input.currencyCode,
+          description: input.description ?? null,
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
     });
     return toMovement(row);
   }
@@ -57,7 +61,7 @@ export class PrismaDebtRepository implements IDebtRepository {
       for (const group of grouped) {
         const amount = Number(group._sum.amount ?? 0);
         if (INCREASE_TYPES.includes(group.movement_type)) outstanding += amount;
-        if (group.movement_type === 'SETTLEMENT') outstanding -= amount;
+        if (group.movement_type === 'SETTLEMENT' || group.movement_type === 'REVERSAL') outstanding -= amount;
       }
       if (input.amount > outstanding) {
         throw new BadRequestException(
@@ -65,12 +69,12 @@ export class PrismaDebtRepository implements IDebtRepository {
         );
       }
 
-      return tx.debt_movements.create({
+      const settlement = await tx.debt_movements.create({
         data: {
           debt_account_id: account.id,
           branch_id: account.branch_id,
           movement_type: 'SETTLEMENT',
-          business_date: input.businessDate ?? now,
+          business_date: toVietnamBusinessDate(input.businessDate ?? now),
           amount: input.amount,
           currency_code: account.currency_code,
           description: input.description ?? null,
@@ -79,12 +83,15 @@ export class PrismaDebtRepository implements IDebtRepository {
           created_by_user_id: input.createdByUserId,
         },
       });
+      await allocateDebtSettlement(tx, account.id, settlement.id, input.amount);
+      return settlement;
     });
     return toMovement(row);
   }
 
   async settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement> {
     const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
       const debtAccount = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
@@ -154,7 +161,7 @@ export class PrismaDebtRepository implements IDebtRepository {
             branch_id: headOffice.id,
             fund_account_id: account.id,
             movement_type: 'CASH_IN',
-            business_date: now,
+            business_date: businessDate,
             amount: receipt.amount,
             currency_code: receipt.currency,
             source_name: `${debtAccount.provider_code} - công nợ ${debtAccount.business_date.toISOString().slice(0, 10)}`,
@@ -169,7 +176,7 @@ export class PrismaDebtRepository implements IDebtRepository {
         await tx.ledger_entries.create({
           data: {
             entry_no: `LE-${movement.movement_no}`,
-            business_date: now,
+            business_date: businessDate,
             branch_id: headOffice.id,
             source_type: 'CASH_MOVEMENT',
             source_id: movement.id,
@@ -199,7 +206,7 @@ export class PrismaDebtRepository implements IDebtRepository {
           movement_type: 'SETTLEMENT',
           source_type: 'CASH_MOVEMENT',
           source_id: firstCashMovementId,
-          business_date: now,
+          business_date: businessDate,
           amount: settlementAmount,
           currency_code: 'USD',
           description: `${input.description ?? 'Thu tiền mặt USD'}; phần lẻ ${input.oddUsdAmount} USD = ${oddVndAmount} VND @ ${rate}`,
@@ -208,6 +215,7 @@ export class PrismaDebtRepository implements IDebtRepository {
           created_by_user_id: input.createdByUserId,
         },
       });
+      await allocateDebtSettlement(tx, debtAccount.id, settlement.id, settlementAmount);
       return toMovement(settlement);
     });
   }
@@ -229,11 +237,11 @@ export class PrismaDebtRepository implements IDebtRepository {
         ...(filter?.branchId && { branch_id: filter.branchId }),
         ...(filter?.providerCode && { provider_code: filter.providerCode }),
         ...(filter?.currencyCode && { currency_code: filter.currencyCode }),
-        ...(filter?.businessDate && { business_date: filter.businessDate }),
+        ...(filter?.businessDate && { business_date: toVietnamBusinessDate(filter.businessDate) }),
         ...(!filter?.businessDate && (filter?.dateFrom || filter?.dateTo) && {
           business_date: {
-            ...(filter.dateFrom && { gte: filter.dateFrom }),
-            ...(filter.dateTo && { lte: filter.dateTo }),
+            ...(filter.dateFrom && { gte: toVietnamBusinessDate(filter.dateFrom) }),
+            ...(filter.dateTo && { lte: toVietnamBusinessDate(filter.dateTo) }),
           },
         }),
       },
@@ -253,9 +261,9 @@ export class PrismaDebtRepository implements IDebtRepository {
   // ── helpers ──────────────────────────────────────────────
 
   private async ensureAccount(
-    branchId: string, providerCode: string, currencyCode: CurrencyCode, businessDate: Date,
+    db: any, branchId: string, providerCode: string, currencyCode: CurrencyCode, businessDate: Date,
   ) {
-    return this.prisma.debt_accounts.upsert({
+    return db.debt_accounts.upsert({
       where: {
         branch_id_provider_code_currency_code_business_date: {
           branch_id: branchId,
@@ -286,7 +294,7 @@ export class PrismaDebtRepository implements IDebtRepository {
     for (const g of grouped) {
       const sum = Number(g._sum.amount ?? 0);
       if (INCREASE_TYPES.includes(g.movement_type)) totalDebt += sum;
-      else if (g.movement_type === 'SETTLEMENT') totalSettled += sum;
+      else if (g.movement_type === 'SETTLEMENT' || g.movement_type === 'REVERSAL') totalSettled += sum;
     }
     const outstanding = totalDebt - totalSettled;
     return {
@@ -307,7 +315,7 @@ export class PrismaDebtRepository implements IDebtRepository {
     return grouped.reduce((balance: number, group: any) => {
       const amount = Number(group._sum.amount ?? 0);
       if (INCREASE_TYPES.includes(group.movement_type)) return balance + amount;
-      if (group.movement_type === 'SETTLEMENT') return balance - amount;
+      if (group.movement_type === 'SETTLEMENT' || group.movement_type === 'REVERSAL') return balance - amount;
       return balance;
     }, 0);
   }

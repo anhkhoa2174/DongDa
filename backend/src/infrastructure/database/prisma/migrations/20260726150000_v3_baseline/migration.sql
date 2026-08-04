@@ -1,5 +1,5 @@
 -- ============================================================================
--- DONG DA SYSTEM v3.0 - DATABASE DRAFT FOR REVIEW
+-- DONG DA SYSTEM - INITIAL DATABASE SCHEMA
 -- PostgreSQL 15+
 --
 -- Purpose:
@@ -9,7 +9,7 @@
 --   4. Allow fund transfer, bank movement, cash movement without shift.
 --   5. Use ledger as financial source of truth.
 --
--- This is a review draft, not a migration script.
+-- Baseline duy nhất cho database mới. Dữ liệu nền được tạo bởi seed.ts.
 -- ============================================================================
 
 
@@ -876,10 +876,6 @@ CREATE TABLE fund_transfers (
     transfer_no                 VARCHAR(100) NOT NULL UNIQUE,
     source_branch_id            UUID NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
     destination_branch_id       UUID NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
-    source_account_id           UUID NOT NULL REFERENCES fund_accounts(id) ON DELETE RESTRICT,
-    destination_account_id      UUID NOT NULL REFERENCES fund_accounts(id) ON DELETE RESTRICT,
-    currency_code               currency_code NOT NULL,
-    amount                      NUMERIC(20, 2) NOT NULL CHECK (amount > 0),
     status                      fund_transfer_status NOT NULL DEFAULT 'DRAFT',
     created_by_user_id          UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     approved_by_user_id         UUID REFERENCES users(id) ON DELETE RESTRICT,
@@ -890,8 +886,7 @@ CREATE TABLE fund_transfers (
     posted_at                   TIMESTAMPTZ,
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT chk_fund_transfer_branches CHECK (source_branch_id <> destination_branch_id),
-    CONSTRAINT chk_fund_transfer_accounts CHECK (source_account_id <> destination_account_id)
+    CONSTRAINT chk_fund_transfer_branches CHECK (source_branch_id <> destination_branch_id)
 );
 
 CREATE INDEX idx_fund_transfers_source ON fund_transfers(source_branch_id, status);
@@ -900,6 +895,27 @@ CREATE INDEX idx_fund_transfers_destination ON fund_transfers(destination_branch
 CREATE TRIGGER trg_fund_transfers_updated_at
 BEFORE UPDATE ON fund_transfers
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE fund_transfer_items (
+    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    fund_transfer_id            UUID NOT NULL REFERENCES fund_transfers(id) ON DELETE CASCADE,
+    source_account_id           UUID NOT NULL REFERENCES fund_accounts(id) ON DELETE RESTRICT,
+    destination_account_id      UUID NOT NULL REFERENCES fund_accounts(id) ON DELETE RESTRICT,
+    currency_code               currency_code NOT NULL,
+    amount                      NUMERIC(20, 2) NOT NULL CHECK (amount > 0),
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_fund_transfer_items_currency UNIQUE (fund_transfer_id, currency_code)
+);
+
+CREATE INDEX idx_fund_transfer_items_transfer
+ON fund_transfer_items(fund_transfer_id);
+
+CREATE INDEX idx_fund_transfer_items_source_account
+ON fund_transfer_items(source_account_id);
+
+CREATE INDEX idx_fund_transfer_items_destination_account
+ON fund_transfer_items(destination_account_id);
 
 CREATE TABLE bank_balance_movements (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1012,6 +1028,7 @@ CREATE TABLE cash_movements (
     business_date           DATE NOT NULL,
     amount                  NUMERIC(20, 2) NOT NULL CHECK (amount > 0),
     currency_code           currency_code NOT NULL,
+    source_name             VARCHAR(255) NOT NULL,
     description             TEXT,
     status                  workflow_status NOT NULL DEFAULT 'DRAFT',
     created_by_user_id      UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
@@ -1033,13 +1050,17 @@ CREATE TABLE debt_accounts (
     branch_id       UUID NOT NULL REFERENCES branches(id) ON DELETE RESTRICT,
     provider_code   VARCHAR(50) NOT NULL,
     currency_code   currency_code NOT NULL,
+    business_date   DATE NOT NULL,
     name            VARCHAR(255) NOT NULL,
     status          record_status NOT NULL DEFAULT 'ACTIVE',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_debt_account UNIQUE (branch_id, provider_code, currency_code)
+    CONSTRAINT uq_debt_account_day UNIQUE (branch_id, provider_code, currency_code, business_date)
 );
+
+CREATE INDEX idx_debt_accounts_date_status
+ON debt_accounts(business_date, status);
 
 CREATE TABLE debt_movements (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1066,6 +1087,23 @@ ON debt_movements(debt_account_id, business_date);
 
 CREATE INDEX idx_debt_movements_source
 ON debt_movements(source_type, source_id);
+
+CREATE TABLE debt_settlement_allocations (
+    id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    settlement_movement_id      UUID NOT NULL REFERENCES debt_movements(id) ON DELETE RESTRICT,
+    debt_movement_id            UUID NOT NULL REFERENCES debt_movements(id) ON DELETE RESTRICT,
+    amount                      NUMERIC(20, 2) NOT NULL CHECK (amount > 0),
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_debt_settlement_allocation UNIQUE (settlement_movement_id, debt_movement_id),
+    CONSTRAINT chk_debt_settlement_distinct CHECK (settlement_movement_id <> debt_movement_id)
+);
+
+CREATE INDEX idx_debt_settlement_allocations_debt
+ON debt_settlement_allocations(debt_movement_id);
+
+CREATE INDEX idx_debt_settlement_allocations_settlement
+ON debt_settlement_allocations(settlement_movement_id);
 
 CREATE TABLE cash_counts (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1110,13 +1148,15 @@ CREATE TABLE approval_requests (
     status              approval_status NOT NULL DEFAULT 'PENDING',
     requested_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at        TIMESTAMPTZ,
-    note                TEXT,
-
-    CONSTRAINT uq_approval_request_entity UNIQUE (entity_type, entity_id)
+    note                TEXT
 );
 
 CREATE INDEX idx_approval_requests_status
 ON approval_requests(status, requested_at DESC);
+
+CREATE UNIQUE INDEX uq_approval_request_pending_entity
+ON approval_requests(entity_type, entity_id)
+WHERE status = 'PENDING';
 
 CREATE TABLE approval_steps (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),

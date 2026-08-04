@@ -5,6 +5,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { IMgRepository, CreateMgInput, ListMgFilter } from '../../../domain/repositories/mg.repository';
 import { MgTransaction, Currency2, mgImpliedRate, mgProfit } from '../../../domain/entities/mg.entity';
+import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
 export class PrismaMgRepository implements IMgRepository {
@@ -17,6 +18,7 @@ export class PrismaMgRepository implements IMgRepository {
 
   async create(input: CreateMgInput): Promise<MgTransaction> {
     const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
     const rate = input.appliedRate;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
@@ -28,7 +30,7 @@ export class PrismaMgRepository implements IMgRepository {
           operation_code: 'MG',
           branch_id: input.branchId,
           shift_id: shift.id,
-          business_date: now,
+          business_date: businessDate,
           status: 'COMPLETED',
           customer_name: input.customerName ?? null,
           amount: input.mgUsdAmount,
@@ -83,7 +85,7 @@ export class PrismaMgRepository implements IMgRepository {
       await tx.ledger_entries.create({
         data: {
           entry_no: `MG-${txn.transaction_no}`,
-          business_date: now,
+          business_date: businessDate,
           branch_id: input.branchId,
           shift_id: shift.id,
           source_type: 'CUSTOMER_TRANSACTION',
@@ -98,7 +100,7 @@ export class PrismaMgRepository implements IMgRepository {
 
       // Công nợ MG tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.mgUsdAmount : input.mgVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency, now);
+      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency, businessDate);
       await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc,
@@ -106,7 +108,7 @@ export class PrismaMgRepository implements IMgRepository {
           movement_type: 'EXPECTED_DEBT',
           source_type: 'CUSTOMER_TRANSACTION',
           source_id: txn.id,
-          business_date: now,
+          business_date: businessDate,
           amount: debtAmount,
           currency_code: input.paidCurrency,
           status: 'POSTED',

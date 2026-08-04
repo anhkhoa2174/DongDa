@@ -1,2 +1,0 @@
-ALTER TABLE cash_count_lines
-DROP CONSTRAINT IF EXISTS cash_count_lines_system_amount_check;

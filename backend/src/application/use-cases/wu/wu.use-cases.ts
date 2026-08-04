@@ -33,7 +33,7 @@ export class CreateWuUseCase {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${rateType} cho WU/MG USD`);
     }
     const wuRate = dto.wuUsdAmount > 0 ? dto.wuVndAmount / dto.wuUsdAmount : systemRate;
-    const appliedRate = clampRate(dto.appliedRate, wuRate, systemRate);
+    const appliedRate = validateAppliedRate(dto.appliedRate, wuRate, systemRate);
     assertWuPayoutMatches(dto, appliedRate);
 
     return this.wuRepo.create({
@@ -60,12 +60,18 @@ export class ListWuUseCase {
   }
 }
 
-function clampRate(value: number, firstRate: number, secondRate: number) {
+function validateAppliedRate(value: number, firstRate: number, secondRate: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new BadRequestException('Tỷ giá áp dụng phải là số dương hợp lệ');
+  }
   const rates = [firstRate, secondRate].filter((rate) => Number.isFinite(rate) && rate > 0);
   if (rates.length === 0) return value;
   const min = Math.min(...rates);
   const max = Math.max(...rates);
-  return Math.min(Math.max(value, min), max);
+  if (value < min || value > max) {
+    throw new BadRequestException(`Tỷ giá áp dụng phải nằm trong biên ${min} - ${max}`);
+  }
+  return value;
 }
 
 function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {

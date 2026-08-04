@@ -5,6 +5,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { IWuRepository, CreateWuInput, ListWuFilter } from '../../../domain/repositories/wu.repository';
 import { WuTransaction, Currency2, wuImpliedRate, wuProfit } from '../../../domain/entities/wu.entity';
+import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
 export class PrismaWuRepository implements IWuRepository {
@@ -12,6 +13,7 @@ export class PrismaWuRepository implements IWuRepository {
 
   async create(input: CreateWuInput): Promise<WuTransaction> {
     const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
     const rate = input.appliedRate;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
@@ -25,7 +27,7 @@ export class PrismaWuRepository implements IWuRepository {
           operation_code: 'WU',
           branch_id: input.branchId,
           shift_id: shift.id,
-          business_date: now,
+          business_date: businessDate,
           status: 'COMPLETED',
           customer_name: input.customerName ?? null,
           amount: input.wuUsdAmount,
@@ -69,7 +71,7 @@ export class PrismaWuRepository implements IWuRepository {
       await tx.ledger_entries.create({
         data: {
           entry_no: `WU-${txn.transaction_no}`,
-          business_date: now,
+          business_date: businessDate,
           branch_id: input.branchId,
           shift_id: shift.id,
           source_type: 'CUSTOMER_TRANSACTION',
@@ -84,7 +86,7 @@ export class PrismaWuRepository implements IWuRepository {
 
       // 5. Công nợ WU tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.wuUsdAmount : input.wuVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, now);
+      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, businessDate);
       await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc,
@@ -92,7 +94,7 @@ export class PrismaWuRepository implements IWuRepository {
           movement_type: 'EXPECTED_DEBT',
           source_type: 'CUSTOMER_TRANSACTION',
           source_id: txn.id,
-          business_date: now,
+          business_date: businessDate,
           amount: debtAmount,
           currency_code: input.paidCurrency,
           status: 'POSTED',

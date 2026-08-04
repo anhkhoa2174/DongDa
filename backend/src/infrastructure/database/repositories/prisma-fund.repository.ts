@@ -154,7 +154,7 @@ export class PrismaFundRepository implements IFundRepository {
       const outstanding = account.debt_movements.reduce((sum, movement) => {
         const amount = Number(movement.amount);
         if (movement.movement_type === 'EXPECTED_DEBT' || movement.movement_type === 'ACTUAL_DEBT') return sum + amount;
-        if (movement.movement_type === 'SETTLEMENT') return sum - amount;
+        if (movement.movement_type === 'SETTLEMENT' || movement.movement_type === 'REVERSAL') return sum - amount;
         return sum;
       }, 0);
       if (currency === 'VND') debtVnd += outstanding;
@@ -454,16 +454,18 @@ export class PrismaFundRepository implements IFundRepository {
   }
 
   async confirmTransfer(id: string, confirmedByUserId: string): Promise<FundTransfer> {
-    const t = await this.prisma.fund_transfers.findUniqueOrThrow({
-      where: { id },
-      include: { fund_transfer_items: true },
-    });
-    if (t.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException(`Chỉ xác nhận được phiếu đang chờ (hiện tại: ${t.status})`);
-    }
     const now = new Date();
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM fund_transfers WHERE id = ${id}::uuid FOR UPDATE`;
+      const t = await tx.fund_transfers.findUniqueOrThrow({
+        where: { id },
+        include: { fund_transfer_items: true },
+      });
+      if (t.status !== 'PENDING_APPROVAL') {
+        throw new BadRequestException(`Chỉ xác nhận được phiếu đang chờ (hiện tại: ${t.status})`);
+      }
+
       const sourceAccountIds = [...new Set(t.fund_transfer_items.map((item) => item.source_account_id))].sort();
       for (const sourceAccountId of sourceAccountIds) {
         await this.lockFundAccount(tx, sourceAccountId);
@@ -513,14 +515,20 @@ export class PrismaFundRepository implements IFundRepository {
           ledger_lines: { create: ledgerLines },
         },
       });
-      return tx.fund_transfers.update({
-        where: { id },
+      const claimed = await tx.fund_transfers.updateMany({
+        where: { id, status: 'PENDING_APPROVAL' },
         data: {
           status: 'CONFIRMED',
           confirmed_by_user_id: confirmedByUserId,
           confirmed_at: now,
           posted_at: now,
         },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Phiếu tiếp quỹ đã được xử lý bởi người khác');
+      }
+      return tx.fund_transfers.findUniqueOrThrow({
+        where: { id },
         include: { fund_transfer_items: true },
       });
     });

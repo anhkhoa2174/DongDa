@@ -213,7 +213,7 @@ export class PrismaReportsRepository implements IReportsRepository {
       for (const movement of account.debt_movements) {
         const amount = Number(movement.amount);
         if (movement.movement_type === 'EXPECTED_DEBT' || movement.movement_type === 'ACTUAL_DEBT') outstanding += amount;
-        else if (movement.movement_type === 'SETTLEMENT') outstanding -= amount;
+        else if (movement.movement_type === 'SETTLEMENT' || movement.movement_type === 'REVERSAL') outstanding -= amount;
       }
       return total + outstanding * conversionRate(account.currency_code);
     }, 0);

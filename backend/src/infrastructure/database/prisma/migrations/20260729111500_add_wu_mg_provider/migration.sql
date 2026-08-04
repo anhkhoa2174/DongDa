@@ -1,1 +1,0 @@
-ALTER TYPE service_provider ADD VALUE IF NOT EXISTS 'WU_MG' BEFORE 'WU';

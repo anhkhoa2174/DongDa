@@ -49,7 +49,7 @@ export class PrismaUserRepository implements IUserRepository {
       include: INCLUDE,
       orderBy: { created_at: 'desc' },
     });
-    return rows.map(toDomain);
+    return rows.map(toDomain).filter((user): user is User => user !== null);
   }
 
   async save(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> {
@@ -144,15 +144,17 @@ export class PrismaUserRepository implements IUserRepository {
 }
 
 // Map bản ghi users (kèm employees + user_roles.roles) → domain User phẳng
-function toDomain(row: any): User {
-  const roleCode: string | undefined = row.user_roles?.[0]?.roles?.code;
+function toDomain(row: any): User | null {
+  if (!Array.isArray(row.user_roles) || row.user_roles.length !== 1) return null;
+  const roleCode = row.user_roles[0]?.roles?.code as UserRole | undefined;
+  if (!roleCode || !Object.values(UserRole).includes(roleCode)) return null;
   return {
     id: row.id,
     username: row.username,
     email: row.employees?.email ?? '',
     password: row.password_hash,
     fullName: row.employees?.full_name ?? '',
-    role: (roleCode as UserRole) ?? UserRole.STAFF,
+    role: roleCode,
     branchId: row.employees?.branch_id ?? undefined,
     isActive: row.status === 'ACTIVE',
     createdAt: row.created_at,
