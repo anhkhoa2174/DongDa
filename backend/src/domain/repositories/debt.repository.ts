@@ -17,18 +17,17 @@ export interface RecordDebtInput {
   createdByUserId: string;
 }
 
-export interface SettleDebtInput {
-  debtAccountId: string;
-  amount: number;
-  businessDate?: Date;
-  description?: string;
-  createdByUserId: string;
-}
-
 export interface SettleUsdCashDebtInput {
   debtAccountId: string;
   cashUsdAmount: number;
   oddUsdAmount: number;
+  description?: string;
+  createdByUserId: string;
+}
+
+export interface SettleVndCashDebtInput {
+  debtAccountId: string;
+  amount: number;
   description?: string;
   createdByUserId: string;
 }
@@ -46,9 +45,9 @@ export interface IDebtRepository {
   // Ghi nhận nợ (tăng) — WU/MG sẽ gọi hàm này; tự tạo sổ nếu chưa có
   recordDebt(input: RecordDebtInput): Promise<DebtMovement>;
 
-  // Trả nợ (giảm) — SETTLEMENT
-  settle(input: SettleDebtInput): Promise<DebtMovement>;
+  // Giải quyết công nợ phải đồng thời ghi nhận nguồn tiền thực nhận.
   settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement>;
+  settleVndCash(input: SettleVndCashDebtInput): Promise<DebtMovement>;
 
   findAccountById(id: string): Promise<DebtAccount | null>;
   getAccountSummary(id: string): Promise<DebtAccountSummary | null>;

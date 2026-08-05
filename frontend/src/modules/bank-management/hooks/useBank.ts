@@ -22,6 +22,7 @@ export function useReceiveMoney() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEY });
       qc.invalidateQueries({ queryKey: ['debts'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }

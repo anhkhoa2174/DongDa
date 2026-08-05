@@ -6,7 +6,7 @@ export class VoidTransactionDto {
   reason: string;
 }
 
-export class RequestTransactionChangeDto {
+export class CreateTransactionAdjustmentDto {
   @IsString()
   @MaxLength(500)
   reason: string;

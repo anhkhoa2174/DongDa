@@ -84,6 +84,8 @@ GET    /api/v1/exchange-rates/active
 GET    /api/v1/exchange-rates/history
 PATCH  /api/v1/exchange-rates/:id/approve
 PATCH  /api/v1/exchange-rates/:id/reject
+POST   /api/v1/exchange-rates/parse-image   multipart field `image`
+POST   /api/v1/exchange-rates/batch         tạo nhiều DRAFT trong một transaction
 ```
 
 Quyền:
@@ -132,6 +134,27 @@ Payload tạo tỷ giá:
 ```
 
 Backend sẽ tự normalize provider theo `rateType`, nên UI không cần tin vào input provider để quyết định nghiệp vụ.
+
+## Nhập Tỷ Giá Từ Ảnh
+
+GĐ/KTTH có thể chọn **Nhập tỷ giá từ ảnh** trên trang tạo/duyệt:
+
+1. Chọn một ảnh JPEG, PNG hoặc WebP, tối đa 10 MB.
+2. Frontend gửi ảnh tới `POST /exchange-rates/parse-image`.
+3. Backend gửi ảnh inline tới Gemini và yêu cầu structured JSON theo schema nghiệp vụ.
+4. Backend whitelist loại tỷ giá, provider, mã ngoại tệ, số dương và loại dòng trùng.
+5. Người dùng xem lại, sửa hoặc xóa từng dòng trong modal.
+6. `POST /exchange-rates/batch` tạo toàn bộ bản ghi `DRAFT` trong một DB transaction.
+7. Tỷ giá chỉ trở thành `ACTIVE` sau thao tác duyệt riêng.
+
+Cấu hình chỉ đặt trong `backend/.env`:
+
+```env
+GEMINI_API_KEY=your-google-ai-api-key
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+API key không được đặt trong biến `VITE_*` hoặc gửi xuống trình duyệt. System prompt coi chữ trong ảnh là dữ liệu không tin cậy, cấm làm theo chỉ dẫn trong ảnh, cấm suy đoán số bị mờ và cấm tự duyệt tỷ giá.
 
 ## Frontend Files
 

@@ -16,10 +16,14 @@ export class GetSummaryUseCase {
     @Inject('IBankRepository') private readonly bank: IBankRepository,
   ) {}
 
-  async execute(filter?: { branchId?: string }) {
+  async execute(filter?: { branchId?: string; dateFrom?: Date; dateToExclusive?: Date }) {
     const [transactions, debts, funds, bankAccounts] = await Promise.all([
       this.reports.txStats(filter),
-      this.debt.listAccountSummaries(filter),
+      this.debt.listAccountSummaries({
+        branchId: filter?.branchId,
+        dateFrom: filter?.dateFrom,
+        dateTo: filter?.dateToExclusive,
+      }),
       this.fund.listBalances(filter?.branchId),
       this.bank.listAccounts(),
     ]);

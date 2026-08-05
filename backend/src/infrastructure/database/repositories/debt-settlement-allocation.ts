@@ -32,6 +32,17 @@ export async function allocateDebtSettlement(
     WHERE debt.debt_account_id = ${debtAccountId}::uuid
       AND debt.status = 'POSTED'
       AND debt.movement_type IN ('EXPECTED_DEBT', 'ACTUAL_DEBT')
+      AND (
+        debt.movement_type = 'ACTUAL_DEBT'
+        OR NOT EXISTS (
+          SELECT 1
+          FROM debt_movements actual
+          WHERE actual.debt_account_id = debt.debt_account_id
+            AND actual.movement_type = 'ACTUAL_DEBT'
+            AND actual.source_type = 'JOURNAL_RECONCILIATION'
+            AND actual.status = 'POSTED'
+        )
+      )
       AND debt.amount
         - COALESCE((
             SELECT SUM(allocation.amount)

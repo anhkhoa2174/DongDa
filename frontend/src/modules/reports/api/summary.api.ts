@@ -80,6 +80,8 @@ export interface CompanyDashboardDto {
 
 export const summaryApi = {
   get: () => httpClient.get<SummaryDto>('/reports/summary').then((r) => r.data),
+  generate: (input: { reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string }) =>
+    httpClient.post('/reports/generate', input).then((response) => response.data),
   dashboardOperations: (date: string) =>
     httpClient.get<DashboardOperationsDto>('/reports/dashboard-operations', { params: { date } })
       .then((response) => response.data),

@@ -10,6 +10,14 @@ export function useCentralFundSummary(enabled = true) {
   });
 }
 
+export function useFundMovementHistory(branchId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ['fund', 'movement-history', branchId],
+    queryFn: () => centralFundApi.getMovementHistory(branchId),
+    enabled: enabled && Boolean(branchId),
+  });
+}
+
 export function useCreateBranchFundMovement() {
   const queryClient = useQueryClient();
   return useMutation({

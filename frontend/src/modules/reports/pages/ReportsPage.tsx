@@ -13,8 +13,14 @@ import {
 } from '@ant-design/icons';
 import { Button, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Typography } from 'antd';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import dayjs, { type Dayjs } from 'dayjs';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatVnd } from '@/shared/utils/formatters';
+import { summaryApi } from '../api/summary.api';
+import { useNotify } from '@/app/providers/notifications/useNotify';
+import { useBranches } from '@/modules/western-union/hooks/useWu';
 
 const reportCards = [
   { key: 'fund',     title: 'Báo cáo Vốn & Quỹ',    desc: 'Tổng vốn, biến động, tồn quỹ',     icon: <WalletOutlined />,        color: '#2563eb' },
@@ -27,25 +33,28 @@ const reportCards = [
   { key: 'bank',     title: 'Báo cáo Ngân hàng',    desc: 'Sao kê, đối chiếu ACB/MSB',        icon: <BankOutlined />,          color: '#f5b301' },
 ];
 
-const revenueData = [
-  { day: '23/06', wu: 4200000, mg: 800000 },
-  { day: '24/06', wu: 5100000, mg: 1200000 },
-  { day: '25/06', wu: 3800000, mg: 900000 },
-  { day: '26/06', wu: 5800000, mg: 1500000 },
-  { day: '27/06', wu: 6200000, mg: 1400000 },
-  { day: '28/06', wu: 4800000, mg: 1100000 },
-  { day: '29/06', wu: 4500000, mg: 1000000 },
-];
-
-const branchLeaderboard = [
-  { branch: 'CN NCT',           wu: 12, mg: 3, fx: 2, transfer: 1, total: 18, profit: 4_500_000 },
-  { branch: 'CN Tao Đàn',       wu: 9,  mg: 2, fx: 3, transfer: 0, total: 14, profit: 3_200_000 },
-  { branch: 'CN Lê Hồng Phong', wu: 11, mg: 2, fx: 1, transfer: 2, total: 16, profit: 4_100_000 },
-  { branch: 'CN Bảy Hiền',      wu: 0,  mg: 0, fx: 0, transfer: 0, total: 0,  profit: 0 },
-  { branch: 'CN An Đông',       wu: 15, mg: 1, fx: 1, transfer: 1, total: 18, profit: 5_200_000 },
-];
-
 export function ReportsPage() {
+  const [reportType, setReportType] = useState('wu');
+  const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day'), dayjs()]);
+  const [branchId, setBranchId] = useState<string>();
+  const { data: branches = [] } = useBranches();
+  const { data: dashboard } = useQuery({
+    queryKey: ['reports', 'dashboard', range[1].format('YYYY-MM-DD')],
+    queryFn: () => summaryApi.companyDashboard(range[1].format('YYYY-MM-DD')),
+  });
+  const notify = useNotify();
+  const generateReport = useMutation({
+    mutationFn: ({ format, type = reportType }: { format: 'PREVIEW' | 'EXCEL' | 'PDF'; type?: string }) =>
+      summaryApi.generate({
+        reportType: type, format, branchId,
+        dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD'),
+      }),
+    onSuccess: (_, { format }) => notify.success(
+      format === 'PREVIEW' ? 'Đã tổng hợp dữ liệu báo cáo' : `Đã chuẩn bị báo cáo ${format}`,
+    ),
+    onError: () => notify.error('Không thể tạo báo cáo'),
+  });
+
   return (
     <PageScaffold
       title="Báo cáo quản trị"
@@ -57,34 +66,30 @@ export function ReportsPage() {
         className="mb-4"
         extra={
           <Space>
-            <Button icon={<FileExcelOutlined />}>Xuất Excel</Button>
-            <Button icon={<FilePdfOutlined />}>Xuất PDF</Button>
-            <Button type="primary" icon={<BarChartOutlined />}>Xem trước</Button>
+            <Button loading={generateReport.isPending} icon={<FileExcelOutlined />} onClick={() => generateReport.mutate({ format: 'EXCEL' })}>Xuất Excel</Button>
+            <Button loading={generateReport.isPending} icon={<FilePdfOutlined />} onClick={() => generateReport.mutate({ format: 'PDF' })}>Xuất PDF</Button>
+            <Button loading={generateReport.isPending} type="primary" icon={<BarChartOutlined />} onClick={() => generateReport.mutate({ format: 'PREVIEW' })}>Xem trước</Button>
           </Space>
         }
       >
         <Row gutter={16}>
           <Col xs={24} md={6}>
             <Typography.Text type="secondary" className="text-xs!">Loại báo cáo</Typography.Text>
-            <Select className="w-full" defaultValue="wu" options={reportCards.map((r) => ({ value: r.key, label: r.title }))} />
+            <Select className="w-full" value={reportType} onChange={setReportType} options={reportCards.map((r) => ({ value: r.key, label: r.title }))} />
           </Col>
           <Col xs={24} md={9}>
             <Typography.Text type="secondary" className="text-xs!">Khoảng thời gian</Typography.Text>
-            <DatePicker.RangePicker className="w-full" />
+            <DatePicker.RangePicker className="w-full" value={range} onChange={(value) => value && setRange(value as [Dayjs, Dayjs])} />
           </Col>
           <Col xs={24} md={5}>
             <Typography.Text type="secondary" className="text-xs!">Chi nhánh</Typography.Text>
             <Select
               className="w-full"
-              defaultValue="all"
-              options={[
-                { value: 'all', label: 'Tất cả' },
-                { value: 'nct', label: 'NCT' },
-                { value: 'td', label: 'Tao Đàn' },
-                { value: 'lhp', label: 'Lê Hồng Phong' },
-                { value: 'bh', label: 'Bảy Hiền' },
-                { value: 'ad', label: 'An Đông' },
-              ]}
+              allowClear
+              placeholder="Tất cả chi nhánh"
+              value={branchId}
+              onChange={setBranchId}
+              options={branches.map((branch) => ({ value: branch.id, label: branch.name }))}
             />
           </Col>
           <Col xs={24} md={4}>
@@ -111,7 +116,16 @@ export function ReportsPage() {
               <div className="font-semibold">{r.title}</div>
               <Typography.Text type="secondary" className="text-xs!">{r.desc}</Typography.Text>
               <div className="mt-2">
-                <Button size="small" type="link" className="p-0!" icon={<DownloadOutlined />}>Tải nhanh</Button>
+                <Button
+                  size="small"
+                  type="link"
+                  className="p-0!"
+                  icon={<DownloadOutlined />}
+                  loading={generateReport.isPending}
+                  onClick={() => generateReport.mutate({ format: 'EXCEL', type: r.key })}
+                >
+                  Tải nhanh
+                </Button>
               </div>
             </Card>
           </Col>
@@ -120,15 +134,15 @@ export function ReportsPage() {
 
       <Row gutter={16}>
         <Col xs={24} lg={14}>
-          <Card title="Doanh số WU/MG — 7 ngày gần nhất">
+          <Card title="Giá trị giao dịch và lợi nhuận — 7 ngày gần nhất">
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={revenueData}>
+              <BarChart data={dashboard?.revenueTrend ?? []}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="day" />
+                <XAxis dataKey="label" />
                 <YAxis tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
                 <Tooltip formatter={(v: number) => formatVnd(v)} />
-                <Bar dataKey="wu" fill="#2563eb" name="Western Union" />
-                <Bar dataKey="mg" fill="#7c3aed" name="MoneyGram" />
+                <Bar dataKey="revenueVnd" fill="#111111" name="Giá trị giao dịch" />
+                <Bar dataKey="profitVnd" fill="#f5b301" name="Lợi nhuận" />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -136,16 +150,16 @@ export function ReportsPage() {
         <Col xs={24} lg={10}>
           <Card title="Leaderboard chi nhánh hôm nay">
             <Table
-              rowKey="branch"
+              rowKey="id"
               size="small"
               pagination={false}
-              dataSource={branchLeaderboard}
+              dataSource={dashboard?.branches ?? []}
               columns={[
-                { title: 'Chi nhánh', dataIndex: 'branch' },
-                { title: 'GD', dataIndex: 'total', align: 'center' },
+                { title: 'Chi nhánh', dataIndex: 'name' },
+                { title: 'GD', dataIndex: 'todayTransactions', align: 'center' },
                 {
                   title: 'Lợi nhuận',
-                  dataIndex: 'profit',
+                  dataIndex: 'profitToday',
                   align: 'right',
                   render: (v: number) => (
                     <Typography.Text strong style={{ color: v > 0 ? '#16a34a' : '#64748b' }}>
@@ -162,22 +176,22 @@ export function ReportsPage() {
       <Row gutter={16} className="mt-4">
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="GD hôm nay" value={66} />
+            <Statistic title="GD trong ngày" value={dashboard?.operations.transactionCount ?? 0} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Doanh thu hôm nay" value={5_500_000} formatter={(v) => formatVnd(Number(v))} />
+            <Statistic title="Giá trị giao dịch" value={dashboard?.operations.transactionValueVnd ?? 0} formatter={(v) => formatVnd(Number(v))} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Lợi nhuận TG" value={17_000_000} valueStyle={{ color: '#16a34a' }} formatter={(v) => formatVnd(Number(v))} />
+            <Statistic title="Lợi nhuận tạm tính" value={(dashboard?.branches ?? []).reduce((sum, branch) => sum + branch.profitToday, 0)} valueStyle={{ color: '#16a34a' }} formatter={(v) => formatVnd(Number(v))} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Chênh lệch quỹ" value={205_000} valueStyle={{ color: '#d97706' }} formatter={(v) => formatVnd(Number(v))} />
+            <Statistic title="Sai lệch chờ xử lý" value={dashboard?.operations.pendingVarianceCount ?? 0} valueStyle={{ color: '#d97706' }} />
           </Card>
         </Col>
       </Row>

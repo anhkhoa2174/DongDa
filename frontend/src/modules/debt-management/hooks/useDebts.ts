@@ -25,24 +25,30 @@ function useInvalidate() {
   return () => qc.invalidateQueries({ queryKey: KEY });
 }
 
-export function useSettleDebt() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (v: { id: string; amount: number; description?: string }) =>
-      debtApi.settle(v.id, v.amount, v.description),
-    onSuccess: invalidate,
-  });
-}
-
 export function useSettleUsdCashDebt() {
   const invalidate = useInvalidate();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (value: { id: string; cashUsdAmount: number; oddUsdAmount: number; description?: string }) =>
-      debtApi.settleUsdCash(value.id, value),
+    mutationFn: ({ id, ...payload }: { id: string; cashUsdAmount: number; oddUsdAmount: number; description?: string }) =>
+      debtApi.settleUsdCash(id, payload),
     onSuccess: () => {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ['fund'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
+export function useSettleVndCashDebt() {
+  const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string; amount: number; description?: string }) =>
+      debtApi.settleVndCash(id, payload),
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['fund'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }

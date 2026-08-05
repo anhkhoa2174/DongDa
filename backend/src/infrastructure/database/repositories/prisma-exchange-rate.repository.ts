@@ -41,6 +41,22 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
     return toDomain(row);
   }
 
+  async createMany(items: CreateExchangeRateData[]): Promise<ExchangeRate[]> {
+    return this.prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const data of items) {
+        created.push(await tx.exchange_rates.create({ data: {
+          rate_type: data.rateType, provider: data.provider ?? null,
+          from_currency: data.fromCurrency, to_currency: data.toCurrency,
+          buy_rate: data.buyRate ?? null, sell_rate: data.sellRate ?? null,
+          rate: data.rate, effective_from: data.effectiveFrom,
+          status: 'DRAFT', created_by_user_id: data.createdByUserId,
+        }}));
+      }
+      return created.map(toDomain);
+    });
+  }
+
   async findById(id: string): Promise<ExchangeRate | null> {
     const row = await this.prisma.exchange_rates.findUnique({ where: { id } });
     return row ? toDomain(row) : null;
@@ -59,8 +75,20 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
     return rows.map(toDomain);
   }
 
-  findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]> {
-    return this.findMany({ ...filter, status: RateStatus.ACTIVE });
+  async findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]> {
+    const now = new Date();
+    const rows = await this.prisma.exchange_rates.findMany({
+      where: {
+        status: RateStatus.ACTIVE,
+        effective_from: { lte: now },
+        OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+        ...(filter?.rateType && { rate_type: filter.rateType }),
+        ...(filter?.provider && { provider: filter.provider }),
+        ...(filter?.fromCurrency && { from_currency: filter.fromCurrency }),
+      },
+      orderBy: { effective_from: 'desc' },
+    });
+    return rows.map(toDomain);
   }
 
   async findHistory(filter: ExchangeRateHistoryFilter): Promise<ExchangeRateHistoryResult> {
@@ -114,11 +142,16 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
   }
 
   async approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate> {
-    const target = await this.prisma.exchange_rates.findUnique({ where: { id } });
-    if (!target) throw new Error('Tỷ giá không tồn tại');
-
     const now = new Date();
     const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM exchange_rates WHERE id = ${id}::uuid FOR UPDATE`;
+      const target = await tx.exchange_rates.findUnique({ where: { id } });
+      if (!target) throw new Error('Tỷ giá không tồn tại');
+      if (target.status !== 'DRAFT') throw new Error(`Chỉ duyệt được tỷ giá DRAFT (hiện tại: ${target.status})`);
+      if (target.effective_from.getTime() > now.getTime()) {
+        throw new Error('Chưa thể kích hoạt tỷ giá trước thời điểm hiệu lực');
+      }
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${target.rate_type}:${target.provider ?? ''}:${target.from_currency}:${target.to_currency}`}))`;
       // 1. Supersede bản ACTIVE cùng identity (BR-F2.3-01: chỉ 1 active/identity)
       await tx.exchange_rates.updateMany({
         where: {

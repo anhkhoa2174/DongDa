@@ -4,7 +4,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
-  IDebtRepository, RecordDebtInput, SettleDebtInput, SettleUsdCashDebtInput, ListDebtsFilter,
+  IDebtRepository, RecordDebtInput, SettleUsdCashDebtInput, ListDebtsFilter,
+  SettleVndCashDebtInput,
 } from '../../../domain/repositories/debt.repository';
 import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
@@ -12,13 +13,17 @@ import {
 } from '../../../domain/entities/debt.entity';
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
+import { NotificationService } from '../../notifications/notification.service';
 
 // movement_type nào là "tăng nợ"
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
 
 @Injectable()
 export class PrismaDebtRepository implements IDebtRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   async recordDebt(input: RecordDebtInput): Promise<DebtMovement> {
     const businessDate = toVietnamBusinessDate(input.businessDate ?? new Date());
@@ -43,48 +48,6 @@ export class PrismaDebtRepository implements IDebtRepository {
           created_by_user_id: input.createdByUserId,
         },
       });
-    });
-    return toMovement(row);
-  }
-
-  async settle(input: SettleDebtInput): Promise<DebtMovement> {
-    const now = new Date();
-    const row = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
-      const account = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
-      const grouped = await tx.debt_movements.groupBy({
-        by: ['movement_type'],
-        where: { debt_account_id: account.id, status: 'POSTED' },
-        _sum: { amount: true },
-      });
-      let outstanding = 0;
-      for (const group of grouped) {
-        const amount = Number(group._sum.amount ?? 0);
-        if (INCREASE_TYPES.includes(group.movement_type)) outstanding += amount;
-        if (group.movement_type === 'SETTLEMENT' || group.movement_type === 'REVERSAL') outstanding -= amount;
-      }
-      if (input.amount > outstanding) {
-        throw new BadRequestException(
-          `Số tiền xử lý (${input.amount}) vượt số còn nợ (${outstanding} ${account.currency_code})`,
-        );
-      }
-
-      const settlement = await tx.debt_movements.create({
-        data: {
-          debt_account_id: account.id,
-          branch_id: account.branch_id,
-          movement_type: 'SETTLEMENT',
-          business_date: toVietnamBusinessDate(input.businessDate ?? now),
-          amount: input.amount,
-          currency_code: account.currency_code,
-          description: input.description ?? null,
-          status: 'POSTED',
-          posted_at: now,
-          created_by_user_id: input.createdByUserId,
-        },
-      });
-      await allocateDebtSettlement(tx, account.id, settlement.id, input.amount);
-      return settlement;
     });
     return toMovement(row);
   }
@@ -216,6 +179,113 @@ export class PrismaDebtRepository implements IDebtRepository {
         },
       });
       await allocateDebtSettlement(tx, debtAccount.id, settlement.id, settlementAmount);
+      await this.notifySettlement(
+        tx, debtAccount, settlementAmount, outstanding, input.createdByUserId, 'Tiền mặt (Quỹ)',
+      );
+      return toMovement(settlement);
+    });
+  }
+
+  async settleVndCash(input: SettleVndCashDebtInput): Promise<DebtMovement> {
+    const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
+      const debtAccount = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
+      if (debtAccount.currency_code !== 'VND') {
+        throw new BadRequestException('Form tiền mặt VND chỉ áp dụng cho công nợ VND');
+      }
+
+      const outstanding = await this.outstanding(tx, debtAccount.id);
+      if (input.amount > outstanding) {
+        throw new BadRequestException(
+          `Số tiền xử lý (${input.amount}) vượt số còn nợ (${outstanding} VND)`,
+        );
+      }
+
+      const headOffice = await tx.branch.findFirst({
+        where: { type: 'HEAD_OFFICE', status: 'ACTIVE' },
+        orderBy: { created_at: 'asc' },
+        select: { id: true },
+      });
+      if (!headOffice) throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO)');
+
+      const fundAccount = await tx.fund_accounts.upsert({
+        where: { branch_id_code: { branch_id: headOffice.id, code: 'CASH_VND' } },
+        update: {},
+        create: {
+          branch_id: headOffice.id,
+          code: 'CASH_VND',
+          name: 'Quỹ tiền mặt VND',
+          account_type: 'CASH',
+          currency_code: 'VND',
+        },
+      });
+      await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccount.id}::uuid FOR UPDATE`;
+
+      const movementNo = `DEBT-CASH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const cashMovement = await tx.cash_movements.create({
+        data: {
+          movement_no: movementNo,
+          branch_id: headOffice.id,
+          fund_account_id: fundAccount.id,
+          movement_type: 'CASH_IN',
+          business_date: businessDate,
+          amount: input.amount,
+          currency_code: 'VND',
+          source_name: `${debtAccount.provider_code} - công nợ ${debtAccount.business_date.toISOString().slice(0, 10)}`,
+          description: input.description ?? 'Thu tiền mặt giải quyết công nợ VND',
+          status: 'POSTED',
+          approved_by_user_id: input.createdByUserId,
+          created_by_user_id: input.createdByUserId,
+          posted_at: now,
+        },
+      });
+      await tx.ledger_entries.create({
+        data: {
+          entry_no: `LE-${movementNo}`,
+          business_date: businessDate,
+          branch_id: headOffice.id,
+          source_type: 'CASH_MOVEMENT',
+          source_id: cashMovement.id,
+          status: 'POSTED',
+          posted_at: now,
+          description: input.description ?? 'Thu tiền mặt giải quyết công nợ VND',
+          created_by_user_id: input.createdByUserId,
+          approved_by_user_id: input.createdByUserId,
+          ledger_lines: {
+            create: [{
+              fund_account_id: fundAccount.id,
+              direction: 'DEBIT',
+              amount: input.amount,
+              currency_code: 'VND',
+              exchange_rate: 1,
+              base_amount_vnd: input.amount,
+            }],
+          },
+        },
+      });
+
+      const settlement = await tx.debt_movements.create({
+        data: {
+          debt_account_id: debtAccount.id,
+          branch_id: debtAccount.branch_id,
+          movement_type: 'SETTLEMENT',
+          source_type: 'CASH_MOVEMENT',
+          source_id: cashMovement.id,
+          business_date: businessDate,
+          amount: input.amount,
+          currency_code: 'VND',
+          description: input.description ?? 'Thu tiền mặt giải quyết công nợ VND',
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
+      await allocateDebtSettlement(tx, debtAccount.id, settlement.id, input.amount);
+      await this.notifySettlement(
+        tx, debtAccount, input.amount, outstanding, input.createdByUserId, 'Tiền mặt (Quỹ)',
+      );
       return toMovement(settlement);
     });
   }
@@ -318,6 +388,33 @@ export class PrismaDebtRepository implements IDebtRepository {
       if (group.movement_type === 'SETTLEMENT' || group.movement_type === 'REVERSAL') return balance - amount;
       return balance;
     }, 0);
+  }
+
+  private async notifySettlement(
+    tx: any,
+    debtAccount: any,
+    amount: number,
+    outstandingBefore: number,
+    actorUserId: string,
+    sourceLabel: string,
+  ) {
+    const remaining = Number((outstandingBefore - amount).toFixed(2));
+    const settled = remaining <= 0;
+    const currency = debtAccount.currency_code;
+    const formatAmount = (value: number) => value.toLocaleString('vi-VN', {
+      minimumFractionDigits: currency === 'VND' ? 0 : 2,
+      maximumFractionDigits: currency === 'VND' ? 0 : 2,
+    });
+    await this.notifications.notifyUsers({
+      title: settled ? 'Công nợ đã được tất toán' : 'Công nợ đã được xử lý một phần',
+      body: `${debtAccount.provider_code} ngày ${debtAccount.business_date.toISOString().slice(0, 10)}: nhận ${formatAmount(amount)} ${currency} qua ${sourceLabel}; còn lại ${formatAmount(Math.max(remaining, 0))} ${currency}.`,
+      sourceType: settled ? 'DEBT_SETTLED' : 'DEBT_PARTIALLY_SETTLED',
+      sourceId: debtAccount.id,
+    }, {
+      userIds: [actorUserId],
+      roles: ['ADMIN', 'MANAGER'],
+      branchIds: [debtAccount.branch_id],
+    }, tx);
   }
 }
 

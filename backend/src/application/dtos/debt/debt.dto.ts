@@ -31,16 +31,6 @@ export class RecordDebtDto {
   description?: string;
 }
 
-export class SettleDebtDto {
-  @IsNumber()
-  @IsPositive()
-  amount: number;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-}
-
 export class SettleUsdCashDebtDto {
   @IsInt()
   @Min(0)
@@ -50,6 +40,16 @@ export class SettleUsdCashDebtDto {
   @Min(0)
   @Max(0.99)
   oddUsdAmount: number;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class SettleVndCashDebtDto {
+  @IsInt()
+  @IsPositive()
+  amount: number;
 
   @IsOptional()
   @IsString()

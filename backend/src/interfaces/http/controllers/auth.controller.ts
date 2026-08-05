@@ -16,6 +16,7 @@ import { UserRole } from '../../../domain/entities/user.entity';
 import { IUserRepository } from '../../../domain/repositories/user.repository';
 import { LoginDto, ChangePasswordDto, RefreshTokenDto } from '../../../application/dtos/auth/auth.dto';
 import { CreateUserDto, UpdateUserDto } from '../../../application/dtos/auth/user.dto';
+import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 
 @Controller('auth')
 export class AuthController {
@@ -24,6 +25,7 @@ export class AuthController {
     private readonly createUserUseCase: CreateUserUseCase,
     private readonly changePasswordUseCase: ChangePasswordUseCase,
     private readonly refreshTokenUseCase: RefreshTokenUseCase,
+    private readonly notifications: NotificationService,
   ) {}
 
   // POST /auth/login
@@ -63,6 +65,12 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
     await this.changePasswordUseCase.execute(req.user.id, dto);
+    await this.notifications.notifyUsers({
+      title: 'Mật khẩu đã được thay đổi',
+      body: 'Mật khẩu đăng nhập của bạn vừa được cập nhật thành công.',
+      sourceType: 'PASSWORD_CHANGED',
+      sourceId: req.user.id,
+    }, { userIds: [req.user.id] });
   }
 }
 
@@ -71,6 +79,7 @@ export class UserController {
   constructor(
     private readonly createUserUseCase: CreateUserUseCase,
     @Inject('IUserRepository') private readonly userRepo: IUserRepository,
+    private readonly notifications: NotificationService,
   ) {}
 
   @Get()
@@ -94,13 +103,20 @@ export class UserController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   async createUser(@Request() req: any, @Body() dto: CreateUserDto) {
-    return this.createUserUseCase.execute(dto, req.user.role);
+    const created = await this.createUserUseCase.execute(dto, req.user.role);
+    await this.notifications.notifyUsers({
+      title: 'Tài khoản đã được tạo',
+      body: `Tài khoản ${created.username} đã được kích hoạt với vai trò ${created.role}.`,
+      sourceType: 'ACCOUNT_CREATED',
+      sourceId: created.id,
+    }, { userIds: [created.id], roles: ['ADMIN'], excludeUserIds: [] });
+    return created;
   }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
-  async updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
+  async updateUser(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateUserDto) {
     const current = await this.userRepo.findById(id);
     if (!current) throw new NotFoundException('Tài khoản không tồn tại');
     if (current.role === UserRole.ADMIN && (dto.isActive === false || (dto.role && dto.role !== UserRole.ADMIN))) {
@@ -110,6 +126,12 @@ export class UserController {
       throw new ConflictException('Hệ thống chỉ cho phép 1 tài khoản Giám đốc');
     }
     const updated = await this.userRepo.update(id, dto);
+    await this.notifications.notifyUsers({
+      title: 'Thông tin tài khoản đã thay đổi',
+      body: `Tài khoản ${updated.username} vừa được cập nhật.`,
+      sourceType: 'ACCOUNT_UPDATED',
+      sourceId: id,
+    }, { userIds: [id, req.user.id], roles: ['ADMIN'] });
     return toUserResponse(updated);
   }
 
@@ -123,6 +145,12 @@ export class UserController {
       throw new BadRequestException('Không thể vô hiệu hóa tài khoản Giám đốc');
     }
     const updated = await this.userRepo.deactivate(id);
+    await this.notifications.notifyUsers({
+      title: 'Tài khoản đã được vô hiệu hóa',
+      body: `Tài khoản ${updated.username} đã được vô hiệu hóa.`,
+      sourceType: 'ACCOUNT_DEACTIVATED',
+      sourceId: id,
+    }, { userIds: [req.user.id], roles: ['ADMIN'] });
     return toUserResponse(updated);
   }
 }

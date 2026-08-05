@@ -2,7 +2,7 @@
 // Layer: Application
 
 import {
-  IsUUID, IsString, Matches, IsOptional, IsNumber, Min, IsEnum, IsPositive,
+  IsUUID, IsString, Matches, IsOptional, IsNumber, IsInt, Min, IsEnum, IsPositive,
 } from 'class-validator';
 
 export class CreateWuDto {
@@ -20,7 +20,7 @@ export class CreateWuDto {
   @IsPositive()
   wuUsdAmount: number;
 
-  @IsNumber()
+  @IsInt({ message: 'Amount VND của WU phải là số nguyên' })
   @IsPositive()
   wuVndAmount: number;
 
@@ -28,7 +28,7 @@ export class CreateWuDto {
   @Min(0)
   receivedUsd: number;
 
-  @IsNumber()
+  @IsInt({ message: 'VND thực trả phải là số nguyên' })
   @Min(0)
   receivedVnd: number;
 

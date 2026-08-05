@@ -9,6 +9,7 @@ export type Permission =
   | 'audit_log.view'
   | 'bank.view'
   | 'debt.view'
+  | 'debt.settle'
   | 'report.view'
   | 'shift.close'
   | 'shift.open'
@@ -28,6 +29,7 @@ const backendPermissionMap: Record<Permission, string[]> = {
   'audit_log.view': ['audit-log:read'],
   'bank.view': ['capital-transfer:read'],
   'debt.view': ['capital-transfer:read'],
+  'debt.settle': ['debt:settle'],
   'report.view': ['report:read'],
   'shift.close': ['shift:close'],
   'shift.open': ['shift:open'],
@@ -40,8 +42,8 @@ const backendPermissionMap: Record<Permission, string[]> = {
 };
 
 const rolePermissions: Record<AppRole, Permission[]> = {
-  director: ['exchange_rate.view', 'exchange_rate.manage', 'exchange_rate.approve', 'fund.transfer', 'fund.view', 'audit_log.view', 'bank.view', 'debt.view', 'report.view', 'shift.close', 'transaction.view', 'transaction.create', 'transaction.update_open', 'transaction.void_open', 'transaction.adjust_closed'],
-  accountant: ['exchange_rate.view', 'exchange_rate.manage', 'fund.transfer', 'fund.view', 'bank.view', 'debt.view', 'report.view', 'shift.close', 'transaction.view', 'transaction.create', 'transaction.update_open', 'transaction.void_open', 'transaction.adjust_closed'],
+  director: ['exchange_rate.view', 'exchange_rate.manage', 'exchange_rate.approve', 'fund.transfer', 'fund.view', 'audit_log.view', 'bank.view', 'debt.view', 'debt.settle', 'report.view', 'shift.close', 'transaction.view', 'transaction.create', 'transaction.update_open', 'transaction.void_open', 'transaction.adjust_closed'],
+  accountant: ['exchange_rate.view', 'exchange_rate.manage', 'fund.transfer', 'fund.view', 'bank.view', 'debt.view', 'debt.settle', 'report.view', 'shift.close', 'transaction.view', 'transaction.create', 'transaction.update_open', 'transaction.void_open', 'transaction.adjust_closed'],
   branch: ['exchange_rate.view', 'fund.transfer', 'shift.open', 'shift.close', 'transaction.view', 'transaction.create', 'transaction.request_change'],
   auditor: ['exchange_rate.view', 'fund.view', 'audit_log.view', 'bank.view', 'debt.view', 'report.view', 'transaction.view'],
 };

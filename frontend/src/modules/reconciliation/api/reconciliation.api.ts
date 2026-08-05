@@ -4,6 +4,7 @@ export interface ReconRunDto {
   id: string;
   runNo: string;
   provider: string;
+  currencyCode: string;
   businessDate: string;
   status: string;
   systemTotal: number;
@@ -26,12 +27,24 @@ export interface ReconItemDto {
   note?: string;
 }
 
-export interface JournalRowInput { code: string; amount: number; }
+export interface JournalRowInput {
+  code: string;
+  amount: number;
+  currencyCode: 'USD' | 'VND';
+  branchId?: string;
+}
+
+export interface RunReconInput {
+  provider: string;
+  businessDate: string;
+  branchId?: string;
+  rows: JournalRowInput[];
+}
 
 export const reconApi = {
   runs: () => httpClient.get<ReconRunDto[]>('/reconciliation/runs').then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
-  run: (provider: string, rows: JournalRowInput[]) =>
-    httpClient.post<ReconRunDto>('/reconciliation/run', { provider, rows }).then((r) => r.data),
+  run: (input: RunReconInput) =>
+    httpClient.post<ReconRunDto>('/reconciliation/run', input).then((r) => r.data),
 };

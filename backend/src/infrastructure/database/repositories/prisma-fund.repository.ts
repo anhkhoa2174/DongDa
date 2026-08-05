@@ -4,14 +4,16 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+import { toVietnamBusinessDate } from '../business-date';
 import {
-  IFundRepository, CreateTransferInput, ListTransfersFilter,
+  IFundRepository, CreateTransferInput, ListFundMovementHistoryFilter, ListTransfersFilter,
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundTransferStatus, FundAccountBalance, CurrencyCode, CentralFundSummary,
-  CentralFundMovement,
+  CentralFundMovement, FundMovementHistoryItem,
 } from '../../../domain/entities/fund.entity';
 import type { CreateFundMovementInput } from '../../../domain/repositories/fund.repository';
+import { NotificationService } from '../../notifications/notification.service';
 
 const CURRENCY_NAMES: Partial<Record<CurrencyCode, string>> = {
   VND: 'Việt Nam đồng', USD: 'Đô la Mỹ', EUR: 'Euro', AUD: 'Đô la Úc', JPY: 'Yên Nhật',
@@ -23,7 +25,10 @@ const CURRENCY_NAMES: Partial<Record<CurrencyCode, string>> = {
 
 @Injectable()
 export class PrismaFundRepository implements IFundRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   async listBalances(branchId?: string): Promise<FundAccountBalance[]> {
     const accounts = await this.prisma.fund_accounts.findMany({
@@ -184,6 +189,7 @@ export class PrismaFundRepository implements IFundRepository {
 
   async createFundMovement(input: CreateFundMovementInput): Promise<CentralFundMovement> {
     const now = new Date();
+    const voucherNo = `${input.direction === 'IN' ? 'PT' : 'PC'}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     return this.prisma.$transaction(async (tx) => {
       const targetBranch = await tx.branch.findFirst({
@@ -234,11 +240,11 @@ export class PrismaFundRepository implements IFundRepository {
           const balanceAfter = balanceBefore + (input.direction === 'IN' ? item.amount : -item.amount);
           const movement = await tx.bank_balance_movements.create({
             data: {
-              movement_no: `CF-BM-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+              movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}`,
               bank_account_id: bankAccount.id,
               branch_id: bankAccount.branch_id,
               movement_type: input.direction === 'IN' ? 'DEPOSIT' : 'WITHDRAW',
-              business_date: now,
+              business_date: toVietnamBusinessDate(now),
               occurred_at: now,
               amount: item.amount,
               currency_code: item.currencyCode,
@@ -306,11 +312,11 @@ export class PrismaFundRepository implements IFundRepository {
         const exchangeRate = await this.activeConversionRate(tx, item.currencyCode);
         const movement = await tx.cash_movements.create({
           data: {
-            movement_no: `CF-CM-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+            movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}`,
             branch_id: targetBranch.id,
             fund_account_id: account.id,
             movement_type: input.direction === 'IN' ? 'CASH_IN' : 'CASH_OUT',
-            business_date: now,
+            business_date: toVietnamBusinessDate(now),
             amount: item.amount,
             currency_code: item.currencyCode,
             source_name: 'Tiền mặt',
@@ -325,7 +331,7 @@ export class PrismaFundRepository implements IFundRepository {
         await tx.ledger_entries.create({
           data: {
             entry_no: `LE-${movement.movement_no}`,
-            business_date: now,
+            business_date: toVietnamBusinessDate(now),
             branch_id: targetBranch.id,
             source_type: 'CASH_MOVEMENT',
             source_id: movement.id,
@@ -354,7 +360,22 @@ export class PrismaFundRepository implements IFundRepository {
         });
       }
 
+      const sourceType = targetBranch.type === 'HEAD_OFFICE'
+        ? 'CENTRAL_FUND_MOVEMENT'
+        : 'BRANCH_FUND_MOVEMENT';
+      await this.notifications.notifyUsers({
+        title: `${input.direction === 'IN' ? 'Phiếu thu' : 'Phiếu chi'} ${voucherNo} đã ghi sổ`,
+        body: `${fundLabel}: ${resultItems.map((item) => `${item.amount} ${item.currencyCode}`).join(', ')}${input.note ? ` - ${input.note}` : ''}`,
+        sourceType,
+        sourceId: resultItems[0]?.id ?? null,
+      }, {
+        userIds: [input.createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        ...(targetBranch.type === 'BRANCH' && { branchIds: [targetBranch.id] }),
+      }, tx);
+
       return {
+        voucherNo,
         direction: input.direction,
         sourceType: input.sourceType,
         items: resultItems,
@@ -362,6 +383,98 @@ export class PrismaFundRepository implements IFundRepository {
         postedAt: now,
       };
     });
+  }
+
+  async listMovementHistory(
+    filter?: ListFundMovementHistoryFilter,
+  ): Promise<FundMovementHistoryItem[]> {
+    const createdAt = {
+      ...(filter?.dateFrom && { gte: filter.dateFrom }),
+      ...(filter?.dateTo && { lte: filter.dateTo }),
+    };
+    const hasDateFilter = Boolean(filter?.dateFrom || filter?.dateTo);
+    const [cashMovements, bankMovements, transfers] = await Promise.all([
+      this.prisma.cash_movements.findMany({
+        where: {
+          ...(filter?.branchId && { branch_id: filter.branchId }),
+          ...(hasDateFilter && { created_at: createdAt }),
+        },
+        orderBy: { created_at: 'desc' },
+        take: 200,
+      }),
+      this.prisma.bank_balance_movements.findMany({
+        where: {
+          ...(filter?.branchId && { branch_id: filter.branchId }),
+          ...(hasDateFilter && { occurred_at: createdAt }),
+        },
+        orderBy: { occurred_at: 'desc' },
+        take: 200,
+      }),
+      this.prisma.fund_transfers.findMany({
+        where: {
+          ...(filter?.branchId && {
+            OR: [
+              { source_branch_id: filter.branchId },
+              { destination_branch_id: filter.branchId },
+            ],
+          }),
+          ...(hasDateFilter && { created_at: createdAt }),
+        },
+        include: { fund_transfer_items: true },
+        orderBy: { created_at: 'desc' },
+        take: 200,
+      }),
+    ]);
+
+    const history: FundMovementHistoryItem[] = [
+      ...cashMovements.map((movement) => ({
+        id: movement.id,
+        documentNo: fundVoucherNo(movement.movement_no),
+        kind: movement.movement_type === 'CASH_IN' ? 'RECEIPT' as const : 'EXPENSE' as const,
+        sourceType: 'CASH' as const,
+        branchId: movement.branch_id,
+        currencyCode: movement.currency_code as CurrencyCode,
+        amount: Number(movement.amount),
+        status: movement.status,
+        note: movement.description,
+        occurredAt: movement.posted_at ?? movement.created_at,
+      })),
+      ...bankMovements.map((movement) => {
+        const isIncoming = movement.movement_type === 'DEPOSIT' || movement.movement_type === 'TRANSFER_IN';
+        return {
+          id: movement.id,
+          documentNo: fundVoucherNo(movement.movement_no),
+          kind: isIncoming ? 'RECEIPT' as const : 'EXPENSE' as const,
+          sourceType: 'BANK' as const,
+          branchId: movement.branch_id,
+          currencyCode: movement.currency_code as CurrencyCode,
+          amount: Number(movement.amount),
+          status: movement.status,
+          note: movement.description,
+          occurredAt: movement.occurred_at,
+        };
+      }),
+      ...transfers.flatMap((transfer) => {
+        const incoming = Boolean(filter?.branchId && transfer.destination_branch_id === filter.branchId);
+        return transfer.fund_transfer_items.map((item) => ({
+          id: item.id,
+          documentNo: transfer.transfer_no,
+          kind: incoming ? 'TRANSFER_IN' as const : 'TRANSFER_OUT' as const,
+          sourceType: 'FUND_TRANSFER' as const,
+          branchId: incoming ? transfer.destination_branch_id : transfer.source_branch_id,
+          counterpartyBranchId: incoming ? transfer.source_branch_id : transfer.destination_branch_id,
+          currencyCode: item.currency_code as CurrencyCode,
+          amount: Number(item.amount),
+          status: transfer.status,
+          note: 'Tiếp quỹ / điều chuyển vốn',
+          occurredAt: transfer.confirmed_at ?? transfer.created_at,
+        }));
+      }),
+    ];
+
+    return history
+      .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
+      .slice(0, 300);
   }
 
   async findHeadOfficeBranchId(): Promise<string | null> {
@@ -381,9 +494,16 @@ export class PrismaFundRepository implements IFundRepository {
         account_type: { in: ['CASH', 'FUND_A'] },
         status: 'ACTIVE',
       },
-      select: { id: true, account_type: true },
+      select: { id: true, code: true, account_type: true },
+      orderBy: { code: 'asc' },
     });
-    return accounts.find((account) => account.account_type === 'CASH') ?? accounts[0] ?? null;
+    const canonicalCode = currency === 'VND' || currency === 'USD'
+      ? `CASH_${currency}`
+      : `FUND_A_${currency}`;
+    return accounts.find((account) => account.code === canonicalCode)
+      ?? accounts.find((account) => account.account_type === 'CASH')
+      ?? accounts[0]
+      ?? null;
   }
 
   async createTransfer(input: CreateTransferInput): Promise<FundTransfer> {
@@ -395,7 +515,12 @@ export class PrismaFundRepository implements IFundRepository {
       throw new BadRequestException('Mỗi loại tiền chỉ được xuất hiện một lần trong phiếu tiếp quỹ');
     }
 
-    const resolvedItems = [];
+    const resolvedItems: Array<{
+      source_account_id: string;
+      destination_account_id: string;
+      currency_code: CurrencyCode;
+      amount: number;
+    }> = [];
     for (const item of input.items) {
       const source = await this.findTransferAccount(input.sourceBranchId, item.currencyCode);
       const destination = await this.findTransferAccount(input.destinationBranchId, item.currencyCode);
@@ -414,16 +539,29 @@ export class PrismaFundRepository implements IFundRepository {
       });
     }
 
-    const row = await this.prisma.fund_transfers.create({
-      data: {
-        transfer_no: `FT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        source_branch_id: input.sourceBranchId,
-        destination_branch_id: input.destinationBranchId,
-        status: 'PENDING_APPROVAL',
-        created_by_user_id: input.createdByUserId,
-        fund_transfer_items: { create: resolvedItems },
-      },
-      include: { fund_transfer_items: true },
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.fund_transfers.create({
+        data: {
+          transfer_no: `FT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          source_branch_id: input.sourceBranchId,
+          destination_branch_id: input.destinationBranchId,
+          status: 'PENDING_APPROVAL',
+          created_by_user_id: input.createdByUserId,
+          fund_transfer_items: { create: resolvedItems },
+        },
+        include: { fund_transfer_items: true },
+      });
+      await this.notifications.notifyUsers({
+        title: `Phiếu tiếp quỹ ${created.transfer_no} chờ xác nhận`,
+        body: `Đã gửi ${created.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', ')}`,
+        sourceType: 'FUND_TRANSFER_CREATED',
+        sourceId: created.id,
+      }, {
+        userIds: [input.createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [input.destinationBranchId],
+      }, tx);
+      return created;
     });
     return toTransfer(row);
   }
@@ -504,7 +642,7 @@ export class PrismaFundRepository implements IFundRepository {
       await tx.ledger_entries.create({
         data: {
           entry_no: `FT-${t.transfer_no}`,
-          business_date: now,
+          business_date: toVietnamBusinessDate(now),
           branch_id: t.source_branch_id,
           source_type: 'FUND_TRANSFER',
           source_id: t.id,
@@ -527,6 +665,16 @@ export class PrismaFundRepository implements IFundRepository {
       if (claimed.count !== 1) {
         throw new BadRequestException('Phiếu tiếp quỹ đã được xử lý bởi người khác');
       }
+      await this.notifications.notifyUsers({
+        title: `Phiếu tiếp quỹ ${t.transfer_no} đã được xác nhận`,
+        body: t.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', '),
+        sourceType: 'FUND_TRANSFER_CONFIRMED',
+        sourceId: t.id,
+      }, {
+        userIds: [t.created_by_user_id, confirmedByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [t.source_branch_id, t.destination_branch_id],
+      }, tx);
       return tx.fund_transfers.findUniqueOrThrow({
         where: { id },
         include: { fund_transfer_items: true },
@@ -536,14 +684,31 @@ export class PrismaFundRepository implements IFundRepository {
   }
 
   async rejectTransfer(id: string, userId: string): Promise<FundTransfer> {
-    const t = await this.prisma.fund_transfers.findUniqueOrThrow({ where: { id } });
-    if (t.status !== 'PENDING_APPROVAL') {
-      throw new BadRequestException(`Chỉ từ chối được phiếu đang chờ (hiện tại: ${t.status})`);
-    }
-    const row = await this.prisma.fund_transfers.update({
-      where: { id },
-      data: { status: 'REJECTED', confirmed_by_user_id: userId, confirmed_at: new Date() },
-      include: { fund_transfer_items: true },
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM fund_transfers WHERE id = ${id}::uuid FOR UPDATE`;
+      const t = await tx.fund_transfers.findUniqueOrThrow({
+        where: { id },
+        include: { fund_transfer_items: true },
+      });
+      if (t.status !== 'PENDING_APPROVAL') {
+        throw new BadRequestException(`Chỉ từ chối được phiếu đang chờ (hiện tại: ${t.status})`);
+      }
+      const claimed = await tx.fund_transfers.updateMany({
+        where: { id, status: 'PENDING_APPROVAL' },
+        data: { status: 'REJECTED', confirmed_by_user_id: userId, confirmed_at: new Date() },
+      });
+      if (claimed.count !== 1) throw new BadRequestException('Phiếu tiếp quỹ đã được xử lý bởi người khác');
+      await this.notifications.notifyUsers({
+        title: `Phiếu tiếp quỹ ${t.transfer_no} đã bị từ chối`,
+        body: t.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', '),
+        sourceType: 'FUND_TRANSFER_REJECTED',
+        sourceId: t.id,
+      }, {
+        userIds: [t.created_by_user_id, userId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [t.source_branch_id, t.destination_branch_id],
+      }, tx);
+      return tx.fund_transfers.findUniqueOrThrow({ where: { id }, include: { fund_transfer_items: true } });
     });
     return toTransfer(row);
   }
@@ -610,6 +775,10 @@ export class PrismaFundRepository implements IFundRepository {
     }
     return map;
   }
+}
+
+function fundVoucherNo(movementNo: string) {
+  return /^(PT|PC)-/.test(movementNo) ? movementNo.replace(/-\d{2}$/, '') : movementNo;
 }
 
 function toTransfer(row: any): FundTransfer {

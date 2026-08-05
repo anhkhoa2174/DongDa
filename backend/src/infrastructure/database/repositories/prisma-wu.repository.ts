@@ -1,7 +1,8 @@
 // Prisma WU Repository — tạo GD Western Union (atomic: ca + quỹ + công nợ)
 // Layer: Infrastructure
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { IWuRepository, CreateWuInput, ListWuFilter } from '../../../domain/repositories/wu.repository';
 import { WuTransaction, Currency2, wuImpliedRate, wuProfit } from '../../../domain/entities/wu.entity';
@@ -11,101 +12,119 @@ import { toVietnamBusinessDate } from '../business-date';
 export class PrismaWuRepository implements IWuRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async mtcnExists(mtcn: string): Promise<boolean> {
+    const count = await this.prisma.wu_transaction_details.count({ where: { mtcn } });
+    return count > 0;
+  }
+
   async create(input: CreateWuInput): Promise<WuTransaction> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
     const rate = input.appliedRate;
 
-    const txnId = await this.prisma.$transaction(async (tx) => {
-      // 1. Bắt buộc có ca mở trước khi tạo giao dịch.
-      const shift = await this.ensureShift(tx, input.branchId);
+    let txnId: string;
+    try {
+      txnId = await this.prisma.$transaction(async (tx) => {
+        // 1. Bắt buộc có ca mở trước khi tạo giao dịch.
+        const shift = await this.ensureShift(tx, input.branchId);
 
-      // 2. customer_transaction (WU, COMPLETED)
-      const txn = await tx.customer_transactions.create({
-        data: {
-          transaction_no: `WU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          operation_code: 'WU',
-          branch_id: input.branchId,
-          shift_id: shift.id,
-          business_date: businessDate,
-          status: 'COMPLETED',
-          customer_name: input.customerName ?? null,
-          amount: input.wuUsdAmount,
-          currency_code: 'USD',
-          vnd_amount: input.wuVndAmount,
-          created_by_user_id: input.createdByUserId,
-        },
+        // 2. customer_transaction (WU, COMPLETED)
+        const txn = await tx.customer_transactions.create({
+          data: {
+            transaction_no: `WU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            operation_code: 'WU',
+            branch_id: input.branchId,
+            shift_id: shift.id,
+            business_date: businessDate,
+            status: 'COMPLETED',
+            customer_name: input.customerName ?? null,
+            amount: input.wuUsdAmount,
+            currency_code: 'USD',
+            vnd_amount: input.wuVndAmount,
+            created_by_user_id: input.createdByUserId,
+          },
+        });
+
+        // 3. Chi tiết WU (snapshot tỷ giá)
+        await tx.wu_transaction_details.create({
+          data: {
+            transaction_id: txn.id,
+            mtcn: input.mtcn,
+            paid_currency: input.paidCurrency,
+            wu_usd_amount: input.wuUsdAmount,
+            wu_vnd_amount: input.wuVndAmount,
+            received_usd: input.receivedUsd,
+            received_vnd: input.receivedVnd,
+            wu_rate: wuImpliedRate(input.wuVndAmount, input.wuUsdAmount),
+            system_rate: input.systemRate,
+            applied_rate: rate,
+          },
+        });
+
+        // 4. Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT)
+        const lines: any[] = [];
+        if (input.receivedVnd > 0) {
+          const acc = await this.cashAccount(tx, input.branchId, 'VND');
+          await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
+          lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedVnd,
+            currency_code: 'VND', exchange_rate: 1, base_amount_vnd: input.receivedVnd });
+        }
+        if (input.receivedUsd > 0) {
+          const acc = await this.cashAccount(tx, input.branchId, 'USD');
+          await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
+          lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedUsd,
+            currency_code: 'USD', exchange_rate: rate, base_amount_vnd: input.receivedUsd * rate });
+        }
+        if (lines.length === 0) throw new BadRequestException('Phải trả khách ít nhất 1 loại tiền (USD hoặc VND)');
+
+        await tx.ledger_entries.create({
+          data: {
+            entry_no: `WU-${txn.transaction_no}`,
+            business_date: businessDate,
+            branch_id: input.branchId,
+            shift_id: shift.id,
+            source_type: 'CUSTOMER_TRANSACTION',
+            source_id: txn.id,
+            status: 'POSTED',
+            posted_at: now,
+            description: `WU chi trả MSKH ${input.mtcn}`,
+            created_by_user_id: input.createdByUserId,
+            ledger_lines: { create: lines },
+          },
+        });
+
+        // 5. Công nợ WU tăng (Paid Currency)
+        const debtAmount = input.paidCurrency === 'USD' ? input.wuUsdAmount : input.wuVndAmount;
+        const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, businessDate);
+        await tx.debt_movements.create({
+          data: {
+            debt_account_id: debtAcc,
+            branch_id: input.branchId,
+            movement_type: 'EXPECTED_DEBT',
+            source_type: 'CUSTOMER_TRANSACTION',
+            source_id: txn.id,
+            business_date: businessDate,
+            amount: debtAmount,
+            currency_code: input.paidCurrency,
+            status: 'POSTED',
+            posted_at: now,
+            description: `Công nợ WU MSKH ${input.mtcn}`,
+            created_by_user_id: input.createdByUserId,
+          },
+        });
+
+        return txn.id;
       });
-
-      // 3. Chi tiết WU (snapshot tỷ giá)
-      await tx.wu_transaction_details.create({
-        data: {
-          transaction_id: txn.id,
-          mtcn: input.mtcn,
-          wu_usd_amount: input.wuUsdAmount,
-          wu_vnd_amount: input.wuVndAmount,
-          received_usd: input.receivedUsd,
-          received_vnd: input.receivedVnd,
-          wu_rate: wuImpliedRate(input.wuVndAmount, input.wuUsdAmount),
-          system_rate: input.systemRate,
-          applied_rate: rate,
-        },
-      });
-
-      // 4. Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT)
-      const lines: any[] = [];
-      if (input.receivedVnd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'VND');
-        await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
-        lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedVnd,
-          currency_code: 'VND', exchange_rate: 1, base_amount_vnd: input.receivedVnd });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const target = error.meta?.target;
+        const fields = Array.isArray(target) ? target.map(String) : [String(target ?? '')];
+        if (fields.some((field) => field.includes('mtcn') || field.includes('uq_wu_mtcn'))) {
+          throw new ConflictException(`MSKH (MTCN) ${input.mtcn} đã được xử lý`);
+        }
       }
-      if (input.receivedUsd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'USD');
-        await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
-        lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedUsd,
-          currency_code: 'USD', exchange_rate: rate, base_amount_vnd: input.receivedUsd * rate });
-      }
-      if (lines.length === 0) throw new BadRequestException('Phải trả khách ít nhất 1 loại tiền (USD hoặc VND)');
-
-      await tx.ledger_entries.create({
-        data: {
-          entry_no: `WU-${txn.transaction_no}`,
-          business_date: businessDate,
-          branch_id: input.branchId,
-          shift_id: shift.id,
-          source_type: 'CUSTOMER_TRANSACTION',
-          source_id: txn.id,
-          status: 'POSTED',
-          posted_at: now,
-          description: `WU chi trả MSKH ${input.mtcn}`,
-          created_by_user_id: input.createdByUserId,
-          ledger_lines: { create: lines },
-        },
-      });
-
-      // 5. Công nợ WU tăng (Paid Currency)
-      const debtAmount = input.paidCurrency === 'USD' ? input.wuUsdAmount : input.wuVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, businessDate);
-      await tx.debt_movements.create({
-        data: {
-          debt_account_id: debtAcc,
-          branch_id: input.branchId,
-          movement_type: 'EXPECTED_DEBT',
-          source_type: 'CUSTOMER_TRANSACTION',
-          source_id: txn.id,
-          business_date: businessDate,
-          amount: debtAmount,
-          currency_code: input.paidCurrency,
-          status: 'POSTED',
-          posted_at: now,
-          description: `Công nợ WU MSKH ${input.mtcn}`,
-          created_by_user_id: input.createdByUserId,
-        },
-      });
-
-      return txn.id;
-    });
+      throw error;
+    }
 
     return (await this.findById(txnId))!;
   }
@@ -130,6 +149,7 @@ export class PrismaWuRepository implements IWuRepository {
   // ── helpers (dùng trong transaction) ──────────────────────
 
   private async ensureShift(tx: any, branchId: string) {
+    await tx.$queryRaw`SELECT id FROM shifts WHERE branch_id = ${branchId}::uuid AND status = 'OPEN' FOR SHARE`;
     const open = await tx.shifts.findFirst({
       where: { branch_id: branchId, status: 'OPEN' },
     });
@@ -211,7 +231,7 @@ function toDomain(row: any): WuTransaction {
     wuRate,
     systemRate: Number(d.system_rate),
     appliedRate: applied,
-    paidCurrency: 'USD',
+    paidCurrency: d.paid_currency,
     profit: wuProfit(wuRate, applied, wuUsd),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,

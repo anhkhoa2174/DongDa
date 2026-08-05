@@ -56,6 +56,17 @@ export interface CreateRatePayload {
   rate: number;
 }
 
+export interface ParsedRateCandidate {
+  rateType: ExchangeRateType;
+  provider: ServiceProvider;
+  fromCurrency: string;
+  toCurrency: 'VND';
+  rate: number;
+  confidence: number;
+  sourceLabel: string;
+  warning?: string;
+}
+
 export const exchangeRateApi = {
   list: (params?: ListRatesParams) =>
     httpClient.get<ExchangeRateDto[]>('/exchange-rates', { params }).then((r) => r.data),
@@ -68,6 +79,17 @@ export const exchangeRateApi = {
 
   create: (payload: CreateRatePayload) =>
     httpClient.post<ExchangeRateDto>('/exchange-rates', payload).then((r) => r.data),
+
+  createBatch: (rates: CreateRatePayload[]) =>
+    httpClient.post<ExchangeRateDto[]>('/exchange-rates/batch', { rates }).then((r) => r.data),
+
+  parseImage: (file: File) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return httpClient.post<{ rates: ParsedRateCandidate[] }>('/exchange-rates/parse-image', formData, {
+      timeout: 60_000,
+    }).then((r) => r.data);
+  },
 
   approve: (id: string) =>
     httpClient.patch<ExchangeRateDto>(`/exchange-rates/${id}/approve`).then((r) => r.data),

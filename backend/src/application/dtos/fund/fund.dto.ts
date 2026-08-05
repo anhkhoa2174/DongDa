@@ -3,7 +3,7 @@
 
 import {
   ArrayMaxSize, ArrayMinSize, IsEnum, IsOptional, IsNumber, IsPositive,
-  IsUUID, ValidateNested, IsIn, IsString, MaxLength,
+  IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -39,6 +39,20 @@ export class ListTransfersQueryDto {
 
   @IsOptional()
   status?: string;
+}
+
+export class ListFundMovementHistoryQueryDto {
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 }
 
 export class CreateCentralFundMovementItemDto {

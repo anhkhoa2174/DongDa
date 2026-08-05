@@ -96,7 +96,7 @@ export function MgWorkspacePage() {
     }
 
     try {
-      const normalized = normalizeMgAmounts(v.paidCurrency, Number(v.paidAmount ?? 0), Number(v.appliedRate ?? 0));
+      const normalized = normalizeMgAmounts(v.paidCurrency, Number(v.paidAmount ?? 0));
       await create.mutateAsync({
         branchId: isBranchUser && user?.branchId ? user.branchId : v.branchId,
         referenceNo: normalizeMgReference(v.referenceNo),
@@ -273,18 +273,11 @@ function normalizeMgReference(value?: string) {
   return String(value ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase().slice(0, 8);
 }
 
-function normalizeMgAmounts(paidCurrency: string, paidAmount: number, appliedRate: number) {
+function normalizeMgAmounts(paidCurrency: string, paidAmount: number) {
   if (paidCurrency === 'VND') {
-    return {
-      mgUsdAmount: appliedRate > 0 ? Number((paidAmount / appliedRate).toFixed(2)) : 0,
-      mgVndAmount: Math.round(paidAmount),
-    };
+    return { mgVndAmount: Math.round(paidAmount) };
   }
-
-  return {
-    mgUsdAmount: Number(paidAmount.toFixed(2)),
-    mgVndAmount: Math.round(paidAmount * appliedRate),
-  };
+  return { mgUsdAmount: Number(paidAmount.toFixed(2)) };
 }
 
 function getSuggestedPayoutAmount(

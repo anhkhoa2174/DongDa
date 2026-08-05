@@ -1,7 +1,7 @@
 import { RoleGuard } from '@/app/guards/RoleGuard';
+import { Navigate } from 'react-router-dom';
 import { BankAccountMovementsPage } from './pages/BankAccountMovementsPage';
 import { BankAccountsPage } from './pages/BankAccountsPage';
-import { BankReceivePage } from './pages/BankReceivePage';
 
 export const bankManagementRoutes = [
   {
@@ -14,11 +14,7 @@ export const bankManagementRoutes = [
   },
   {
     path: 'bank-management/receive',
-    element: (
-      <RoleGuard allowedRoles={['director', 'accountant']} requiredPermission="bank.view">
-        <BankReceivePage />
-      </RoleGuard>
-    ),
+    element: <Navigate to="/debt-management" replace />,
   },
   {
     path: 'bank-management/accounts/:accountKey/movements',

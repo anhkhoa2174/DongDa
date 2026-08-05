@@ -14,6 +14,8 @@ describe('allocateDebtSettlement', () => {
 
     await allocateDebtSettlement(tx, 'account-1', 'settlement-1', 80);
 
+    const query = (tx.$queryRaw.mock.calls[0][0] as TemplateStringsArray).join(' ');
+    expect(query).toContain("actual.source_type = 'JOURNAL_RECONCILIATION'");
     expect(create).toHaveBeenNthCalledWith(1, {
       data: { settlement_movement_id: 'settlement-1', debt_movement_id: 'debt-1', amount: 60 },
     });

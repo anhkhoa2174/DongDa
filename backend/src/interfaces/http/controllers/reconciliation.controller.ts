@@ -20,11 +20,15 @@ export class ReconciliationController {
   ) {}
 
   @Get('runs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
   runs() {
     return this.listRecon.runs();
   }
 
   @Get('runs/:id/items')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
   items(@Param('id') id: string) {
     return this.listRecon.items(id);
   }

@@ -78,19 +78,26 @@ function accountTypeLabel(accountType: string) {
 }
 
 function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
-  return balances
+  const grouped = balances
     .filter((item) => {
       if (item.accountType === 'CASH') return item.currencyCode === 'VND' || item.currencyCode === 'USD';
       if (item.accountType === 'FUND_A') return item.currencyCode !== 'VND' && item.currencyCode !== 'USD';
       return false;
     })
-    .map((item) => ({
-      key: `${item.accountType}-${item.currencyCode}`,
-      code: item.currencyCode,
-      name: item.name,
-      accountType: item.accountType,
-      balance: item.balance,
-    }))
+    .reduce<Map<string, CountItem>>((result, item) => {
+      const key = `${item.accountType}-${item.currencyCode}`;
+      const current = result.get(key);
+      result.set(key, {
+        key,
+        code: item.currencyCode,
+        name: current?.name ?? item.name,
+        accountType: item.accountType,
+        balance: (current?.balance ?? 0) + item.balance,
+      });
+      return result;
+    }, new Map());
+
+  return [...grouped.values()]
     .sort((a, b) => {
       const ap = currencyPriority.includes(a.code) ? currencyPriority.indexOf(a.code) : 99;
       const bp = currencyPriority.includes(b.code) ? currencyPriority.indexOf(b.code) : 99;

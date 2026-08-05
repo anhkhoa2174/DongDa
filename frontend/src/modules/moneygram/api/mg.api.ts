@@ -25,13 +25,13 @@ export interface CreateMgPayload {
   branchId: string;
   referenceNo: string;
   customerName?: string;
-  mgUsdAmount: number;
-  mgVndAmount: number;
+  mgUsdAmount?: number;
+  mgVndAmount?: number;
   payoutCurrency: string;
   payoutAmount: number;
   receivedUsd: number;
   receivedVnd: number;
-  appliedRate: number;
+  appliedRate?: number;
   paidCurrency: string;
 }
 

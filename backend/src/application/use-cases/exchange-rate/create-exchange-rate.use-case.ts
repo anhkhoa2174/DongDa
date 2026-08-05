@@ -6,7 +6,7 @@ import {
   IExchangeRateRepository,
 } from '../../../domain/repositories/exchange-rate.repository';
 import { ExchangeRate, ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
-import type { CreateExchangeRateDto } from '../../dtos/exchange-rate/exchange-rate.dto';
+import type { CreateExchangeRateBatchDto, CreateExchangeRateDto } from '../../dtos/exchange-rate/exchange-rate.dto';
 
 @Injectable()
 export class CreateExchangeRateUseCase {
@@ -16,7 +16,15 @@ export class CreateExchangeRateUseCase {
   ) {}
 
   async execute(dto: CreateExchangeRateDto, createdByUserId: string): Promise<ExchangeRate> {
-    return this.rateRepo.create({
+    return this.rateRepo.create(this.toData(dto, createdByUserId));
+  }
+
+  executeBatch(dto: CreateExchangeRateBatchDto, createdByUserId: string): Promise<ExchangeRate[]> {
+    return this.rateRepo.createMany(dto.rates.map((rate) => this.toData(rate, createdByUserId)));
+  }
+
+  private toData(dto: CreateExchangeRateDto, createdByUserId: string) {
+    return {
       rateType: dto.rateType,
       provider: resolveProvider(dto.rateType, dto.provider),
       fromCurrency: dto.fromCurrency,
@@ -26,7 +34,7 @@ export class CreateExchangeRateUseCase {
       rate: dto.rate,
       effectiveFrom: dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date(),
       createdByUserId,
-    });
+    };
   }
 }
 

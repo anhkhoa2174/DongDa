@@ -52,6 +52,7 @@ export interface ExchangeRateHistoryResult {
 
 export interface IExchangeRateRepository {
   create(data: CreateExchangeRateData): Promise<ExchangeRate>;
+  createMany(data: CreateExchangeRateData[]): Promise<ExchangeRate[]>;
   findById(id: string): Promise<ExchangeRate | null>;
   findMany(filter?: ListRatesFilter): Promise<ExchangeRate[]>;
   findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]>;

@@ -59,16 +59,22 @@ import { PrismaBranchMonitoringRepository } from './infrastructure/database/repo
 import { GetBranchMonitoringUseCase } from './application/use-cases/branch-monitoring/get-branch-monitoring.use-case';
 import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
+import { NotificationController } from './interfaces/http/controllers/notification.controller';
+import { NotificationService } from './infrastructure/notifications/notification.service';
 
 import { PrismaExchangeRateRepository } from './infrastructure/database/repositories/prisma-exchange-rate.repository';
 import { CreateExchangeRateUseCase } from './application/use-cases/exchange-rate/create-exchange-rate.use-case';
 import { ApproveExchangeRateUseCase } from './application/use-cases/exchange-rate/approve-exchange-rate.use-case';
 import { RejectExchangeRateUseCase } from './application/use-cases/exchange-rate/reject-exchange-rate.use-case';
 import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/list-exchange-rates.use-case';
+import { ParseExchangeRateImageUseCase } from './application/use-cases/exchange-rate/parse-exchange-rate-image.use-case';
+import { GeminiExchangeRateParserService } from './infrastructure/ai/gemini-exchange-rate-parser.service';
 
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
 import { RecordDebtUseCase } from './application/use-cases/debt/record-debt.use-case';
-import { SettleDebtUseCase, SettleUsdCashDebtUseCase } from './application/use-cases/debt/settle-debt.use-case';
+import {
+  SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
+} from './application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-case';
 
 @Module({
@@ -89,13 +95,15 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController, NotificationController],
   providers: [
     PrismaService,
+    NotificationService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
+    { provide: 'IExchangeRateImageParser', useClass: GeminiExchangeRateParserService },
     { provide: 'IDebtRepository', useClass: PrismaDebtRepository },
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IFundRepository', useClass: PrismaFundRepository },
@@ -144,10 +152,11 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ApproveExchangeRateUseCase,
     RejectExchangeRateUseCase,
     ListExchangeRatesUseCase,
+    ParseExchangeRateImageUseCase,
 
     RecordDebtUseCase,
-    SettleDebtUseCase,
     SettleUsdCashDebtUseCase,
+    SettleVndCashDebtUseCase,
     ListDebtsUseCase,
 
     CreateTransferUseCase,

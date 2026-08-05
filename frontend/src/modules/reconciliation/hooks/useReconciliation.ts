@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { reconApi, type JournalRowInput } from '../api/reconciliation.api';
+import { reconApi, type RunReconInput } from '../api/reconciliation.api';
 
 const KEY = ['reconciliation'] as const;
 
@@ -16,7 +16,7 @@ export function useReconItems(runId: string | null) {
 export function useRunReconciliation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { provider: string; rows: JournalRowInput[] }) => reconApi.run(v.provider, v.rows),
+    mutationFn: (input: RunReconInput) => reconApi.run(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

@@ -22,6 +22,7 @@ export interface ListWuFilter {
 }
 
 export interface IWuRepository {
+  mtcnExists(mtcn: string): Promise<boolean>;
   create(input: CreateWuInput): Promise<WuTransaction>;
   findById(id: string): Promise<WuTransaction | null>;
   list(filter?: ListWuFilter): Promise<WuTransaction[]>;

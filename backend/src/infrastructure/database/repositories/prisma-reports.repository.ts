@@ -345,7 +345,14 @@ export class PrismaReportsRepository implements IReportsRepository {
 
   private async providerStat(provider: 'WU' | 'MG', filter?: ReportFilter): Promise<ProviderStat> {
     const rows = await this.prisma.customer_transactions.findMany({
-      where: { operation_code: provider, status: 'COMPLETED', ...(filter?.branchId && { branch_id: filter.branchId }) },
+      where: {
+        operation_code: provider, status: 'COMPLETED',
+        ...(filter?.branchId && { branch_id: filter.branchId }),
+        ...((filter?.dateFrom || filter?.dateToExclusive) && { business_date: {
+          ...(filter.dateFrom && { gte: filter.dateFrom }),
+          ...(filter.dateToExclusive && { lt: filter.dateToExclusive }),
+        }}),
+      },
       include: provider === 'WU'
         ? { wu_transaction_details: true }
         : { mg_transaction_details: true },
@@ -366,7 +373,14 @@ export class PrismaReportsRepository implements IReportsRepository {
 
   private async fxStat(filter?: ReportFilter) {
     const rows = await this.prisma.customer_transactions.findMany({
-      where: { operation_code: 'FX', status: 'COMPLETED', ...(filter?.branchId && { branch_id: filter.branchId }) },
+      where: {
+        operation_code: 'FX', status: 'COMPLETED',
+        ...(filter?.branchId && { branch_id: filter.branchId }),
+        ...((filter?.dateFrom || filter?.dateToExclusive) && { business_date: {
+          ...(filter.dateFrom && { gte: filter.dateFrom }),
+          ...(filter.dateToExclusive && { lt: filter.dateToExclusive }),
+        }}),
+      },
       include: { fx_transaction_details: true },
     });
     let buyCount = 0, sellCount = 0, buyVnd = 0, sellVnd = 0;

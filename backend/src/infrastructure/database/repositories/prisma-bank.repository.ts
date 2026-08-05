@@ -7,12 +7,16 @@ import { IBankRepository, ReceiveFromProviderInput } from '../../../domain/repos
 import { BankAccount, BankMovement, CurrencyCode } from '../../../domain/entities/bank.entity';
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
+import { NotificationService } from '../../notifications/notification.service';
 
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
 
 @Injectable()
 export class PrismaBankRepository implements IBankRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationService,
+  ) {}
 
   async listAccounts(branchId?: string): Promise<BankAccount[]> {
     const rows = await this.prisma.bank_accounts.findMany({
@@ -114,6 +118,23 @@ export class PrismaBankRepository implements IBankRepository {
         },
       });
       await allocateDebtSettlement(tx, debtAcc.id, settlement.id, input.amount);
+      const remaining = Number((outstanding - input.amount).toFixed(2));
+      const settled = remaining <= 0;
+      const fractionDigits = debtAcc.currency_code === 'VND' ? 0 : 2;
+      const formatAmount = (value: number) => value.toLocaleString('vi-VN', {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits,
+      });
+      await this.notifications.notifyUsers({
+        title: settled ? 'Công nợ đã được tất toán' : 'Công nợ đã được xử lý một phần',
+        body: `${debtAcc.provider_code} ngày ${debtAcc.business_date.toISOString().slice(0, 10)}: nhận ${formatAmount(input.amount)} ${debtAcc.currency_code} qua ngân hàng ${bankAcc.account_no}; còn lại ${formatAmount(Math.max(remaining, 0))} ${debtAcc.currency_code}.`,
+        sourceType: settled ? 'DEBT_SETTLED' : 'DEBT_PARTIALLY_SETTLED',
+        sourceId: debtAcc.id,
+      }, {
+        userIds: [input.createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [debtAcc.branch_id],
+      }, tx);
 
       return movement.id;
     });

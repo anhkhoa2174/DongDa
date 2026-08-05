@@ -1,7 +1,7 @@
 // Use Cases: Western Union — Flow WU
 // Layer: Application
 
-import { Injectable, Inject, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, ConflictException } from '@nestjs/common';
 import { IWuRepository, ListWuFilter } from '../../../domain/repositories/wu.repository';
 import { IExchangeRateRepository } from '../../../domain/repositories/exchange-rate.repository';
 import { WuTransaction, Currency2 } from '../../../domain/entities/wu.entity';
@@ -16,6 +16,9 @@ export class CreateWuUseCase {
   ) {}
 
   async execute(dto: CreateWuDto, createdByUserId: string): Promise<WuTransaction> {
+    if (await this.wuRepo.mtcnExists(dto.mtcn)) {
+      throw new ConflictException(`MSKH (MTCN) ${dto.mtcn} đã được xử lý`);
+    }
     if (Number(dto.receivedUsd ?? 0) <= 0 && Number(dto.receivedVnd ?? 0) <= 0) {
       throw new BadRequestException('Phải nhập số tiền thực trả cho khách');
     }
@@ -60,9 +63,12 @@ export class ListWuUseCase {
   }
 }
 
-function validateAppliedRate(value: number, firstRate: number, secondRate: number) {
+export function validateAppliedRate(value: number, firstRate: number, secondRate: number) {
   if (!Number.isFinite(value) || value <= 0) {
     throw new BadRequestException('Tỷ giá áp dụng phải là số dương hợp lệ');
+  }
+  if (!Number.isInteger(value) || value % 50 !== 0) {
+    throw new BadRequestException('Tỷ giá áp dụng WU phải là số nguyên theo bước 50 VND');
   }
   const rates = [firstRate, secondRate].filter((rate) => Number.isFinite(rate) && rate > 0);
   if (rates.length === 0) return value;
@@ -74,7 +80,7 @@ function validateAppliedRate(value: number, firstRate: number, secondRate: numbe
   return value;
 }
 
-function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
+export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
   const receivedUsd = Number(dto.receivedUsd ?? 0);
   const receivedVnd = Number(dto.receivedVnd ?? 0);
   const wuUsd = Number(dto.wuUsdAmount ?? 0);
@@ -89,6 +95,9 @@ function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
     }
     if (receivedVnd <= 0) {
       throw new BadRequestException('WU: khách nhận VND thì phải nhập số VND thực trả');
+    }
+    if (Math.abs(receivedVnd - Number(dto.wuVndAmount)) > 1) {
+      throw new BadRequestException(`WU: khách nhận VND phải nhận đúng Amount VND của WU (${dto.wuVndAmount} VND)`);
     }
     return;
   }

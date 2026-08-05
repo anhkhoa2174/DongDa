@@ -23,6 +23,8 @@ export interface TxStats {
 
 export interface ReportFilter {
   branchId?: string;
+  dateFrom?: Date;
+  dateToExclusive?: Date;
 }
 
 export interface DashboardOperations {

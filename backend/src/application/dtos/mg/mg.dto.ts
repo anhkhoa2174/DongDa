@@ -1,7 +1,7 @@
 // DTOs: MoneyGram
 // Layer: Application
 
-import { IsUUID, IsString, IsOptional, IsNumber, Min, IsEnum, IsPositive, Matches } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsNumber, IsInt, Min, IsEnum, IsPositive, Matches, ValidateIf } from 'class-validator';
 
 export class CreateMgDto {
   @IsUUID()
@@ -15,13 +15,15 @@ export class CreateMgDto {
   @IsString()
   customerName?: string;
 
+  @ValidateIf((o) => o.paidCurrency === 'USD')
   @IsNumber()
   @IsPositive()
-  mgUsdAmount: number;
+  mgUsdAmount?: number;
 
-  @IsNumber()
+  @ValidateIf((o) => o.paidCurrency === 'VND')
+  @IsInt({ message: 'Amount VND của MG phải là số nguyên' })
   @IsPositive()
-  mgVndAmount: number;
+  mgVndAmount?: number;
 
   @IsEnum(['USD', 'VND'] as any, { message: 'payoutCurrency phải USD/VND' })
   payoutCurrency: string;
@@ -34,13 +36,14 @@ export class CreateMgDto {
   @Min(0)
   receivedUsd: number;
 
-  @IsNumber()
+  @IsInt({ message: 'VND thực trả phải là số nguyên' })
   @Min(0)
   receivedVnd: number;
 
+  @IsOptional()
   @IsNumber()
   @IsPositive()
-  appliedRate: number;
+  appliedRate?: number;
 
   @IsEnum(['USD', 'VND'] as any, { message: 'paidCurrency phải USD/VND' })
   paidCurrency: string;

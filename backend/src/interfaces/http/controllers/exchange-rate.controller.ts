@@ -10,7 +10,9 @@
 import {
   Controller, Post, Get, Patch, Body, Param, Query,
   UseGuards, Request, HttpCode, HttpStatus,
+  UploadedFile, UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
@@ -18,8 +20,9 @@ import { CreateExchangeRateUseCase } from '../../../application/use-cases/exchan
 import { ApproveExchangeRateUseCase } from '../../../application/use-cases/exchange-rate/approve-exchange-rate.use-case';
 import { RejectExchangeRateUseCase } from '../../../application/use-cases/exchange-rate/reject-exchange-rate.use-case';
 import { ListExchangeRatesUseCase } from '../../../application/use-cases/exchange-rate/list-exchange-rates.use-case';
+import { ParseExchangeRateImageUseCase } from '../../../application/use-cases/exchange-rate/parse-exchange-rate-image.use-case';
 import {
-  CreateExchangeRateDto, ExchangeRateHistoryQueryDto, ListRatesQueryDto,
+  CreateExchangeRateBatchDto, CreateExchangeRateDto, ExchangeRateHistoryQueryDto, ListRatesQueryDto,
 } from '../../../application/dtos/exchange-rate/exchange-rate.dto';
 
 @Controller('exchange-rates')
@@ -30,7 +33,16 @@ export class ExchangeRateController {
     private readonly approveRate: ApproveExchangeRateUseCase,
     private readonly rejectRate: RejectExchangeRateUseCase,
     private readonly listRates: ListExchangeRatesUseCase,
+    private readonly parseRateImage: ParseExchangeRateImageUseCase,
   ) {}
+
+  @Post('parse-image')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseInterceptors(FileInterceptor('image', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  parseImage(@UploadedFile() file?: Express.Multer.File) {
+    return this.parseRateImage.execute(file);
+  }
 
   // Tạo — chỉ KTTH (MANAGER) / GĐ (ADMIN)
   @Post()
@@ -38,6 +50,13 @@ export class ExchangeRateController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   create(@Request() req: any, @Body() dto: CreateExchangeRateDto) {
     return this.createRate.execute(dto, req.user.id);
+  }
+
+  @Post('batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  createBatch(@Request() req: any, @Body() dto: CreateExchangeRateBatchDto) {
+    return this.createRate.executeBatch(dto, req.user.id);
   }
 
   // Liệt kê (mọi vai trò đã đăng nhập đều xem được)

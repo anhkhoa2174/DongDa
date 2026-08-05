@@ -1,7 +1,10 @@
 // Flow 1 — Duyệt tỷ giá (nối API thật)
-import { App, Button, Card, Form, InputNumber, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Form, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CheckOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import type { UploadFile } from 'antd';
+import { CheckOutlined, CloseOutlined, DeleteOutlined, HistoryOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import {
   exchangeRateInputFormatter,
@@ -12,9 +15,9 @@ import {
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
-  useActiveRates, useApproveRate, useCreateRate, useExchangeRates, useRejectRate,
+  useActiveRates, useApproveRate, useCreateRate, useCreateRateBatch, useExchangeRates, useParseRateImage, useRejectRate,
 } from '../hooks/useExchangeRates';
-import type { CreateRatePayload, ExchangeRateDto, ExchangeRateType, RateStatus, ServiceProvider } from '../api/exchangeRate.api';
+import type { CreateRatePayload, ExchangeRateDto, ExchangeRateType, ParsedRateCandidate, RateStatus, ServiceProvider } from '../api/exchangeRate.api';
 
 const RATE_TYPES: Array<{ value: ExchangeRateType; label: string }> = [
   { value: 'PAID_BUY', label: 'Paid mua' },
@@ -33,6 +36,7 @@ const STATUS_COLOR: Record<RateStatus, string> = {
 };
 
 export function ExchangeRateApprovalPage() {
+  const navigate = useNavigate();
   const { message } = App.useApp();
   const role = useAuthStore((s) => s.user?.role);
   const canManage = hasPermission(role, 'exchange_rate.manage');
@@ -43,6 +47,11 @@ export function ExchangeRateApprovalPage() {
   const createRate = useCreateRate();
   const approveRate = useApproveRate();
   const rejectRate = useRejectRate();
+  const parseRateImage = useParseRateImage();
+  const createRateBatch = useCreateRateBatch();
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [imageFiles, setImageFiles] = useState<UploadFile[]>([]);
+  const [parsedRates, setParsedRates] = useState<ParsedRateCandidate[]>([]);
   const [form] = Form.useForm<CreateRatePayload>();
   const selectedRateType = Form.useWatch('rateType', form);
   const selectedProvider = selectedRateType ? normalizeRateProvider(selectedRateType) : undefined;
@@ -78,6 +87,45 @@ export function ExchangeRateApprovalPage() {
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Từ chối thất bại');
     }
+  };
+
+  const analyzeImage = async () => {
+    const file = imageFiles[0]?.originFileObj;
+    if (!file) return message.warning('Chọn một ảnh bảng tỷ giá');
+    try {
+      const result = await parseRateImage.mutateAsync(file as File);
+      setParsedRates(result.rates);
+      message.success(`Đã nhận dạng ${result.rates.length} tỷ giá`);
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Không thể phân tích ảnh tỷ giá');
+    }
+  };
+
+  const saveImageDrafts = async () => {
+    if (parsedRates.length === 0) return;
+    try {
+      await createRateBatch.mutateAsync(parsedRates.map((rate) => ({
+        rateType: rate.rateType,
+        provider: providerForRateType(rate.rateType),
+        fromCurrency: rate.fromCurrency,
+        toCurrency: 'VND',
+        rate: Number(rate.rate),
+      })));
+      message.success(`Đã tạo ${parsedRates.length} tỷ giá DRAFT chờ duyệt`);
+      closeImageModal();
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Không thể tạo danh sách tỷ giá chờ duyệt');
+    }
+  };
+
+  const closeImageModal = () => {
+    setImageModalOpen(false);
+    setImageFiles([]);
+    setParsedRates([]);
+  };
+
+  const updateParsedRate = (index: number, patch: Partial<ParsedRateCandidate>) => {
+    setParsedRates((current) => current.map((rate, rateIndex) => rateIndex === index ? { ...rate, ...patch } : rate));
   };
 
   const activeColumns: ColumnsType<ExchangeRateDto> = [
@@ -130,6 +178,14 @@ export function ExchangeRateApprovalPage() {
       title="Duyệt tỷ giá"
       description="Chọn loại tỷ giá và ngoại tệ. Nhóm áp dụng được hệ thống tự xác định, không cần chọn provider thủ công."
       moduleName="exchange-rate"
+      extra={<Space wrap>
+        {canManage && (
+          <Button type="primary" icon={<UploadOutlined />} onClick={() => setImageModalOpen(true)}>
+            Nhập tỷ giá từ ảnh
+          </Button>
+        )}
+        <Button icon={<HistoryOutlined />} onClick={() => navigate('/exchange-rate/history')}>Lịch sử tỷ giá</Button>
+      </Space>}
     >
       {canManage && (
         <Card title="Tạo tỷ giá mới" size="small" className="mb-4">
@@ -188,8 +244,100 @@ export function ExchangeRateApprovalPage() {
           pagination={{ pageSize: 5 }}
         />
       </Card>
+
+      <Modal
+        title="Nhập bảng tỷ giá từ ảnh"
+        width={980}
+        open={imageModalOpen}
+        onCancel={closeImageModal}
+        destroyOnClose
+        footer={[
+          <Button key="cancel" onClick={closeImageModal}>Hủy</Button>,
+          <Button key="analyze" icon={<UploadOutlined />} loading={parseRateImage.isPending}
+            disabled={imageFiles.length === 0} onClick={analyzeImage}>Phân tích ảnh</Button>,
+          <Button key="save" type="primary" loading={createRateBatch.isPending}
+            disabled={parsedRates.length === 0} onClick={saveImageDrafts}>Tạo danh sách chờ duyệt</Button>,
+        ]}
+      >
+        <Alert
+          className="mb-4"
+          showIcon
+          type="warning"
+          message="AI chỉ hỗ trợ nhận dạng"
+          description="Kiểm tra loại tỷ giá, ngoại tệ và số tiền trước khi tạo DRAFT. Hệ thống không tự duyệt hoặc áp dụng kết quả từ ảnh."
+        />
+        <Upload.Dragger
+          accept="image/jpeg,image/png,image/webp"
+          maxCount={1}
+          listType="picture"
+          fileList={imageFiles}
+          beforeUpload={(file) => {
+            if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+              message.error('Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP');
+              return Upload.LIST_IGNORE;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+              message.error('Ảnh không được vượt quá 10 MB');
+              return Upload.LIST_IGNORE;
+            }
+            return false;
+          }}
+          onChange={({ fileList }) => {
+            setImageFiles(fileList.slice(-1));
+            setParsedRates([]);
+          }}
+        >
+          <p className="ant-upload-drag-icon"><UploadOutlined /></p>
+          <p className="font-medium">Chọn hoặc kéo ảnh bảng tỷ giá vào đây</p>
+          <Typography.Text type="secondary">JPEG, PNG, WebP · tối đa 10 MB</Typography.Text>
+        </Upload.Dragger>
+
+        {parsedRates.length > 0 && (
+          <Table
+            className="mt-4"
+            rowKey={(_, index) => String(index)}
+            pagination={false}
+            scroll={{ x: 850 }}
+            dataSource={parsedRates}
+            columns={[
+              { title: 'Loại', width: 165, render: (_, rate, index) => (
+                <Select className="w-full" value={rate.rateType} options={RATE_TYPES}
+                  onChange={(rateType) => updateParsedRate(index, { rateType, provider: providerForRateType(rateType) })} />
+              ) },
+              { title: 'Ngoại tệ', width: 105, render: (_, rate, index) => (
+                <Select className="w-full" value={rate.fromCurrency} showSearch options={CURRENCIES.map((value) => ({ value }))}
+                  onChange={(fromCurrency) => updateParsedRate(index, { fromCurrency })} />
+              ) },
+              { title: 'Tỷ giá', width: 170, render: (_, rate, index) => (
+                <InputNumber className="w-full" min={0.000001} value={rate.rate}
+                  formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
+                  onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0) })} />
+              ) },
+              { title: 'Nguồn nhận dạng', dataIndex: 'sourceLabel', ellipsis: true,
+                render: (value, rate) => <Space direction="vertical" size={0}>
+                  <Typography.Text>{value || 'Không có nhãn'}</Typography.Text>
+                  {rate.warning && <Typography.Text type="warning">{rate.warning}</Typography.Text>}
+                </Space> },
+              { title: 'Độ tin cậy', width: 110, align: 'center' as const,
+                render: (_, rate) => <Tag color={rate.confidence >= 0.85 ? 'green' : rate.confidence >= 0.65 ? 'gold' : 'red'}>
+                  {Math.round(rate.confidence * 100)}%
+                </Tag> },
+              { title: '', width: 50, render: (_, __, index) => (
+                <Button type="text" danger icon={<DeleteOutlined />}
+                  aria-label="Xóa tỷ giá" onClick={() => setParsedRates((current) => current.filter((_, i) => i !== index))} />
+              ) },
+            ]}
+          />
+        )}
+      </Modal>
     </PageScaffold>
   );
+}
+
+function providerForRateType(rateType: ExchangeRateType): ServiceProvider {
+  if (rateType === 'PAID_BUY' || rateType === 'PAID_SELL') return 'WU_MG';
+  if (rateType === 'BANK_RATE') return 'BANK';
+  return 'INTERNAL';
 }
 
 function normalizeCurrencyCode(value?: string) {

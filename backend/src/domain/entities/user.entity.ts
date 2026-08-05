@@ -27,6 +27,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'exchange-rate:read',
     'report:read', 'report:export',
     'capital-transfer:create', 'capital-transfer:read',
+    'debt:settle',
     'user:read',
   ],
   [UserRole.STAFF]: [

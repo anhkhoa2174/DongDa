@@ -39,6 +39,18 @@ export function useCreateRate() {
   });
 }
 
+export function useParseRateImage() {
+  return useMutation({ mutationFn: (file: File) => exchangeRateApi.parseImage(file) });
+}
+
+export function useCreateRateBatch() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (rates: CreateRatePayload[]) => exchangeRateApi.createBatch(rates),
+    onSuccess: invalidate,
+  });
+}
+
 export function useApproveRate() {
   const invalidate = useInvalidate();
   return useMutation({

@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { Roles, RolesGuard } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { CreateEmployeeDto } from '../../../application/dtos/organization/organization.dto';
+import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 
 type HashPort = {
   hash(plain: string): Promise<string>;
@@ -17,6 +18,7 @@ export class OrganizationController {
   constructor(
     private readonly prisma: PrismaService,
     @Inject('IHashService') private readonly hashService: HashPort,
+    private readonly notifications: NotificationService,
   ) {}
 
   @Post('employees')
@@ -66,6 +68,12 @@ export class OrganizationController {
         },
       });
       await tx.user_roles.create({ data: { user_id: user.id, role_id: role.id } });
+      await this.notifications.notifyUsers({
+        title: 'Tài khoản làm việc đã được tạo',
+        body: `Xin chào ${dto.fullName.trim()}, tài khoản ${user.username} đã sẵn sàng sử dụng.`,
+        sourceType: 'ACCOUNT_CREATED',
+        sourceId: user.id,
+      }, { userIds: [user.id, req.user.id] }, tx);
 
       return {
         employee,

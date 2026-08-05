@@ -301,7 +301,7 @@ export function CompanyDashboardPage() {
           { label: 'Công nợ quy đổi', value: formatVnd(overview?.debtValueVnd ?? 0) },
         ]}
         actions={[
-          { label: 'Công nợ', icon: <FileSearchOutlined />, primary: true, onClick: () => navigate('/debt-management/debt-list') },
+          { label: 'Công nợ', icon: <FileSearchOutlined />, primary: true, onClick: () => navigate('/debt-management') },
           { label: 'Quỹ chung', icon: <MoneyCollectOutlined />, onClick: () => navigate('/fund-management/central-fund') },
           { label: 'Ngân hàng', icon: <BankOutlined />, onClick: () => navigate('/bank-management/accounts') },
           { label: 'Tỷ giá', icon: <CheckCircleOutlined />, onClick: () => navigate('/exchange-rate') },

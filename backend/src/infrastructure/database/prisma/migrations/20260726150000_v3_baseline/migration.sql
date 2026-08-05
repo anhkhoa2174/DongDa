@@ -818,6 +818,12 @@ CREATE TABLE fund_accounts (
 CREATE INDEX idx_fund_accounts_branch ON fund_accounts(branch_id);
 CREATE INDEX idx_fund_accounts_type_currency ON fund_accounts(account_type, currency_code);
 
+-- Mỗi chi nhánh chỉ có một sổ tiền mặt/Quỹ A đang hoạt động cho một loại tiền.
+-- Account INACTIVE vẫn được giữ để bảo toàn lịch sử ledger.
+CREATE UNIQUE INDEX uq_fund_accounts_active_type_currency
+ON fund_accounts(branch_id, account_type, currency_code)
+WHERE status = 'ACTIVE' AND account_type IN ('CASH', 'FUND_A');
+
 CREATE TRIGGER trg_fund_accounts_updated_at
 BEFORE UPDATE ON fund_accounts
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();

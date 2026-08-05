@@ -1,12 +1,18 @@
 import {
   BellOutlined,
+  BankOutlined,
   CheckOutlined,
   DownOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MoneyCollectOutlined,
   SettingOutlined,
+  FileTextOutlined,
+  SafetyCertificateOutlined,
+  SwapOutlined,
   UserOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { Avatar, Badge, Button, Drawer, Dropdown, Layout, List, Menu, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
@@ -16,7 +22,14 @@ import { navigationItems } from '@/shared/constants/navigation';
 import type { AppMenuItem } from '@/shared/types/navigation';
 import { logoutWithApi } from '@/modules/auth/api/auth.api';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { notificationsMock, type AppNotification } from '../data/notifications.mock';
+import type { AppNotification, NotificationCategory } from '@/modules/notifications/api/notifications.api';
+import {
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifications,
+  useUnreadNotificationCount,
+} from '@/modules/notifications/hooks/useNotifications';
+import { formatDateTime } from '@/shared/utils/formatters';
 import type { AppRole } from '@/modules/auth/model/auth.types';
 import { hasBackendPermission, hasPermission } from '@/modules/auth/model/permissions';
 
@@ -64,11 +77,15 @@ function filterNavigationByRole(
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const notificationsQuery = useNotifications();
+  const unreadCountQuery = useUnreadNotificationCount();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
+  const notifications = notificationsQuery.data ?? [];
   const visibleNavigationItems = useMemo(
     () => filterNavigationByRole(navigationItems, user?.role, user?.permissions),
     [user?.permissions, user?.role],
@@ -94,6 +111,9 @@ export function AppLayout() {
         ? '/fund-management/branch-funds'
         : '/fund-management/central-fund';
     }
+
+    if (location.pathname.startsWith('/exchange-rate')) return '/exchange-rate';
+    if (location.pathname.startsWith('/debt-management')) return '/debt-management';
 
     return location.pathname;
   }, [location.pathname, user?.role]);
@@ -136,16 +156,13 @@ export function AppLayout() {
   };
 
   const openNotification = (notification: AppNotification) => {
-    setReadNotificationIds((current) =>
-      current.includes(notification.id) ? current : [...current, notification.id],
-    );
+    if (notification.status === 'UNREAD') markRead.mutate(notification.id);
     setIsNotificationOpen(false);
     navigate(notification.path);
   };
 
-  const unreadNotificationCount = notificationsMock.filter(
-    (notification) => !readNotificationIds.includes(notification.id),
-  ).length;
+  const unreadNotificationCount = unreadCountQuery.data
+    ?? notifications.filter((notification) => notification.status === 'UNREAD').length;
 
   return (
     <Layout className="app-shell min-h-screen">
@@ -194,7 +211,11 @@ export function AppLayout() {
               <Button
                 aria-label="Thông báo"
                 icon={<BellOutlined />}
-                onClick={() => setIsNotificationOpen(true)}
+                onClick={() => {
+                  setIsNotificationOpen(true);
+                  void notificationsQuery.refetch();
+                  void unreadCountQuery.refetch();
+                }}
               />
             </Badge>
             <Dropdown
@@ -237,7 +258,8 @@ export function AppLayout() {
             type="text"
             icon={<CheckOutlined />}
             disabled={unreadNotificationCount === 0}
-            onClick={() => setReadNotificationIds(notificationsMock.map((notification) => notification.id))}
+            loading={markAllRead.isPending}
+            onClick={() => markAllRead.mutate()}
           >
             Đánh dấu đã đọc
           </Button>
@@ -245,9 +267,12 @@ export function AppLayout() {
       >
         <List
           className="notification-list"
-          dataSource={notificationsMock}
+          loading={notificationsQuery.isLoading}
+          locale={{ emptyText: 'Chưa có thông báo' }}
+          dataSource={notifications}
           renderItem={(notification) => { 
-            const isUnread = !readNotificationIds.includes(notification.id);
+            const isUnread = notification.status === 'UNREAD';
+            const presentation = notificationPresentation(notification.category);
 
             return (
               <List.Item
@@ -257,19 +282,19 @@ export function AppLayout() {
                 <List.Item.Meta
                   avatar={
                     <Badge dot={isUnread}>
-                      <Avatar icon={notification.icon} />
+                      <Avatar icon={presentation.icon} />
                     </Badge>
                   }
                   title={
                     <Space size={8} wrap>
                       <Typography.Text strong>{notification.title}</Typography.Text>
-                      <Tag color={notification.color}>{notification.tag}</Tag>
+                      <Tag color={presentation.color}>{presentation.label}</Tag>
                     </Space>
                   }
                   description={
                     <Space direction="vertical" size={6}>
-                      <Typography.Text>{notification.description}</Typography.Text>
-                      <Typography.Text type="secondary">{notification.meta}</Typography.Text>
+                      <Typography.Text>{notification.body}</Typography.Text>
+                      <Typography.Text type="secondary">{formatDateTime(notification.createdAt)}</Typography.Text>
                       <Button type="link" size="small">
                         Mở chi tiết
                       </Button>
@@ -283,4 +308,18 @@ export function AppLayout() {
       </Drawer>
     </Layout>
   );
+}
+
+function notificationPresentation(category: NotificationCategory) {
+  const presentations = {
+    ACCOUNT: { label: 'Tài khoản', color: 'gold', icon: <UserOutlined /> },
+    REPORT: { label: 'Báo cáo', color: 'blue', icon: <FileTextOutlined /> },
+    FUND_TRANSFER: { label: 'Tiếp quỹ', color: 'cyan', icon: <SwapOutlined /> },
+    FUND_MOVEMENT: { label: 'Thu / chi', color: 'green', icon: <BankOutlined /> },
+    SHIFT: { label: 'Sai lệch', color: 'red', icon: <SafetyCertificateOutlined /> },
+    DEBT: { label: 'Công nợ', color: 'gold', icon: <MoneyCollectOutlined /> },
+    RECONCILIATION: { label: 'Đối chiếu', color: 'red', icon: <WarningOutlined /> },
+    SYSTEM: { label: 'Hệ thống', color: 'default', icon: <BellOutlined /> },
+  } as const;
+  return presentations[category] ?? presentations.SYSTEM;
 }

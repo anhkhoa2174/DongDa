@@ -308,7 +308,7 @@ Số endpoint được đếm từ các decorator HTTP trong `backend/src/interf
 | Chi nhánh | GĐ tạo chi nhánh; hệ thống tự tạo sổ CASH VND, CASH USD và Quỹ A; theo dõi nhân viên, quỹ, ca, giao dịch, tiền vào/ra | **API THẬT** |
 | Dashboard công ty | Tổng vốn, tiền mặt, ngân hàng, công nợ, KPI vận hành, xu hướng 7 ngày, cơ cấu giao dịch, hiệu quả chi nhánh, tỷ giá active | **API THẬT** |
 | Dashboard chi nhánh | Tổng quan quỹ, KPI, cảnh báo và tồn ngoại tệ của Staff | **MOCK DATA** |
-| Tổng quan giao dịch | Gộp WU, MG, FX; lọc chi nhánh/loại/trạng thái/thời gian; GĐ/KTTH sửa metadata hoặc deactive | **API THẬT** cho WU/MG/FX; chuyển tiền trong nước chưa có dữ liệu API |
+| Tổng quan giao dịch | Gộp WU, MG, FX; lọc chi nhánh/loại/trạng thái/thời gian; sửa metadata; lập và duyệt phiếu điều chỉnh | **API THẬT** cho WU/MG/FX và phiếu điều chỉnh; chuyển tiền trong nước chưa có dữ liệu API |
 | Western Union | Tạo và liệt kê WU; áp tỷ giá theo tiền khách nhận; tách USD chẵn và phần lẻ VND; ghi ledger và công nợ | **API THẬT** |
 | MoneyGram | Tạo và liệt kê MG; Reference 8 ký tự duy nhất; quy đổi theo Paid Currency/Payout Currency; ghi ledger và công nợ | **API THẬT** |
 | Mua/Bán ngoại tệ | Tạo giao dịch FX, lấy tỷ giá mua/bán active, cập nhật quỹ VND và tồn Quỹ A, không bán vượt tồn | **API THẬT** |
@@ -401,19 +401,21 @@ POST /api/v1/fx/transactions
 Quản trị giao dịch đã post:
 
 ```txt
-GET   /api/v1/transactions/change-requests?status=:status
 PATCH /api/v1/transactions/:id/metadata
 POST  /api/v1/transactions/:id/void
 POST  /api/v1/transactions/:id/deactivate
-POST  /api/v1/transactions/:id/change-requests
-POST  /api/v1/transactions/change-requests/:requestId/approve
-POST  /api/v1/transactions/change-requests/:requestId/reject
+GET   /api/v1/transactions/adjustment-requests?status=:status
+POST  /api/v1/transactions/:id/adjustment-requests
+POST  /api/v1/transactions/adjustment-requests/:requestId/approve
+POST  /api/v1/transactions/adjustment-requests/:requestId/reject
 ```
 
 - Sửa metadata chỉ cho phép đổi tên/số điện thoại khách và bắt buộc lý do.
-- Deactivate/void tạo bút toán đảo, xử lý công nợ liên quan, đổi trạng thái giao dịch và ghi audit log.
+- Void trực tiếp chỉ áp dụng khi ca gốc vẫn đang mở. Giao dịch thuộc ca đóng phải lập phiếu điều chỉnh.
 - Không sửa trực tiếp branch, loại tiền, số tiền hoặc tỷ giá của giao dịch đã post.
-- Staff có thể gửi yêu cầu void; ADMIN/MANAGER duyệt hoặc từ chối.
+- Staff/ADMIN/MANAGER có thể lập phiếu; ADMIN/MANAGER duyệt chéo hoặc từ chối. Người lập không được tự duyệt.
+- Khi duyệt, backend yêu cầu chi nhánh có ca mở, ghi bút toán đảo vào ca hiện tại, đảo công nợ chưa tất toán, đổi giao dịch thành `VOIDED`, gửi thông báo và ghi Audit Log.
+- Giao dịch đã giải quyết công nợ hoặc đã chốt Journal không được duyệt theo luồng này; phải xử lý bằng điều chỉnh đối chiếu.
 
 Chưa có API cho chuyển tiền trong nước. Route `/domestic-transfer/transactions` và dữ liệu `domesticTransferTransactionsMock` chỉ là UI demo.
 
@@ -669,12 +671,17 @@ GĐ (`ADMIN`) và KTTH (`MANAGER`) được quản trị giao dịch toàn hệ 
 PATCH /api/v1/transactions/:id/metadata
   Sửa customerName/customerPhone, bắt buộc có reason và ghi Audit Log.
 
-POST /api/v1/transactions/:id/deactivate
-  Chỉ áp dụng cho giao dịch COMPLETED, bắt buộc có reason.
-  Backend đảo ledger, đảo công nợ còn chưa tất toán, chuyển trạng thái VOIDED và ghi Audit Log.
+POST /api/v1/transactions/:id/adjustment-requests
+  Lập phiếu điều chỉnh cho giao dịch COMPLETED, gồm reason và proposedCorrection.
+
+POST /api/v1/transactions/adjustment-requests/:requestId/approve
+  Duyệt chéo; ghi bút toán đảo vào ca đang mở hiện tại, đảo công nợ và chuyển giao dịch thành VOIDED.
+
+POST /api/v1/transactions/adjustment-requests/:requestId/reject
+  Từ chối phiếu và gửi thông báo cho người lập.
 ```
 
-Chi nhánh, loại giao dịch, số tiền và tỷ giá không được cập nhật trực tiếp vì đã phát sinh ledger/công nợ. Nếu sai dữ liệu tài chính, người quản lý phải deactive giao dịch cũ rồi tạo giao dịch thay thế tại đúng chi nhánh. Backend từ chối deactive nếu công nợ liên quan đã được giải quyết một phần hoặc toàn bộ.
+Chi nhánh, loại giao dịch, số tiền và tỷ giá không được cập nhật trực tiếp vì đã phát sinh ledger/công nợ. Nếu sai dữ liệu tài chính, người dùng lập phiếu điều chỉnh, người có thẩm quyền khác duyệt, sau đó tạo giao dịch thay thế tại đúng chi nhánh. Backend từ chối duyệt nếu công nợ đã được giải quyết hoặc giao dịch đã chốt Journal.
 
 ### Theo dõi chi nhánh
 
@@ -711,6 +718,21 @@ Nguyên tắc chính:
 - Ledger là nguồn sự thật tài chính
 
 ## Lệnh Hay Dùng
+
+### Gemini nhận dạng bảng tỷ giá
+
+Tạo `backend/.env` từ file mẫu và đặt biến môi trường backend:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+```env
+GEMINI_API_KEY=your-google-ai-api-key
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Ảnh được gửi từ backend tới Google AI; API key không xuất hiện ở frontend. Kết quả AI chỉ tạo danh sách `DRAFT` sau khi người dùng xem lại, không tự động duyệt hay thay tỷ giá `ACTIVE`.
 
 Frontend:
 

@@ -1,11 +1,13 @@
 import {
   BankOutlined,
+  CheckOutlined,
+  CloseOutlined,
   EditOutlined,
   FieldTimeOutlined,
+  FileDoneOutlined,
   InboxOutlined,
   ReloadOutlined,
   SendOutlined,
-  StopOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
 import {
@@ -30,7 +32,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
@@ -39,6 +41,7 @@ import { useBranches as useWuBranches, useWuTransactions } from '@/modules/weste
 import { useMgTransactions } from '@/modules/moneygram/hooks/useMg';
 import { useFxTransactions } from '@/modules/foreign-exchange/hooks/useFx';
 import { transactionAdminApi } from '../api/transactionAdmin.api';
+import type { TransactionAdjustmentRequest } from '../api/transactionAdmin.api';
 import { useTransactionShift } from '../hooks/useTransactionShift';
 import { getTransactionAccess } from '../model/transactionAccess';
 import type { AggregatedTransaction, TransactionSource, TransactionStatus } from '../model/transaction.types';
@@ -79,7 +82,10 @@ type TransactionEditValues = {
 
 type DeactivateValues = {
   reason: string;
+  proposedCorrection?: string;
 };
+
+type ReviewValues = { reason: string };
 
 export function TransactionsMainPage() {
   const { message } = App.useApp();
@@ -102,10 +108,23 @@ export function TransactionsMainPage() {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [editTarget, setEditTarget] = useState<AggregatedTransaction | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<AggregatedTransaction | null>(null);
+  const [adjustmentListOpen, setAdjustmentListOpen] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<{
+    request: TransactionAdjustmentRequest;
+    action: 'APPROVE' | 'REJECT';
+  } | null>(null);
   const [editForm] = Form.useForm<TransactionEditValues>();
   const [deactivateForm] = Form.useForm<DeactivateValues>();
+  const [reviewForm] = Form.useForm<ReviewValues>();
   const isLoading = isWuLoading || isMgLoading || isFxLoading;
   const canControlTransactions = isControlUser || isUiTestMode;
+  const canRequestAdjustment = canControlTransactions || role === 'branch';
+  const { data: adjustmentRequests = [], isLoading: isAdjustmentLoading } = useQuery({
+    queryKey: ['transaction-adjustment-requests'],
+    queryFn: () => transactionAdminApi.listAdjustmentRequests(),
+    enabled: isControlUser,
+  });
+  const pendingAdjustmentCount = adjustmentRequests.filter((request) => request.status === 'PENDING').length;
   const invalidateTransactionQueries = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['wu'] }),
@@ -129,17 +148,36 @@ export function TransactionsMainPage() {
       void message.error(error?.response?.data?.message ?? 'Không thể sửa giao dịch');
     },
   });
-  const deactivateMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      transactionAdminApi.deactivate(id, { reason }),
+  const adjustmentMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) =>
+      transactionAdminApi.createAdjustmentRequest(id, values),
     onSuccess: async () => {
-      await invalidateTransactionQueries();
+      await queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] });
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
       setDeactivateTarget(null);
       deactivateForm.resetFields();
-      void message.success('Đã deactive, đảo quỹ/công nợ và ghi Audit Log');
+      void message.success('Đã lập phiếu điều chỉnh và gửi duyệt');
     },
     onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể deactive giao dịch');
+      void message.error(error?.response?.data?.message ?? 'Không thể lập phiếu điều chỉnh');
+    },
+  });
+  const reviewMutation = useMutation({
+    mutationFn: ({ requestId, action, reason }: { requestId: string; action: 'APPROVE' | 'REJECT'; reason: string }) => (
+      action === 'APPROVE'
+        ? transactionAdminApi.approveAdjustmentRequest(requestId, reason)
+        : transactionAdminApi.rejectAdjustmentRequest(requestId, reason)
+    ),
+    onSuccess: async (_, variables) => {
+      await invalidateTransactionQueries();
+      await queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] });
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      setReviewTarget(null);
+      reviewForm.resetFields();
+      void message.success(variables.action === 'APPROVE' ? 'Đã duyệt và ghi sổ phiếu điều chỉnh' : 'Đã từ chối phiếu điều chỉnh');
+    },
+    onError: (error: any) => {
+      void message.error(error?.response?.data?.message ?? 'Không thể xử lý phiếu điều chỉnh');
     },
   });
 
@@ -247,7 +285,16 @@ export function TransactionsMainPage() {
 
   const submitDeactivate = (values: DeactivateValues) => {
     if (!deactivateTarget) return;
-    deactivateMutation.mutate({ id: deactivateTarget.key, reason: values.reason });
+    adjustmentMutation.mutate({ id: deactivateTarget.key, values });
+  };
+
+  const submitReview = (values: ReviewValues) => {
+    if (!reviewTarget) return;
+    reviewMutation.mutate({
+      requestId: reviewTarget.request.id,
+      action: reviewTarget.action,
+      reason: values.reason,
+    });
   };
 
   const filteredTransactions = useMemo(
@@ -298,21 +345,99 @@ export function TransactionsMainPage() {
       width: 170,
       render: (_, record) => {
         const isInactive = ['VOID', 'VOIDED', 'DEACTIVATED'].includes(record.status);
-        if (!canControlTransactions || isInactive) {
+        if ((!canControlTransactions && !canRequestAdjustment) || isInactive) {
           return <Typography.Text type="secondary">Chỉ xem</Typography.Text>;
         }
 
         return (
           <Space size={4}>
-            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
-              Sửa
-            </Button>
-            <Button danger type="text" size="small" icon={<StopOutlined />} onClick={() => openDeactivateModal(record)}>
-              Deactive
-            </Button>
+            {canControlTransactions && (
+              <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+                Sửa
+              </Button>
+            )}
+            {canRequestAdjustment && (
+              <Button type="text" size="small" icon={<FileDoneOutlined />} onClick={() => openDeactivateModal(record)}>
+                Điều chỉnh
+              </Button>
+            )}
           </Space>
         );
       },
+    },
+  ];
+
+  const adjustmentColumns: ColumnsType<TransactionAdjustmentRequest> = [
+    {
+      title: 'Giao dịch',
+      render: (_, request) => (
+        <div>
+          <Typography.Text strong>{request.transaction?.transaction_no ?? request.entity_id}</Typography.Text>
+          <div className="text-xs text-slate-500">
+            {request.transaction?.operation_code} · {request.transaction?.branches?.code ?? '—'} · {request.transaction?.shifts?.shift_code ?? 'Không có ca'}
+          </div>
+        </div>
+      ),
+    },
+    {
+      title: 'Người lập',
+      width: 150,
+      render: (_, request) => request.users?.employees?.full_name ?? request.users?.username ?? '—',
+    },
+    {
+      title: 'Nội dung',
+      dataIndex: 'note',
+      ellipsis: true,
+    },
+    {
+      title: 'Ngày lập',
+      dataIndex: 'requested_at',
+      width: 160,
+      render: (value: string) => formatDateTime(value),
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      width: 125,
+      render: (value: TransactionAdjustmentRequest['status']) => (
+        <Tag color={value === 'PENDING' ? 'gold' : value === 'APPROVED' ? 'green' : 'red'}>
+          {value === 'PENDING' ? 'Chờ duyệt' : value === 'APPROVED' ? 'Đã duyệt' : value === 'REJECTED' ? 'Từ chối' : 'Đã hủy'}
+        </Tag>
+      ),
+    },
+    {
+      title: '',
+      width: 170,
+      fixed: 'right',
+      render: (_, request) => request.status === 'PENDING' ? (
+        <Space size={4}>
+          <Button
+            type="text"
+            size="small"
+            icon={<CheckOutlined />}
+            disabled={request.requested_by_user_id === user?.id}
+            title={request.requested_by_user_id === user?.id ? 'Người lập không được tự duyệt phiếu' : undefined}
+            onClick={() => {
+              reviewForm.resetFields();
+              setReviewTarget({ request, action: 'APPROVE' });
+            }}
+          >
+            Duyệt
+          </Button>
+          <Button
+            danger
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            onClick={() => {
+              reviewForm.resetFields();
+              setReviewTarget({ request, action: 'REJECT' });
+            }}
+          >
+            Từ chối
+          </Button>
+        </Space>
+      ) : <Typography.Text type="secondary">Đã xử lý</Typography.Text>,
     },
   ];
 
@@ -346,6 +471,14 @@ export function TransactionsMainPage() {
       moduleName="transactions"
     >
       <div className="space-y-4">
+        {isControlUser && (
+          <div className="flex justify-end">
+            <Button icon={<FileDoneOutlined />} onClick={() => setAdjustmentListOpen(true)}>
+              Phiếu điều chỉnh
+              {pendingAdjustmentCount > 0 && <Tag color="gold" className="ml-1! mr-0!">{pendingAdjustmentCount} chờ duyệt</Tag>}
+            </Button>
+          </div>
+        )}
         <Card className="transaction-command-center polished-card" classNames={{ body: 'p-0!' }}>
           <div className="grid xl:grid-cols-[1.1fr_1.4fr_1.1fr]">
             <div className="border-b border-slate-200 p-5 xl:border-r xl:border-b-0">
@@ -525,20 +658,86 @@ export function TransactionsMainPage() {
       </Modal>
 
       <Modal
-        title={`Deactive giao dịch ${deactivateTarget?.code ?? ''}`}
+        title={`Lập phiếu điều chỉnh ${deactivateTarget?.code ?? ''}`}
         open={Boolean(deactivateTarget)}
         onCancel={() => setDeactivateTarget(null)}
         footer={null}
         destroyOnClose
       >
         <Form<DeactivateValues> form={deactivateForm} layout="vertical" onFinish={submitDeactivate}>
-          <Form.Item name="reason" label="Lý do deactive" rules={[{ required: true, message: 'Nhập lý do deactive' }]}>
-            <Input.TextArea rows={4} maxLength={500} showCount placeholder="Lý do sẽ được ghi Audit Log; hệ thống tự đảo bút toán quỹ và công nợ." />
+          <Alert
+            className="mb-4"
+            type="warning"
+            showIcon
+            message="Phiếu cần được GĐ/KTTH duyệt trước khi ghi sổ"
+            description="Nếu giao dịch thuộc ca đã đóng, bút toán đảo sẽ được ghi vào ca đang mở hiện tại của chi nhánh. Giao dịch đã chốt Journal không được điều chỉnh theo luồng này."
+          />
+          <Form.Item name="reason" label="Lý do điều chỉnh" rules={[{ required: true, whitespace: true, message: 'Nhập lý do điều chỉnh' }]}>
+            <Input.TextArea rows={3} maxLength={500} showCount placeholder="Mô tả sai sót của giao dịch gốc" />
+          </Form.Item>
+          <Form.Item name="proposedCorrection" label="Nội dung đề nghị" rules={[{ required: true, whitespace: true, message: 'Nhập nội dung đề nghị điều chỉnh' }]}>
+            <Input.TextArea rows={3} maxLength={1000} showCount placeholder="Ví dụ: đảo giao dịch và tạo lại với số tiền đúng" />
           </Form.Item>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeactivateTarget(null)}>Hủy</Button>
-            <Button danger type="primary" htmlType="submit" loading={deactivateMutation.isPending}>
-              Xác nhận deactive
+            <Button type="primary" htmlType="submit" loading={adjustmentMutation.isPending}>
+              Gửi phiếu duyệt
+            </Button>
+          </div>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Phiếu điều chỉnh giao dịch"
+        open={adjustmentListOpen}
+        onCancel={() => setAdjustmentListOpen(false)}
+        footer={null}
+        width={1100}
+      >
+        <Alert
+          className="mb-4"
+          type="info"
+          showIcon
+          message="Duyệt phiếu sẽ ghi bút toán đảo vào ca đang mở của chi nhánh"
+          description="Phiếu không thể duyệt nếu chi nhánh chưa mở ca, công nợ đã được giải quyết hoặc giao dịch đã chốt Journal."
+        />
+        <Table<TransactionAdjustmentRequest>
+          rowKey="id"
+          loading={isAdjustmentLoading}
+          columns={adjustmentColumns}
+          dataSource={adjustmentRequests}
+          scroll={{ x: 900 }}
+          pagination={{ pageSize: 8 }}
+        />
+      </Modal>
+
+      <Modal
+        title={reviewTarget?.action === 'APPROVE' ? 'Duyệt phiếu điều chỉnh' : 'Từ chối phiếu điều chỉnh'}
+        open={Boolean(reviewTarget)}
+        onCancel={() => setReviewTarget(null)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form<ReviewValues> form={reviewForm} layout="vertical" onFinish={submitReview}>
+          <Form.Item label="Giao dịch">
+            <Input value={reviewTarget?.request.transaction?.transaction_no ?? ''} readOnly />
+          </Form.Item>
+          <Form.Item
+            name="reason"
+            label={reviewTarget?.action === 'APPROVE' ? 'Ý kiến duyệt' : 'Lý do từ chối'}
+            rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập nội dung xử lý' }]}
+          >
+            <Input.TextArea rows={4} maxLength={500} showCount />
+          </Form.Item>
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => setReviewTarget(null)}>Hủy</Button>
+            <Button
+              type="primary"
+              danger={reviewTarget?.action === 'REJECT'}
+              htmlType="submit"
+              loading={reviewMutation.isPending}
+            >
+              {reviewTarget?.action === 'APPROVE' ? 'Duyệt và ghi sổ' : 'Xác nhận từ chối'}
             </Button>
           </div>
         </Form>

@@ -80,6 +80,7 @@ export type CentralCashMovementDirection = 'IN' | 'OUT';
 export type CentralFundSourceType = 'CASH' | 'BANK';
 
 export interface CentralFundMovement {
+  voucherNo: string;
   direction: CentralCashMovementDirection;
   sourceType: CentralFundSourceType;
   items: Array<{
@@ -91,4 +92,20 @@ export interface CentralFundMovement {
   }>;
   note?: string | null;
   postedAt: Date;
+}
+
+export type FundMovementHistoryKind = 'RECEIPT' | 'EXPENSE' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+
+export interface FundMovementHistoryItem {
+  id: string;
+  documentNo: string;
+  kind: FundMovementHistoryKind;
+  sourceType: 'CASH' | 'BANK' | 'FUND_TRANSFER';
+  branchId: string;
+  counterpartyBranchId?: string | null;
+  currencyCode: CurrencyCode;
+  amount: number;
+  status: string;
+  note?: string | null;
+  occurredAt: Date;
 }

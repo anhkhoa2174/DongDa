@@ -45,6 +45,7 @@ export class PrismaMgRepository implements IMgRepository {
           transaction_id: txn.id,
           reference_no: input.referenceNo,
           payout_currency: input.payoutCurrency,
+          paid_currency: input.paidCurrency,
           payout_amount: input.payoutAmount,
           received_usd: input.receivedUsd,
           received_vnd: input.receivedVnd,
@@ -143,6 +144,7 @@ export class PrismaMgRepository implements IMgRepository {
 
   // ── helpers ──
   private async ensureShift(tx: any, branchId: string) {
+    await tx.$queryRaw`SELECT id FROM shifts WHERE branch_id = ${branchId}::uuid AND status = 'OPEN' FOR SHARE`;
     const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: 'OPEN' } });
     if (open) return open;
     throw new BadRequestException('Chi nhánh chưa mở ca. Vui lòng mở ca và kiểm quỹ đầu ca trước khi tạo giao dịch MG.');
@@ -225,7 +227,7 @@ function toDomain(row: any): MgTransaction {
     mgRate,
     systemRate: Number(d.system_rate),
     appliedRate: applied,
-    paidCurrency: 'USD',
+    paidCurrency: d.paid_currency,
     profit: mgProfit(mgRate, applied, mgUsd),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,

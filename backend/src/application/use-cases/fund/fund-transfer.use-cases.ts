@@ -5,10 +5,11 @@
 
 import { BadRequestException, Injectable, Inject, NotFoundException } from '@nestjs/common';
 import {
-  IFundRepository, ListTransfersFilter,
+  IFundRepository, ListFundMovementHistoryFilter, ListTransfersFilter,
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundAccountBalance, CurrencyCode, CentralFundSummary, CentralFundMovement,
+  FundMovementHistoryItem,
 } from '../../../domain/entities/fund.entity';
 import type { CreateCentralFundMovementDto, CreateTransferDto } from '../../dtos/fund/fund.dto';
 import { UserRole } from '../../../domain/entities/user.entity';
@@ -72,6 +73,9 @@ export class ListFundUseCase {
   }
   centralSummary(): Promise<CentralFundSummary> {
     return this.fundRepo.getCentralSummary();
+  }
+  movementHistory(filter?: ListFundMovementHistoryFilter): Promise<FundMovementHistoryItem[]> {
+    return this.fundRepo.listMovementHistory(filter);
   }
 }
 

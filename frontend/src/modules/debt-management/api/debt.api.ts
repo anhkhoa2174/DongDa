@@ -48,11 +48,11 @@ export const debtApi = {
   movements: (id: string) =>
     httpClient.get<DebtMovementDto[]>(`/debts/${id}/movements`).then((r) => r.data),
 
-  settle: (id: string, amount: number, description?: string) =>
-    httpClient.post(`/debts/${id}/settle`, { amount, description }).then((r) => r.data),
-
   settleUsdCash: (id: string, payload: { cashUsdAmount: number; oddUsdAmount: number; description?: string }) =>
     httpClient.post(`/debts/${id}/settle-usd-cash`, payload).then((r) => r.data),
+
+  settleVndCash: (id: string, payload: { amount: number; description?: string }) =>
+    httpClient.post(`/debts/${id}/settle-vnd-cash`, payload).then((r) => r.data),
 
   record: (payload: { branchId: string; providerCode: string; currencyCode: string; amount: number; description?: string }) =>
     httpClient.post('/debts/record', payload).then((r) => r.data),

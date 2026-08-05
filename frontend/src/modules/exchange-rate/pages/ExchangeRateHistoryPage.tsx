@@ -1,4 +1,4 @@
-import { EyeOutlined, ReloadOutlined, SwapOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import {
   Alert,
   Button,
@@ -167,8 +167,8 @@ export function ExchangeRateHistoryPage() {
       description="Tra cứu toàn bộ vòng đời tỷ giá đã tạo, duyệt, thay thế hoặc từ chối trên hệ thống."
       moduleName="exchange-rate-history"
       extra={
-        <Button icon={<SwapOutlined />} onClick={() => navigate('/exchange-rate')}>
-          Tỷ giá hiện tại
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/exchange-rate')}>
+          Quay lại Tạo / duyệt tỷ giá
         </Button>
       }
     >

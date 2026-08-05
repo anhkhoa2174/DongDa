@@ -8,6 +8,7 @@ import {
   PlusCircleOutlined,
   ReloadOutlined,
   SafetyCertificateOutlined,
+  SwapOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import { Alert, Button, Card, Col, Row, Space, Table, Tag, Typography } from 'antd';
@@ -18,11 +19,12 @@ import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { formatCurrency, formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { useBranches as useFundBranches, useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
 import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
 import type { FundACurrencyBalance } from '../model/fund.types';
-import { useCentralFundSummary } from '../hooks/useCentralFund';
+import type { FundMovementHistoryDto } from '../api/centralFund.api';
+import { useCentralFundSummary, useFundMovementHistory } from '../hooks/useCentralFund';
 
 function FundBreakdownRow({
   label,
@@ -66,6 +68,84 @@ function FundAList({ items }: { items: FundACurrencyBalance[] }) {
   return <Table columns={columns} dataSource={items} rowKey="currency" pagination={false} size="small" />;
 }
 
+const movementKind: Record<FundMovementHistoryDto['kind'], { label: string; color: string }> = {
+  RECEIPT: { label: 'Phiếu thu', color: 'green' },
+  EXPENSE: { label: 'Phiếu chi', color: 'red' },
+  TRANSFER_IN: { label: 'Tiếp quỹ vào', color: 'blue' },
+  TRANSFER_OUT: { label: 'Tiếp quỹ ra', color: 'gold' },
+};
+
+function FundMovementHistoryTable({
+  items,
+  loading,
+  branchNames,
+}: {
+  items: FundMovementHistoryDto[];
+  loading: boolean;
+  branchNames: Record<string, string>;
+}) {
+  const columns: ColumnsType<FundMovementHistoryDto> = [
+    {
+      title: 'Mã phiếu',
+      dataIndex: 'documentNo',
+      render: (value) => <Typography.Text code>{value}</Typography.Text>,
+    },
+    {
+      title: 'Loại biến động',
+      dataIndex: 'kind',
+      render: (value: FundMovementHistoryDto['kind']) => (
+        <Tag color={movementKind[value].color}>{movementKind[value].label}</Tag>
+      ),
+    },
+    {
+      title: 'Nguồn',
+      dataIndex: 'sourceType',
+      render: (value) => value === 'CASH' ? 'Tiền mặt' : value === 'BANK' ? 'Ngân hàng' : 'Điều chuyển',
+    },
+    {
+      title: 'Đối tác',
+      dataIndex: 'counterpartyBranchId',
+      render: (value?: string | null) => value ? (branchNames[value] ?? value) : '-',
+    },
+    { title: 'Ngoại tệ', dataIndex: 'currencyCode', width: 90 },
+    {
+      title: 'Số tiền',
+      dataIndex: 'amount',
+      align: 'right',
+      render: (value, row) => formatCurrency(Number(value), row.currencyCode, row.currencyCode === 'VND' ? 0 : 2),
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      render: (value) => <Tag>{value}</Tag>,
+    },
+    {
+      title: 'Thời gian',
+      dataIndex: 'occurredAt',
+      render: formatDateTime,
+    },
+  ];
+
+  return (
+    <Card
+      className="polished-card"
+      title={<SectionCardTitle icon={<SwapOutlined />}>Lịch sử biến động quỹ</SectionCardTitle>}
+      extra={<Typography.Text type="secondary">{items.length} dòng biến động</Typography.Text>}
+    >
+      <Table
+        columns={columns}
+        dataSource={items}
+        rowKey="id"
+        loading={loading}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+        scroll={{ x: 1040 }}
+        size="small"
+        locale={{ emptyText: 'Chưa có phiếu thu, chi hoặc tiếp quỹ' }}
+      />
+    </Card>
+  );
+}
+
 function BranchFundMainPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
@@ -73,7 +153,9 @@ function BranchFundMainPage() {
   const { data: balances = [], isLoading, isFetching, isError, refetch } = useFundBalances(branchId);
   const { data: currentShift, isFetching: isFetchingShift, refetch: refetchShift } = useCurrentShift(branchId);
   const { data: branches = [] } = useFundBranches();
+  const { data: movementHistory = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useFundMovementHistory(branchId);
   const branch = branches.find((item) => item.id === branchId);
+  const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
   const shift = currentShift?.shift;
   const cashBalances = balances.filter((item) => item.accountType === 'CASH');
   const fundABalances = balances.filter((item) => item.accountType === 'FUND_A');
@@ -84,7 +166,7 @@ function BranchFundMainPage() {
     .filter((item) => item.currencyCode === 'USD')
     .reduce((sum, item) => sum + item.balance, 0);
   const refresh = async () => {
-    await Promise.all([refetch(), refetchShift()]);
+    await Promise.all([refetch(), refetchShift(), refetchHistory()]);
   };
   const balanceRows = balances.map((item) => ({
     key: item.id,
@@ -148,6 +230,7 @@ function BranchFundMainPage() {
         >
           <FundBalanceTable items={balanceRows} emptyText="Chi nhánh chưa có tài khoản quỹ" />
         </Card>
+        <FundMovementHistoryTable items={movementHistory} loading={isLoadingHistory} branchNames={branchNames} />
       </Space>
     </PageScaffold>
   );
@@ -159,6 +242,10 @@ export function CentralFundPage() {
   const canTransfer = role === 'director' || role === 'accountant';
   const canCreateCashMovement = role === 'director' || role === 'accountant';
   const { data: summary, isLoading, isError, isFetching, refetch } = useCentralFundSummary();
+  const { data: branches = [] } = useFundBranches();
+  const headOffice = branches.find((item) => item.type === 'HEAD_OFFICE');
+  const { data: movementHistory = [], isLoading: isLoadingHistory } = useFundMovementHistory(headOffice?.id);
+  const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
   const fundA = summary?.fundA ?? [];
 
   return (
@@ -285,6 +372,7 @@ export function CentralFundPage() {
         >
           <FundAList items={fundA} />
         </Card>
+        <FundMovementHistoryTable items={movementHistory} loading={isLoadingHistory} branchNames={branchNames} />
       </Space>
 
     </PageScaffold>

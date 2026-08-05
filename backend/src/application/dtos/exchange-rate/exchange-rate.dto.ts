@@ -4,6 +4,7 @@
 import {
   IsEnum, IsOptional, IsNumber, IsPositive, IsISO8601,
   IsInt, Min, Max, IsString, MaxLength,
+  IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -47,6 +48,15 @@ export class CreateExchangeRateDto {
   @IsOptional()
   @IsISO8601()
   effectiveFrom?: string; // ISO; mặc định now nếu bỏ trống
+}
+
+export class CreateExchangeRateBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => CreateExchangeRateDto)
+  rates: CreateExchangeRateDto[];
 }
 
 export class ListRatesQueryDto {

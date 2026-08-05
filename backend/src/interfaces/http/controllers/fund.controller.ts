@@ -18,7 +18,7 @@ import {
   CreateFundMovementUseCase,
 } from '../../../application/use-cases/fund/fund-transfer.use-cases';
 import {
-  CreateCentralFundMovementDto, CreateTransferDto, ListTransfersQueryDto,
+  CreateCentralFundMovementDto, CreateTransferDto, ListFundMovementHistoryQueryDto, ListTransfersQueryDto,
 } from '../../../application/dtos/fund/fund.dto';
 
 @Controller('fund')
@@ -43,6 +43,16 @@ export class FundController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
   centralSummary() {
     return this.listFund.centralSummary();
+  }
+
+  @Get('movement-history')
+  movementHistory(@Request() req: any, @Query() query: ListFundMovementHistoryQueryDto) {
+    const branchId = this.staffBranchScope(req, query.branchId);
+    return this.listFund.movementHistory({
+      branchId,
+      ...(query.dateFrom && { dateFrom: new Date(query.dateFrom) }),
+      ...(query.dateTo && { dateTo: new Date(query.dateTo) }),
+    });
   }
 
   @Post('central-movements')

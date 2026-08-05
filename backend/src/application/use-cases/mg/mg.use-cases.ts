@@ -33,16 +33,22 @@ export class CreateMgUseCase {
     if (!appliedRate) {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${rateType} cho MG/WU USD`);
     }
-    assertMgPayoutMatches(dto.payoutCurrency, dto.payoutAmount, dto.receivedUsd, dto.receivedVnd, appliedRate);
+    const mgUsdAmount = dto.paidCurrency === 'USD' ? Number(dto.mgUsdAmount) : 0;
+    const mgVndAmount = dto.paidCurrency === 'VND' ? Number(dto.mgVndAmount) : 0;
+    const expectedPayout = calculateMgPayout(dto.paidCurrency, dto.payoutCurrency, mgUsdAmount, mgVndAmount, appliedRate);
+    if (Math.abs(Number(dto.payoutAmount) - expectedPayout) > (dto.payoutCurrency === 'VND' ? 1 : 0.01)) {
+      throw new BadRequestException(`Số tiền MG phải trả phải là ${expectedPayout.toFixed(dto.payoutCurrency === 'VND' ? 0 : 2)} ${dto.payoutCurrency}`);
+    }
+    assertMgPayoutMatches(dto.payoutCurrency, expectedPayout, dto.receivedUsd, dto.receivedVnd, appliedRate);
 
     return this.mgRepo.create({
       branchId: dto.branchId,
       referenceNo: dto.referenceNo,
       customerName: dto.customerName,
-      mgUsdAmount: dto.mgUsdAmount,
-      mgVndAmount: dto.mgVndAmount,
+      mgUsdAmount,
+      mgVndAmount,
       payoutCurrency: dto.payoutCurrency as Currency2,
-      payoutAmount: dto.payoutAmount,
+      payoutAmount: expectedPayout,
       receivedUsd: dto.receivedUsd,
       receivedVnd: dto.receivedVnd,
       appliedRate,
@@ -53,7 +59,16 @@ export class CreateMgUseCase {
   }
 }
 
-function assertMgPayoutMatches(
+export function calculateMgPayout(
+  paidCurrency: string, payoutCurrency: string, mgUsdAmount: number, mgVndAmount: number, rate: number,
+) {
+  const payout = payoutCurrency === 'USD'
+    ? (paidCurrency === 'USD' ? mgUsdAmount : mgVndAmount / rate)
+    : (paidCurrency === 'VND' ? mgVndAmount : mgUsdAmount * rate);
+  return payoutCurrency === 'VND' ? Math.round(payout) : Number(payout.toFixed(2));
+}
+
+export function assertMgPayoutMatches(
   payoutCurrency: string,
   payoutAmount: number,
   receivedUsd: number,
@@ -71,14 +86,15 @@ function assertMgPayoutMatches(
     return;
   }
 
-  if (Number(receivedUsd ?? 0) > 0 && !Number.isInteger(Number(receivedUsd))) {
-    throw new BadRequestException('MG USD: USD thực trả phải là số nguyên, phần lẻ quy đổi sang VND');
+  const expectedUsd = Math.trunc(Math.max(payoutAmount, 0));
+  const fractionalUsd = Math.max(payoutAmount - expectedUsd, 0);
+  const expectedVnd = Math.round(fractionalUsd * appliedRate);
+  if (Number(receivedUsd ?? 0) !== expectedUsd) {
+    throw new BadRequestException(`MG USD: USD thực trả phải là phần nguyên của số phải trả (${expectedUsd} USD)`);
   }
-
-  const actualUsdValue = Number(receivedUsd ?? 0) + (Number(receivedVnd ?? 0) / appliedRate);
-  if (Math.abs(actualUsdValue - payoutAmount) > 0.01) {
+  if (Math.abs(Number(receivedVnd ?? 0) - expectedVnd) > 1) {
     throw new BadRequestException(
-      `MG USD: tổng tiền thực trả không khớp. Quy đổi thực trả ${actualUsdValue}, số phải trả ${payoutAmount}`,
+      `MG USD: VND thực trả chỉ được là phần lẻ USD quy đổi theo tỷ giá (${expectedVnd} VND)`,
     );
   }
 }

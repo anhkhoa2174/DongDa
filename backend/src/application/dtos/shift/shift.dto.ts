@@ -1,7 +1,7 @@
 // DTOs: Ca làm việc + Kiểm quỹ
 // Layer: Application
 
-import { IsUUID, IsArray, ValidateNested, IsEnum, IsNumber, Min, IsOptional, IsString } from 'class-validator';
+import { IsUUID, IsArray, ValidateNested, IsEnum, IsNumber, Min, IsOptional, IsString, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const CURRENCIES = [
@@ -23,6 +23,7 @@ export class OpenShiftDto {
   branchId: string;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CountLineDto)
   openingCounts: CountLineDto[];
@@ -38,6 +39,7 @@ export class CloseShiftDto {
   branchId?: string;
 
   @IsArray()
+  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => CountLineDto)
   closingCounts: CountLineDto[];

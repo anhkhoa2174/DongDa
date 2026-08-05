@@ -4,7 +4,7 @@ import { DebtSettlementPage } from './pages/DebtSettlementPage';
 
 export const debtManagementRoutes = [
   {
-    path: 'debt-management/debt-list',
+    path: 'debt-management',
     element: (
       <RoleGuard allowedRoles={['director', 'accountant', 'auditor']} requiredPermission="debt.view">
         <DebtSettlementPage />
@@ -12,9 +12,11 @@ export const debtManagementRoutes = [
     ),
   },
   {
+    path: 'debt-management/debt-list',
+    element: <Navigate to="/debt-management" replace />,
+  },
+  {
     path: 'debt-management/settlement',
-    element: (
-      <Navigate to="/debt-management/debt-list" replace />
-    ),
+    element: <Navigate to="/debt-management" replace />,
   },
 ];

@@ -25,6 +25,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: dongda_backend
     restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
     environment:
       NODE_ENV: development
       PORT: 3000

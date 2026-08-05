@@ -1,13 +1,15 @@
 // Flow Đối chiếu Journal (diagram 4) — nối API thật
 import { useState } from 'react';
 import {
-  App, Button, Card, Col, Form, Input, InputNumber, Progress, Row, Segmented, Space, Table, Tag, Typography,
+  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Segmented, Select, Space, Table, Tag, Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { MinusCircleOutlined, PlusOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { useReconItems, useReconRuns, useRunReconciliation } from '../hooks/useReconciliation';
 import type { ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
+import { useBranches } from '@/modules/western-union/hooks/useWu';
+import dayjs from 'dayjs';
 
 const money = (n: number) => n.toLocaleString('vi-VN');
 
@@ -22,6 +24,7 @@ export function ReconciliationWorkspacePage() {
   const { message } = App.useApp();
   const { data: runs = [] } = useReconRuns();
   const run = useRunReconciliation();
+  const { data: branches = [] } = useBranches();
   const [form] = Form.useForm();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const { data: items = [] } = useReconItems(selectedRun);
@@ -30,7 +33,12 @@ export function ReconciliationWorkspacePage() {
     const rows = (v.rows ?? []).filter((r: any) => r?.code && r?.amount != null);
     if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
     try {
-      const res = await run.mutateAsync({ provider: v.provider, rows });
+      const res = await run.mutateAsync({
+        provider: v.provider,
+        businessDate: v.businessDate.format('YYYY-MM-DD'),
+        branchId: v.branchId,
+        rows,
+      });
       setSelectedRun(res.id);
       message.success(`Đối chiếu xong: khớp ${(res.matchRate * 100).toFixed(0)}%`);
     } catch (e: any) {
@@ -67,9 +75,19 @@ export function ReconciliationWorkspacePage() {
       <Row gutter={16}>
         <Col xs={24} lg={10}>
           <Card title="Chạy đối chiếu" size="small" className="mb-4">
-            <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider: 'WU', rows: [{}] }}>
+            <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider: 'WU', businessDate: dayjs(), rows: [{ currencyCode: 'USD' }] }}>
               <Form.Item name="provider" label="Đối tác">
                 <Segmented options={['WU', 'MG']} />
+              </Form.Item>
+              <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
+                <DatePicker className="w-full" format="DD/MM/YYYY" />
+              </Form.Item>
+              <Form.Item noStyle shouldUpdate={(prev, next) => prev.provider !== next.provider}>
+                {({ getFieldValue }) => getFieldValue('provider') === 'WU' ? (
+                  <Form.Item name="branchId" label="Chi nhánh WU" rules={[{ required: true, message: 'Chọn chi nhánh' }]}>
+                    <Select options={branches.map((branch) => ({ value: branch.id, label: `${branch.code} - ${branch.name}` }))} />
+                  </Form.Item>
+                ) : null}
               </Form.Item>
               <Typography.Text type="secondary">Dòng Journal (mã + số USD):</Typography.Text>
               <Form.List name="rows">
@@ -83,10 +101,20 @@ export function ReconciliationWorkspacePage() {
                         <Form.Item {...rest} name={[name, 'amount']} rules={[{ required: true, message: 'USD' }]} noStyle>
                           <InputNumber placeholder="USD" min={0} style={{ width: 110 }} />
                         </Form.Item>
+                        <Form.Item {...rest} name={[name, 'currencyCode']} initialValue="USD" noStyle>
+                          <Select style={{ width: 82 }} options={[{ value: 'USD' }, { value: 'VND' }]} />
+                        </Form.Item>
+                        <Form.Item noStyle shouldUpdate={(prev, next) => prev.provider !== next.provider}>
+                          {({ getFieldValue }) => getFieldValue('provider') === 'MG' ? (
+                            <Form.Item {...rest} name={[name, 'branchId']} rules={[{ required: true, message: 'Chi nhánh' }]} noStyle>
+                              <Select placeholder="Chi nhánh" style={{ width: 160 }} options={branches.map((branch) => ({ value: branch.id, label: branch.name }))} />
+                            </Form.Item>
+                          ) : null}
+                        </Form.Item>
                         <MinusCircleOutlined onClick={() => remove(name)} />
                       </Space>
                     ))}
-                    <Button type="dashed" onClick={() => add()} icon={<PlusOutlined />} block>Thêm dòng</Button>
+                    <Button type="dashed" onClick={() => add({ currencyCode: 'USD' })} icon={<PlusOutlined />} block>Thêm dòng</Button>
                   </div>
                 )}
               </Form.List>

@@ -3,6 +3,7 @@
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { toVietnamBusinessDate } from '../business-date';
 import { IFxRepository, CreateFxInput, ListFxFilter } from '../../../domain/repositories/fx.repository';
 import { FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
 
@@ -12,7 +13,8 @@ export class PrismaFxRepository implements IFxRepository {
 
   async create(input: CreateFxInput): Promise<FxTransaction> {
     const now = new Date();
-    const vndAmount = input.fxAmount * input.rate;
+    const businessDate = toVietnamBusinessDate(now);
+    const vndAmount = Math.round(input.fxAmount * input.rate);
 
     const txnId = await this.prisma.$transaction(async (tx) => {
       const shift = await this.ensureShift(tx, input.branchId);
@@ -41,7 +43,7 @@ export class PrismaFxRepository implements IFxRepository {
           operation_code: 'FX',
           branch_id: input.branchId,
           shift_id: shift.id,
-          business_date: now,
+          business_date: businessDate,
           status: 'COMPLETED',
           customer_name: input.customerName ?? null,
           amount: input.fxAmount,
@@ -75,7 +77,7 @@ export class PrismaFxRepository implements IFxRepository {
       await tx.ledger_entries.create({
         data: {
           entry_no: `FX-${txn.transaction_no}`,
-          business_date: now,
+          business_date: businessDate,
           branch_id: input.branchId,
           shift_id: shift.id,
           source_type: 'CUSTOMER_TRANSACTION',
@@ -120,16 +122,24 @@ export class PrismaFxRepository implements IFxRepository {
         OR: [{ account_type: 'FUND_A' }, { account_type: 'CASH', currency_code: 'USD' }],
       },
     });
-    const out: { branchId: string; currency: CurrencyCode; balance: number }[] = [];
+    const stockByBranchCurrency = new Map<string, { branchId: string; currency: CurrencyCode; balance: number }>();
     for (const a of accounts) {
       const bal = await this.balance(this.prisma, a.id);
-      out.push({ branchId: a.branch_id, currency: a.currency_code as CurrencyCode, balance: bal });
+      const currency = a.currency_code as CurrencyCode;
+      const key = `${a.branch_id}:${currency}`;
+      const current = stockByBranchCurrency.get(key);
+      stockByBranchCurrency.set(key, {
+        branchId: a.branch_id,
+        currency,
+        balance: (current?.balance ?? 0) + bal,
+      });
     }
-    return out;
+    return [...stockByBranchCurrency.values()];
   }
 
   // ── helpers ──
   private async ensureShift(tx: any, branchId: string) {
+    await tx.$queryRaw`SELECT id FROM shifts WHERE branch_id = ${branchId}::uuid AND status = 'OPEN' FOR SHARE`;
     const open = await tx.shifts.findFirst({ where: { branch_id: branchId, status: 'OPEN' } });
     if (open) return open;
     throw new BadRequestException('Chi nhánh chưa mở ca. Vui lòng mở ca và kiểm quỹ đầu ca trước khi tạo giao dịch ngoại tệ.');
@@ -151,9 +161,22 @@ export class PrismaFxRepository implements IFxRepository {
   // Sổ ngoại tệ: USD dùng CASH_USD (đã seed), còn lại tạo Quỹ A (FUND_A) khi cần
   private async currencyAccount(tx: any, branchId: string, currency: CurrencyCode): Promise<string> {
     if (currency === 'USD') return this.cashAccount(tx, branchId, 'USD');
-    const code = `FUNDA_${currency}`;
-    const existing = await tx.fund_accounts.findUnique({
+    const code = `FUND_A_${currency}`;
+    const canonical = await tx.fund_accounts.findUnique({
       where: { branch_id_code: { branch_id: branchId, code } },
+    });
+    if (canonical) {
+      if (canonical.status === 'ACTIVE') return canonical.id;
+      throw new BadRequestException(`Sổ Quỹ A ${currency} đang ngừng hoạt động`);
+    }
+
+    const existing = await tx.fund_accounts.findFirst({
+      where: {
+        branch_id: branchId,
+        account_type: 'FUND_A',
+        currency_code: currency,
+        status: 'ACTIVE',
+      },
     });
     if (existing) return existing.id;
     const created = await tx.fund_accounts.create({

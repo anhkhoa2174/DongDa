@@ -16,12 +16,15 @@ export interface SystemTxn {
   transactionId: string;
   branchId: string;
   amount: number; // USD
+  currencyCode: 'USD' | 'VND';
   customerName?: string | null;
 }
 
 export interface JournalRow {
   code: string;
   amount: number; // USD
+  currencyCode?: 'USD' | 'VND';
+  branchId?: string;
   customerName?: string;
 }
 
@@ -33,6 +36,7 @@ export interface ReconItem {
   systemAmount: number;
   journalAmount: number;
   varianceAmount: number;
+  currencyCode: 'USD' | 'VND';
   note?: string;
 }
 
@@ -51,40 +55,44 @@ const EPS = 0.01;
 // Thuật toán đối chiếu thuần (không phụ thuộc DB)
 export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResult {
   const items: ReconItem[] = [];
-  const sysByCode = new Map(system.map((s) => [s.code, s]));
+  const key = (code: string, currency: string) => `${code}::${currency}`;
+  const sysByCode = new Map(system.map((s) => [key(s.code, s.currencyCode), s]));
   const matchedCodes = new Set<string>();
 
   for (const jr of journal) {
-    const sys = sysByCode.get(jr.code);
+    const currencyCode = jr.currencyCode ?? 'USD';
+    const matchKey = key(jr.code, currencyCode);
+    const sys = sysByCode.get(matchKey);
     if (!sys) {
       items.push({
         status: ReconItemStatus.MISSING_IN_SYSTEM, code: jr.code,
+        branchId: jr.branchId ?? null, currencyCode,
         systemAmount: 0, journalAmount: jr.amount, varianceAmount: jr.amount,
         note: 'Journal có nhưng hệ thống chưa ghi nhận',
       });
       continue;
     }
-    matchedCodes.add(jr.code);
+    matchedCodes.add(matchKey);
     const variance = sys.amount - jr.amount;
     if (Math.abs(variance) < EPS) {
       items.push({
         status: ReconItemStatus.MATCHED, code: jr.code, transactionId: sys.transactionId,
-        branchId: sys.branchId, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: 0,
+        branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: 0,
       });
     } else {
       items.push({
         status: ReconItemStatus.AMOUNT_VARIANCE, code: jr.code, transactionId: sys.transactionId,
-        branchId: sys.branchId, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: variance,
+        branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: variance,
         note: `Lệch ${variance} USD`,
       });
     }
   }
 
   for (const sys of system) {
-    if (!matchedCodes.has(sys.code)) {
+    if (!matchedCodes.has(key(sys.code, sys.currencyCode))) {
       items.push({
         status: ReconItemStatus.MISSING_IN_JOURNAL, code: sys.code, transactionId: sys.transactionId,
-        branchId: sys.branchId, systemAmount: sys.amount, journalAmount: 0, varianceAmount: sys.amount,
+        branchId: sys.branchId, currencyCode: sys.currencyCode, systemAmount: sys.amount, journalAmount: 0, varianceAmount: sys.amount,
         note: 'Hệ thống có nhưng Journal thiếu',
       });
     }

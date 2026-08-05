@@ -6,6 +6,9 @@ import type { SystemTxn, ReconItem, ReconResult } from '../entities/reconciliati
 export interface SaveRunInput {
   provider: string; // WU | MG
   businessDate: Date;
+  scope: 'COMPANY' | 'BRANCH';
+  branchId?: string;
+  currencyCode: 'USD' | 'VND';
   result: ReconResult;
   createdByUserId: string;
 }
@@ -14,6 +17,7 @@ export interface ReconRunSummary {
   id: string;
   runNo: string;
   provider: string;
+  currencyCode: string;
   businessDate: Date;
   status: string;
   systemTotal: number;
@@ -27,7 +31,7 @@ export interface ReconRunSummary {
 
 export interface IReconciliationRepository {
   // Lấy GD hệ thống theo provider (WU/MG) để đối chiếu
-  listSystemTxByProvider(provider: string): Promise<SystemTxn[]>;
+  listSystemTxByProvider(provider: string, businessDate: Date, branchId?: string): Promise<SystemTxn[]>;
   saveRun(input: SaveRunInput): Promise<ReconRunSummary>;
   listRuns(): Promise<ReconRunSummary[]>;
   getItems(runId: string): Promise<ReconItem[]>;
