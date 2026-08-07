@@ -137,6 +137,7 @@ model approval_requests {
   requested_at         DateTime           @default(now()) @db.Timestamptz(6)
   completed_at         DateTime?          @db.Timestamptz(6)
   note                 String?
+  payload              Json               @default("{}")
   approval_actions     approval_actions[]
   users                User               @relation(fields: [requested_by_user_id], references: [id], onUpdate: NoAction)
   approval_steps       approval_steps[]
@@ -509,6 +510,8 @@ model customer_transactions {
   voided_at                                             DateTime?                  @db.Timestamptz(6)
   created_at                                            DateTime                   @default(now()) @db.Timestamptz(6)
   updated_at                                            DateTime                   @default(now()) @db.Timestamptz(6)
+  replacement_of_transaction_id                        String?                    @db.Uuid
+  revision                                              Int                        @default(1)
   branches                                              Branch                     @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
   users_customer_transactions_created_by_user_idTousers User                       @relation("customer_transactions_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
   customers                                             customers?                 @relation(fields: [customer_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
@@ -521,9 +524,12 @@ model customer_transactions {
   mg_transaction_details                                mg_transaction_details?
   reconciliation_items                                  reconciliation_items[]
   wu_transaction_details                                wu_transaction_details?
+  original_transaction                                  customer_transactions?     @relation("TransactionRevisions", fields: [replacement_of_transaction_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  replacement_transactions                              customer_transactions[]    @relation("TransactionRevisions")
 
   @@index([branch_id, business_date], map: "idx_customer_transactions_branch_date")
   @@index([shift_id], map: "idx_customer_transactions_shift")
+  @@index([replacement_of_transaction_id], map: "idx_customer_transactions_replacement_of")
 }
 
 model customers {
@@ -936,7 +942,7 @@ model ledger_lines {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model mg_transaction_details {
   transaction_id        String                @id @db.Uuid
-  reference_no          String                @unique(map: "uq_mg_reference_no") @db.VarChar(50)
+  reference_no          String                @db.VarChar(50)
   payout_currency       currency_code
   paid_currency         currency_code       @default(USD)
   payout_amount         Decimal               @db.Decimal(20, 2)
@@ -1127,8 +1133,9 @@ model user_roles {
 
 model wu_transaction_details {
   transaction_id        String                @id @db.Uuid
-  mtcn                  String                @unique(map: "uq_wu_mtcn") @db.VarChar(50)
+  mtcn                  String                @db.VarChar(50)
   paid_currency         currency_code         @default(USD)
+  payout_currency       currency_code         @default(USD)
   wu_usd_amount         Decimal               @default(0) @db.Decimal(20, 2)
   wu_vnd_amount         Decimal               @default(0) @db.Decimal(20, 2)
   received_usd          Decimal               @default(0) @db.Decimal(20, 2)

@@ -50,6 +50,7 @@ export class CreateWuUseCase {
       appliedRate,
       systemRate,
       paidCurrency: dto.paidCurrency as Currency2,
+      payoutCurrency: dto.payoutCurrency as Currency2,
       createdByUserId,
     });
   }

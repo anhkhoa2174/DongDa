@@ -58,7 +58,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     const journalItems = result.items.filter((i) => i.status !== 'MISSING_IN_JOURNAL');
 
     const run = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.provider}:${input.scope}:${input.branchId ?? 'ALL'}:${input.businessDate.toISOString().slice(0, 10)}:${input.currencyCode}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.provider}:${input.scope}:${input.branchId ?? 'ALL'}:${input.businessDate.toISOString().slice(0, 10)}:${input.currencyCode}`}))`;
       const posted = await tx.reconciliation_runs.findFirst({
         where: {
           provider: input.provider as any,

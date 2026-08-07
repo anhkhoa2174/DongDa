@@ -16,7 +16,7 @@ export class CreateWuDto {
   @IsString()
   customerName?: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   wuUsdAmount: number;
 
@@ -24,7 +24,7 @@ export class CreateWuDto {
   @IsPositive()
   wuVndAmount: number;
 
-  @IsNumber()
+  @IsInt({ message: 'USD thực trả phải là số nguyên' })
   @Min(0)
   receivedUsd: number;
 

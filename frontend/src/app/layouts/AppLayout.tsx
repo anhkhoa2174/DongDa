@@ -9,6 +9,7 @@ import {
   MoneyCollectOutlined,
   SettingOutlined,
   FileTextOutlined,
+  FileDoneOutlined,
   SafetyCertificateOutlined,
   SwapOutlined,
   UserOutlined,
@@ -319,6 +320,7 @@ function notificationPresentation(category: NotificationCategory) {
     SHIFT: { label: 'Sai lệch', color: 'red', icon: <SafetyCertificateOutlined /> },
     DEBT: { label: 'Công nợ', color: 'gold', icon: <MoneyCollectOutlined /> },
     RECONCILIATION: { label: 'Đối chiếu', color: 'red', icon: <WarningOutlined /> },
+    TRANSACTION: { label: 'Giao dịch', color: 'gold', icon: <FileDoneOutlined /> },
     SYSTEM: { label: 'Hệ thống', color: 'default', icon: <BellOutlined /> },
   } as const;
   return presentations[category] ?? presentations.SYSTEM;

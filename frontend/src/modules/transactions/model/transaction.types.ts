@@ -29,4 +29,13 @@ export type AggregatedTransaction = {
   createdAt: string;
   createdAtRaw: string;
   status: TransactionStatus;
+  financialData?: {
+    wuUsdAmount?: number;
+    wuVndAmount?: number;
+    paidAmount?: number;
+    paidCurrency?: 'USD' | 'VND';
+    fxAmount?: number;
+    fxCurrency?: string;
+    appliedRate?: number;
+  };
 };

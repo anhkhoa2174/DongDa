@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsObject, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 
 export class VoidTransactionDto {
   @IsString()
@@ -7,6 +7,9 @@ export class VoidTransactionDto {
 }
 
 export class CreateTransactionAdjustmentDto {
+  @IsEnum(['VOID', 'REPLACE'] as any, { message: 'action phải là VOID hoặc REPLACE' })
+  action: 'VOID' | 'REPLACE';
+
   @IsString()
   @MaxLength(500)
   reason: string;
@@ -15,6 +18,10 @@ export class CreateTransactionAdjustmentDto {
   @IsString()
   @MaxLength(1000)
   proposedCorrection?: string;
+
+  @ValidateIf((dto) => dto.action === 'REPLACE')
+  @IsObject({ message: 'Phiếu thay thế phải có số tiền điều chỉnh' })
+  correctedData?: Record<string, unknown>;
 }
 
 export class UpdateTransactionMetadataDto {

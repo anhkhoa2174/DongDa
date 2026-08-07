@@ -14,6 +14,7 @@ export interface CreateWuInput {
   appliedRate: number;
   systemRate: number; // snapshot (từ tỷ giá active)
   paidCurrency: Currency2;
+  payoutCurrency: Currency2;
   createdByUserId: string;
 }
 

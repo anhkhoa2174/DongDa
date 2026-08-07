@@ -9,6 +9,7 @@ export type NotificationCategory =
   | 'SHIFT'
   | 'DEBT'
   | 'RECONCILIATION'
+  | 'TRANSACTION'
   | 'SYSTEM';
 
 export interface AppNotification {

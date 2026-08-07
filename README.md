@@ -291,10 +291,10 @@ Thống kê tại thời điểm cập nhật README:
 | --- | ---: |
 | Thư mục module frontend | 19 |
 | Controller backend | 17 |
-| API endpoint | 59 |
-| `GET` | 28 |
-| `POST` | 23 |
-| `PATCH` | 8 |
+| API endpoint | 68 |
+| `GET` | 31 |
+| `POST` | 27 |
+| `PATCH` | 10 |
 | `PUT` / `DELETE` | 0 |
 
 Số endpoint được đếm từ các decorator HTTP trong `backend/src/interfaces/http/controllers`. Bảng trạng thái bên dưới đánh giá theo màn hình đang được route/menu sử dụng, không chỉ dựa trên việc trong thư mục còn tồn tại file mock.
@@ -324,7 +324,7 @@ Số endpoint được đếm từ các decorator HTTP trong `backend/src/interf
 | Đối chiếu Journal | Nhận dòng Journal đã parse, đối chiếu theo provider/reference/amount, lưu run và item sai lệch | Page `journal` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
 | Báo cáo | Tổng hợp WU/MG/FX, quỹ, công nợ và cảnh báo theo database | Page `summary` dùng **API THẬT**; page tạo/xuất báo cáo cũ còn **MOCK DATA**, chưa xuất Excel/PDF thật |
 | Audit Log | Đọc nhật ký append-only từ database, lọc theo action/entity/user | Page `live` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
-| Notification | Hiển thị cảnh báo/thông báo trong layout | **MOCK DATA**, chưa có API và WebSocket/SSE |
+| Notification | Thông báo theo tài khoản cho nghiệp vụ tài khoản, báo cáo, tiếp quỹ, thu/chi, công nợ, sai lệch và điều chỉnh giao dịch; đánh dấu đã đọc | **API THẬT**, frontend polling mỗi 15 giây; chưa có WebSocket/SSE |
 
 ### 1. Auth, user và tổ chức
 
@@ -402,16 +402,19 @@ Quản trị giao dịch đã post:
 
 ```txt
 PATCH /api/v1/transactions/:id/metadata
-POST  /api/v1/transactions/:id/void
-POST  /api/v1/transactions/:id/deactivate
 GET   /api/v1/transactions/adjustment-requests?status=:status
 POST  /api/v1/transactions/:id/adjustment-requests
+POST  /api/v1/transactions/:id/void
 POST  /api/v1/transactions/adjustment-requests/:requestId/approve
 POST  /api/v1/transactions/adjustment-requests/:requestId/reject
 ```
 
 - Sửa metadata chỉ cho phép đổi tên/số điện thoại khách và bắt buộc lý do.
-- Void trực tiếp chỉ áp dụng khi ca gốc vẫn đang mở. Giao dịch thuộc ca đóng phải lập phiếu điều chỉnh.
+- ADMIN/MANAGER được hủy trực tiếp qua `POST /transactions/:id/void` sau khi nhập lý do; backend vẫn đảo ledger/công nợ, ghi Audit Log và yêu cầu chi nhánh có ca mở. Phiếu điều chỉnh đang chờ của giao dịch sẽ tự chuyển `CANCELLED`.
+- Staff muốn hủy và mọi yêu cầu thay số tiền `REPLACE` vẫn phải lập phiếu điều chỉnh để ADMIN/MANAGER khác duyệt.
+- Phiếu điều chỉnh có hai cách xử lý: `REPLACE` đảo giao dịch cũ rồi tạo giao dịch đúng trong cùng một DB transaction; `VOID` chỉ đảo và hủy giao dịch cũ. Hệ thống không xóa vật lý giao dịch đã ghi sổ.
+- `REPLACE` cho phép sửa số tiền WU, MG hoặc số lượng ngoại tệ. Tỷ giá, Paid Currency, Payout Currency và mã MTCN/Reference được kế thừa từ snapshot giao dịch gốc; giao dịch mới lưu `replacement_of_transaction_id` và tăng `revision`.
+- Giao dịch thay thế giữ `business_date` của giao dịch gốc để không làm lệch công nợ/Journal theo ngày. Bút toán đảo và bút toán thay thế được post ở ngày duyệt hiện tại để lịch sử sổ quỹ phản ánh đúng thời điểm điều chỉnh.
 - Không sửa trực tiếp branch, loại tiền, số tiền hoặc tỷ giá của giao dịch đã post.
 - Staff/ADMIN/MANAGER có thể lập phiếu; ADMIN/MANAGER duyệt chéo hoặc từ chối. Người lập không được tự duyệt.
 - Khi duyệt, backend yêu cầu chi nhánh có ca mở, ghi bút toán đảo vào ca hiện tại, đảo công nợ chưa tất toán, đổi giao dịch thành `VOIDED`, gửi thông báo và ghi Audit Log.
@@ -458,6 +461,7 @@ GET   /api/v1/branch-monitoring/:branchId/activity?period=day|month|year&date=YY
 - `branch-movements` cho STAFF tạo phiếu tiền mặt tại chi nhánh đang làm việc. Backend lấy branch từ JWT, không nhận branch từ form và từ chối nguồn `BANK`. Sau khi post, page Quỹ Chi nhánh tự tải lại số dư ledger.
 - Một phiếu tiếp quỹ chứa nhiều loại tiền. ADMIN/MANAGER gửi từ HO; Staff gửi từ branch được gán.
 - Phiếu mới ở trạng thái chờ. Chỉ khi confirm backend mới khóa sổ nguồn, kiểm tra đủ số dư và post một ledger entry gồm các dòng giảm nguồn/tăng đích.
+- Người lập không được tự xác nhận hoặc từ chối. Staff tại đúng chi nhánh nhận hoặc một ADMIN/MANAGER khác mới được xử lý phiếu chờ.
 - Theo dõi chi nhánh trả về số nhân viên active, tồn VND/USD/Quỹ A, ca đang mở, số lượng/giá trị giao dịch và xu hướng tiền vào/ra.
 
 Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành cho Staff đều dùng API thật. Staff chỉ đọc `/fund/balances` và `/bank/accounts` trong branch scope của token.
@@ -489,7 +493,7 @@ Các page tài khoản ngân hàng, biến động và nhận tiền dùng API t
 
 ### 8. Đối chiếu Journal
 
-**Nghiệp vụ:** frontend nhận file và parse thành dòng Journal, backend tạo reconciliation run, match với giao dịch theo provider/reference/số tiền, lưu item khớp hoặc sai lệch. WU đối chiếu theo branch; MG có thể dùng phạm vi chung tùy journal.
+**Nghiệp vụ:** frontend nhận file và parse thành dòng Journal, backend tạo reconciliation run, match với giao dịch theo provider/reference/số tiền, lưu item khớp hoặc sai lệch. WU đối chiếu theo branch; MG có thể dùng phạm vi chung tùy journal. Backend chuẩn hóa mã tham chiếu và từ chối file có cùng `reference + currency` xuất hiện nhiều lần để không cộng trùng công nợ thực tế.
 
 ```txt
 GET  /api/v1/reconciliation/runs
@@ -519,11 +523,10 @@ Audit log được thiết kế append-only: thao tác quan trọng ghi actor, a
 | Chuyển tiền trong nước | `domesticTransferTransactionsMock` | CRUD giao dịch, kiểm ca, ledger, danh sách/lọc |
 | Dashboard Staff | `branchDashboard.mock.tsx` | Snapshot dashboard có branch scope |
 | Kiểm quỹ độc lập | `cashCount.mock.ts` | Danh sách lần kiểm, chi tiết mệnh giá, duyệt sai lệch |
-| Quỹ riêng của Staff | `funds.mock.ts` | Có thể tái sử dụng `/fund/balances` và thêm API snapshot chi nhánh scoped |
 | Tổng quan đối chiếu cũ | `reconciliation.mock.ts` | Nên thay page bằng `/reconciliation/runs` và items |
 | Tạo/xuất báo cáo | Dữ liệu hard-code | API preview, export Excel/PDF, lưu lịch sử export |
 | Tổng quan Audit cũ | `auditLog.mock.ts` | Nên hợp nhất vào `/audit-logs` |
-| Notification real-time | `notifications.mock.tsx` | API notification và WebSocket/SSE |
+| Notification real-time | API PostgreSQL, polling mỗi 15 giây | WebSocket/SSE nếu cần cập nhật tức thời thay cho polling |
 | Ma trận permission động | Mảng static trong frontend | API role, permission, role-permission và audit thay đổi |
 
 ## Luồng Giao Dịch WU/MG
@@ -672,7 +675,8 @@ PATCH /api/v1/transactions/:id/metadata
   Sửa customerName/customerPhone, bắt buộc có reason và ghi Audit Log.
 
 POST /api/v1/transactions/:id/adjustment-requests
-  Lập phiếu điều chỉnh cho giao dịch COMPLETED, gồm reason và proposedCorrection.
+  Lập phiếu điều chỉnh cho giao dịch COMPLETED, gồm action (`REPLACE`/`VOID`), reason,
+  proposedCorrection và correctedData khi thay thế.
 
 POST /api/v1/transactions/adjustment-requests/:requestId/approve
   Duyệt chéo; ghi bút toán đảo vào ca đang mở hiện tại, đảo công nợ và chuyển giao dịch thành VOIDED.
@@ -681,7 +685,7 @@ POST /api/v1/transactions/adjustment-requests/:requestId/reject
   Từ chối phiếu và gửi thông báo cho người lập.
 ```
 
-Chi nhánh, loại giao dịch, số tiền và tỷ giá không được cập nhật trực tiếp vì đã phát sinh ledger/công nợ. Nếu sai dữ liệu tài chính, người dùng lập phiếu điều chỉnh, người có thẩm quyền khác duyệt, sau đó tạo giao dịch thay thế tại đúng chi nhánh. Backend từ chối duyệt nếu công nợ đã được giải quyết hoặc giao dịch đã chốt Journal.
+Chi nhánh, loại giao dịch và tỷ giá không được cập nhật trực tiếp vì đã phát sinh ledger/công nợ. Nếu sai số tiền, người dùng lập phiếu `REPLACE`; khi duyệt, backend đảo quỹ/công nợ của giao dịch cũ và tạo giao dịch thay thế bằng số tiền đúng trong một transaction nguyên tử, giữ tỷ giá snapshot cũ. Nếu giao dịch không nên tồn tại, dùng phiếu `VOID`. Backend từ chối duyệt nếu công nợ đã được giải quyết, giao dịch đã chốt Journal hoặc chi nhánh chưa có ca mở để ghi bút toán điều chỉnh.
 
 ### Theo dõi chi nhánh
 

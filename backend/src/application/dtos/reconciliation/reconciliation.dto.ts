@@ -8,7 +8,7 @@ export class JournalRowDto {
   @IsString()
   code: string; // MSKH / Reference Number
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   amount: number; // USD
 

@@ -15,7 +15,7 @@ export class CreateFxDto {
   @IsEnum(CURRENCIES as any, { message: 'Loại ngoại tệ không hợp lệ' })
   fxCurrency: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   fxAmount: number;
 

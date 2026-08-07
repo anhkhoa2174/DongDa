@@ -18,7 +18,7 @@ export class RecordDebtDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
   currencyCode: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 
@@ -36,7 +36,7 @@ export class SettleUsdCashDebtDto {
   @Min(0)
   cashUsdAmount: number;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(0.99)
   oddUsdAmount: number;

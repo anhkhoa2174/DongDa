@@ -16,7 +16,7 @@ export class CreateMgDto {
   customerName?: string;
 
   @ValidateIf((o) => o.paidCurrency === 'USD')
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   mgUsdAmount?: number;
 
@@ -28,11 +28,11 @@ export class CreateMgDto {
   @IsEnum(['USD', 'VND'] as any, { message: 'payoutCurrency phải USD/VND' })
   payoutCurrency: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   payoutAmount: number;
 
-  @IsNumber()
+  @IsInt({ message: 'USD thực trả phải là số nguyên' })
   @Min(0)
   receivedUsd: number;
 

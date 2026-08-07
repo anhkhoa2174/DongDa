@@ -10,7 +10,7 @@ export class ReceiveFromProviderDto {
   @IsUUID()
   debtAccountId: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 

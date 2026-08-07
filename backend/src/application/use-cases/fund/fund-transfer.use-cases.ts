@@ -3,7 +3,7 @@
 //   Create (Pending) → Confirm (post ledger, số dư chuyển) / Reject
 //   + xem số dư quỹ
 
-import { BadRequestException, Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Inject, NotFoundException } from '@nestjs/common';
 import {
   IFundRepository, ListFundMovementHistoryFilter, ListTransfersFilter,
 } from '../../../domain/repositories/fund.repository';
@@ -45,20 +45,34 @@ export class CreateTransferUseCase {
 @Injectable()
 export class ConfirmTransferUseCase {
   constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
-  async execute(id: string, userId: string): Promise<FundTransfer> {
+  async execute(id: string, actor: { id: string; role: UserRole; branchId?: string }): Promise<FundTransfer> {
     const t = await this.fundRepo.findTransferById(id);
     if (!t) throw new NotFoundException('Không tìm thấy phiếu tiếp quỹ');
-    return this.fundRepo.confirmTransfer(id, userId);
+    assertReceiverCanAct(t, actor);
+    return this.fundRepo.confirmTransfer(id, actor.id);
   }
 }
 
 @Injectable()
 export class RejectTransferUseCase {
   constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
-  async execute(id: string, userId: string): Promise<FundTransfer> {
+  async execute(id: string, actor: { id: string; role: UserRole; branchId?: string }): Promise<FundTransfer> {
     const t = await this.fundRepo.findTransferById(id);
     if (!t) throw new NotFoundException('Không tìm thấy phiếu tiếp quỹ');
-    return this.fundRepo.rejectTransfer(id, userId);
+    assertReceiverCanAct(t, actor);
+    return this.fundRepo.rejectTransfer(id, actor.id);
+  }
+}
+
+function assertReceiverCanAct(
+  transfer: FundTransfer,
+  actor: { id: string; role: UserRole; branchId?: string },
+) {
+  if (transfer.createdByUserId === actor.id) {
+    throw new ForbiddenException('Người lập phiếu không được tự xác nhận hoặc từ chối phiếu tiếp quỹ');
+  }
+  if (actor.role === UserRole.STAFF && actor.branchId !== transfer.destinationBranchId) {
+    throw new ForbiddenException('Nhân viên chỉ được xử lý phiếu gửi đến chi nhánh mình');
   }
 }
 

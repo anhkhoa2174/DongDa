@@ -28,7 +28,7 @@ export class PrismaShiftRepository implements IShiftRepository {
   async openShift(input: OpenShiftInput): Promise<ShiftWithCount> {
     const now = new Date();
     const result = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`SHIFT:${input.branchId}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`SHIFT:${input.branchId}`}))`;
       const existing = await tx.shifts.findFirst({ where: { branch_id: input.branchId, status: 'OPEN' } });
       if (existing) throw new BadRequestException('Chi nhánh đang có ca mở');
       const shift = await tx.shifts.create({

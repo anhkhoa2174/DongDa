@@ -13,7 +13,7 @@ export class CountLineDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
   currency: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   actualAmount: number;
 }

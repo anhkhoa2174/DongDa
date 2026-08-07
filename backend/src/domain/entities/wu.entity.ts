@@ -27,6 +27,7 @@ export interface WuTransaction {
   systemRate: number; // snapshot tỷ giá công ty tại thời điểm
   appliedRate: number;
   paidCurrency: Currency2; // loại tiền WU hoàn lại → công nợ
+  payoutCurrency: Currency2; // loại tiền khách chọn nhận
   profit: number; // (wuRate − appliedRate) × wuUsd
   createdByUserId: string;
   createdAt: Date;

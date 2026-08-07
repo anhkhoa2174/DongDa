@@ -151,7 +151,7 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
       if (target.effective_from.getTime() > now.getTime()) {
         throw new Error('Chưa thể kích hoạt tỷ giá trước thời điểm hiệu lực');
       }
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${target.rate_type}:${target.provider ?? ''}:${target.from_currency}:${target.to_currency}`}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${target.rate_type}:${target.provider ?? ''}:${target.from_currency}:${target.to_currency}`}))`;
       // 1. Supersede bản ACTIVE cùng identity (BR-F2.3-01: chỉ 1 active/identity)
       await tx.exchange_rates.updateMany({
         where: {

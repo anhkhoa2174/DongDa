@@ -17,6 +17,10 @@ const SOURCE_META: Record<string, { category: string; path: string }> = {
   DEBT_SETTLED: { category: 'DEBT', path: '/debt-management' },
   DEBT_PARTIALLY_SETTLED: { category: 'DEBT', path: '/debt-management' },
   RECONCILIATION_VARIANCE: { category: 'RECONCILIATION', path: '/reconciliation' },
+  TRANSACTION_ADJUSTMENT_REQUEST: { category: 'TRANSACTION', path: '/transactions' },
+  TRANSACTION_ADJUSTMENT_APPROVED: { category: 'TRANSACTION', path: '/transactions' },
+  TRANSACTION_ADJUSTMENT_REJECTED: { category: 'TRANSACTION', path: '/transactions' },
+  TRANSACTION_VOIDED: { category: 'TRANSACTION', path: '/transactions' },
 };
 
 @Controller('notifications')

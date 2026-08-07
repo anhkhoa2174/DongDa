@@ -17,6 +17,7 @@ export interface FundTransferDto {
   destinationBranchId: string;
   items: FundTransferLineDto[];
   status: FundTransferStatus;
+  createdByUserId: string;
   createdAt: string;
   confirmedAt?: string | null;
 }

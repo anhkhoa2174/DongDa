@@ -19,9 +19,11 @@ import {
   DatePicker,
   Form,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
+  Segmented,
   Space,
   Statistic,
   Table,
@@ -34,7 +36,16 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import {
+  formatDateTime,
+  formatExchangeRate,
+  formatUsd,
+  formatVnd,
+  numberInputFormatter,
+  numberInputParser,
+  usdInputFormatter,
+  usdInputParser,
+} from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBranches as useWuBranches, useWuTransactions } from '@/modules/western-union/hooks/useWu';
@@ -81,8 +92,14 @@ type TransactionEditValues = {
 };
 
 type DeactivateValues = {
+  action: 'VOID' | 'REPLACE';
   reason: string;
   proposedCorrection?: string;
+  wuUsdAmount?: number;
+  wuVndAmount?: number;
+  paidAmount?: number;
+  fxAmount?: number;
+  correctedData?: Record<string, number>;
 };
 
 type ReviewValues = { reason: string };
@@ -115,6 +132,8 @@ export function TransactionsMainPage() {
   } | null>(null);
   const [editForm] = Form.useForm<TransactionEditValues>();
   const [deactivateForm] = Form.useForm<DeactivateValues>();
+  const adjustmentAction = Form.useWatch('action', deactivateForm) ?? 'REPLACE';
+  const replacementFxAmount = Form.useWatch('fxAmount', deactivateForm) ?? 0;
   const [reviewForm] = Form.useForm<ReviewValues>();
   const isLoading = isWuLoading || isMgLoading || isFxLoading;
   const canControlTransactions = isControlUser || isUiTestMode;
@@ -149,14 +168,22 @@ export function TransactionsMainPage() {
     },
   });
   const adjustmentMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) =>
-      transactionAdminApi.createAdjustmentRequest(id, values),
-    onSuccess: async () => {
+    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => (
+      isControlUser && values.action === 'VOID'
+        ? transactionAdminApi.voidDirectly(id, values.reason)
+        : transactionAdminApi.createAdjustmentRequest(id, values)
+    ),
+    onSuccess: async (_, variables) => {
+      await invalidateTransactionQueries();
       await queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] });
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
       setDeactivateTarget(null);
       deactivateForm.resetFields();
-      void message.success('Đã lập phiếu điều chỉnh và gửi duyệt');
+      void message.success(
+        isControlUser && variables.values.action === 'VOID'
+          ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
+          : 'Đã lập phiếu điều chỉnh và gửi duyệt',
+      );
     },
     onError: (error: any) => {
       void message.error(error?.response?.data?.message ?? 'Không thể lập phiếu điều chỉnh');
@@ -200,10 +227,10 @@ export function TransactionsMainPage() {
         key: transaction.id,
         code: transaction.transactionNo,
         source: 'WU' as const,
-        type: `WU ${transaction.receivedUsd > 0 ? 'trả USD' : 'trả VND'}`,
+        type: `WU trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.receivedUsd > 0
+        amountLabel: transaction.payoutCurrency === 'USD'
           ? `${formatUsd(transaction.receivedUsd)} + ${formatVnd(transaction.receivedVnd)}`
           : formatVnd(transaction.receivedVnd),
         vndAmount: transaction.receivedUsd * transaction.appliedRate + transaction.receivedVnd,
@@ -213,6 +240,11 @@ export function TransactionsMainPage() {
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
         createdAtRaw: transaction.createdAt,
+        financialData: {
+          wuUsdAmount: transaction.wuUsdAmount,
+          wuVndAmount: transaction.wuVndAmount,
+          appliedRate: transaction.appliedRate,
+        },
         };
       }),
       ...mgTransactions.map((transaction) => {
@@ -236,6 +268,11 @@ export function TransactionsMainPage() {
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
         createdAtRaw: transaction.createdAt,
+        financialData: {
+          paidAmount: transaction.paidCurrency === 'USD' ? transaction.mgUsdAmount : transaction.mgVndAmount,
+          paidCurrency: transaction.paidCurrency,
+          appliedRate: transaction.appliedRate,
+        },
         };
       }),
       ...fxTransactions.map((transaction) => {
@@ -255,6 +292,11 @@ export function TransactionsMainPage() {
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
         createdAtRaw: transaction.createdAt,
+        financialData: {
+          fxAmount: transaction.fxAmount,
+          fxCurrency: transaction.fxCurrency,
+          appliedRate: transaction.rate,
+        },
         };
       }),
     ];
@@ -280,12 +322,38 @@ export function TransactionsMainPage() {
 
   const openDeactivateModal = (transaction: AggregatedTransaction) => {
     setDeactivateTarget(transaction);
-    deactivateForm.resetFields();
+    deactivateForm.setFieldsValue({
+      action: 'REPLACE',
+      reason: undefined,
+      proposedCorrection: undefined,
+      wuUsdAmount: transaction.financialData?.wuUsdAmount,
+      wuVndAmount: transaction.financialData?.wuVndAmount,
+      paidAmount: transaction.financialData?.paidAmount,
+      fxAmount: transaction.financialData?.fxAmount,
+    });
   };
 
   const submitDeactivate = (values: DeactivateValues) => {
     if (!deactivateTarget) return;
-    adjustmentMutation.mutate({ id: deactivateTarget.key, values });
+    let correctedData: Record<string, number> | undefined;
+    if (values.action === 'REPLACE') {
+      if (deactivateTarget.source === 'WU') {
+        correctedData = { wuUsdAmount: Number(values.wuUsdAmount), wuVndAmount: Number(values.wuVndAmount) };
+      } else if (deactivateTarget.source === 'MG') {
+        correctedData = { paidAmount: Number(values.paidAmount) };
+      } else if (deactivateTarget.source === 'FX') {
+        correctedData = { fxAmount: Number(values.fxAmount) };
+      }
+    }
+    adjustmentMutation.mutate({
+      id: deactivateTarget.key,
+      values: {
+        action: values.action,
+        reason: values.reason,
+        proposedCorrection: values.proposedCorrection,
+        correctedData,
+      },
+    });
   };
 
   const submitReview = (values: ReviewValues) => {
@@ -368,6 +436,15 @@ export function TransactionsMainPage() {
   ];
 
   const adjustmentColumns: ColumnsType<TransactionAdjustmentRequest> = [
+    {
+      title: 'Loại phiếu',
+      width: 120,
+      render: (_, request) => (
+        <Tag color={request.payload?.action === 'REPLACE' ? 'blue' : 'red'}>
+          {request.payload?.action === 'REPLACE' ? 'Thay thế' : 'Hủy GD'}
+        </Tag>
+      ),
+    },
     {
       title: 'Giao dịch',
       render: (_, request) => (
@@ -658,7 +735,7 @@ export function TransactionsMainPage() {
       </Modal>
 
       <Modal
-        title={`Lập phiếu điều chỉnh ${deactivateTarget?.code ?? ''}`}
+        title={`${isControlUser && adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
         open={Boolean(deactivateTarget)}
         onCancel={() => setDeactivateTarget(null)}
         footer={null}
@@ -667,21 +744,91 @@ export function TransactionsMainPage() {
         <Form<DeactivateValues> form={deactivateForm} layout="vertical" onFinish={submitDeactivate}>
           <Alert
             className="mb-4"
-            type="warning"
+            type={isControlUser && adjustmentAction === 'VOID' ? 'error' : 'warning'}
             showIcon
-            message="Phiếu cần được GĐ/KTTH duyệt trước khi ghi sổ"
-            description="Nếu giao dịch thuộc ca đã đóng, bút toán đảo sẽ được ghi vào ca đang mở hiện tại của chi nhánh. Giao dịch đã chốt Journal không được điều chỉnh theo luồng này."
+            message={isControlUser && adjustmentAction === 'VOID'
+              ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
+              : 'Phiếu cần được GĐ/KTTH khác duyệt trước khi ghi sổ'}
+            description={isControlUser && adjustmentAction === 'VOID'
+              ? 'Thao tác không cần duyệt lại. Công nợ đã tất toán hoặc giao dịch đã chốt Journal vẫn không thể hủy trực tiếp.'
+              : 'Nếu giao dịch thuộc ca đã đóng, bút toán đảo và giao dịch thay thế sẽ được ghi vào ca đang mở hiện tại. Tỷ giá của giao dịch cũ được giữ nguyên.'}
           />
+          <Form.Item name="action" label="Cách xử lý" rules={[{ required: true }]}>
+            <Segmented
+              block
+              options={[
+                { label: 'Thay thế giao dịch', value: 'REPLACE' },
+                { label: 'Hủy giao dịch', value: 'VOID' },
+              ]}
+            />
+          </Form.Item>
+          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'WU' && (
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="wuUsdAmount" label="Amount USD đúng" rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập Amount USD lớn hơn 0' }]}>
+                  <InputNumber className="w-full" min={0.01} precision={2} addonAfter="USD" formatter={usdInputFormatter} parser={usdInputParser} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="wuVndAmount" label="Amount VND đúng" rules={[{ required: true, type: 'number', min: 1, message: 'Nhập Amount VND lớn hơn 0' }]}>
+                  <InputNumber className="w-full" min={1} precision={0} addonAfter="VND" formatter={numberInputFormatter} parser={numberInputParser} />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'MG' && (
+            <Form.Item name="paidAmount" label={`Số tiền MG đúng (${deactivateTarget.financialData?.paidCurrency ?? ''})`} rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập số tiền lớn hơn 0' }]}>
+              <InputNumber
+                className="w-full"
+                min={0.01}
+                precision={deactivateTarget.financialData?.paidCurrency === 'VND' ? 0 : 2}
+                addonAfter={deactivateTarget.financialData?.paidCurrency}
+                formatter={deactivateTarget.financialData?.paidCurrency === 'VND' ? numberInputFormatter : usdInputFormatter}
+                parser={deactivateTarget.financialData?.paidCurrency === 'VND' ? numberInputParser : usdInputParser}
+              />
+            </Form.Item>
+          )}
+          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'FX' && (
+            <>
+              <Form.Item name="fxAmount" label={`Số lượng ngoại tệ đúng (${deactivateTarget.financialData?.fxCurrency ?? ''})`} rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập số lượng lớn hơn 0' }]}>
+                <InputNumber className="w-full" min={0.01} precision={2} addonAfter={deactivateTarget.financialData?.fxCurrency} formatter={usdInputFormatter} parser={usdInputParser} />
+              </Form.Item>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item label="Tỷ giá giữ lại">
+                    <Input value={formatExchangeRate(deactivateTarget.financialData?.appliedRate ?? 0)} addonAfter="VND" readOnly />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item label="Giá trị VND tính lại">
+                    <Input
+                      value={formatVnd(Math.round(Number(replacementFxAmount) * Number(deactivateTarget.financialData?.appliedRate ?? 0)))}
+                      readOnly
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Alert
+                className="mb-4"
+                type="info"
+                showIcon
+                message="Số VND sẽ được tính lại theo số lượng mới và tỷ giá của giao dịch gốc"
+                description="Nếu tỷ giá giao dịch gốc bị nhập sai, hãy chọn Hủy giao dịch và tạo lại giao dịch mới với tỷ giá đúng."
+              />
+            </>
+          )}
           <Form.Item name="reason" label="Lý do điều chỉnh" rules={[{ required: true, whitespace: true, message: 'Nhập lý do điều chỉnh' }]}>
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Mô tả sai sót của giao dịch gốc" />
           </Form.Item>
-          <Form.Item name="proposedCorrection" label="Nội dung đề nghị" rules={[{ required: true, whitespace: true, message: 'Nhập nội dung đề nghị điều chỉnh' }]}>
-            <Input.TextArea rows={3} maxLength={1000} showCount placeholder="Ví dụ: đảo giao dịch và tạo lại với số tiền đúng" />
+          <Form.Item name="proposedCorrection" label="Nội dung đề nghị" rules={[{ required: adjustmentAction === 'REPLACE', whitespace: true, message: 'Nhập nội dung đề nghị điều chỉnh' }]}>
+            <Input.TextArea rows={3} maxLength={1000} showCount placeholder={adjustmentAction === 'REPLACE' ? 'Mô tả số tiền đúng và căn cứ điều chỉnh' : 'Ghi chú thêm cho yêu cầu hủy (nếu có)'} />
           </Form.Item>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeactivateTarget(null)}>Hủy</Button>
             <Button type="primary" htmlType="submit" loading={adjustmentMutation.isPending}>
-              Gửi phiếu duyệt
+              {adjustmentAction === 'REPLACE'
+                ? 'Gửi phiếu thay thế'
+                : isControlUser ? 'Hủy giao dịch ngay' : 'Gửi phiếu hủy'}
             </Button>
           </div>
         </Form>

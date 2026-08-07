@@ -13,7 +13,9 @@ export class PrismaWuRepository implements IWuRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async mtcnExists(mtcn: string): Promise<boolean> {
-    const count = await this.prisma.wu_transaction_details.count({ where: { mtcn } });
+    const count = await this.prisma.wu_transaction_details.count({
+      where: { mtcn, customer_transactions: { status: 'COMPLETED' } },
+    });
     return count > 0;
   }
 
@@ -27,6 +29,11 @@ export class PrismaWuRepository implements IWuRepository {
       txnId = await this.prisma.$transaction(async (tx) => {
         // 1. Bắt buộc có ca mở trước khi tạo giao dịch.
         const shift = await this.ensureShift(tx, input.branchId);
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'WU:' + input.mtcn}))`;
+        const duplicate = await tx.wu_transaction_details.count({
+          where: { mtcn: input.mtcn, customer_transactions: { status: 'COMPLETED' } },
+        });
+        if (duplicate > 0) throw new ConflictException(`MSKH (MTCN) ${input.mtcn} đã được xử lý`);
 
         // 2. customer_transaction (WU, COMPLETED)
         const txn = await tx.customer_transactions.create({
@@ -51,6 +58,7 @@ export class PrismaWuRepository implements IWuRepository {
             transaction_id: txn.id,
             mtcn: input.mtcn,
             paid_currency: input.paidCurrency,
+            payout_currency: input.payoutCurrency,
             wu_usd_amount: input.wuUsdAmount,
             wu_vnd_amount: input.wuVndAmount,
             received_usd: input.receivedUsd,
@@ -232,6 +240,7 @@ function toDomain(row: any): WuTransaction {
     systemRate: Number(d.system_rate),
     appliedRate: applied,
     paidCurrency: d.paid_currency,
+    payoutCurrency: d.payout_currency,
     profit: wuProfit(wuRate, applied, wuUsd),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,

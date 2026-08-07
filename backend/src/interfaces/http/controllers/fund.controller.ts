@@ -88,16 +88,16 @@ export class FundController {
   // Xác nhận (bên nhận) — post ledger, chuyển số dư
   @Patch('transfers/:id/confirm')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   confirm(@Request() req: any, @Param('id') id: string) {
-    return this.confirmTransfer.execute(id, req.user.id);
+    return this.confirmTransfer.execute(id, req.user);
   }
 
   @Patch('transfers/:id/reject')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   reject(@Request() req: any, @Param('id') id: string) {
-    return this.rejectTransfer.execute(id, req.user.id);
+    return this.rejectTransfer.execute(id, req.user);
   }
 
   private staffBranchScope(req: any, branchId?: string) {

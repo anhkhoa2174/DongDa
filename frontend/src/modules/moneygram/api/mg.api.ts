@@ -11,6 +11,7 @@ export interface MgTransactionDto {
   referenceNo: string;
   mgUsdAmount: number;
   mgVndAmount: number;
+  paidCurrency: 'USD' | 'VND';
   payoutCurrency: string;
   payoutAmount: number;
   receivedUsd: number;

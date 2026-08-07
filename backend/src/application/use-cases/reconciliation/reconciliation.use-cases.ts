@@ -21,6 +21,7 @@ export class RunReconciliationUseCase {
     const scope = dto.provider === 'WU' ? 'BRANCH' : 'COMPANY';
     const rows = dto.rows.map((row) => ({
       ...row,
+      code: row.code.trim().toUpperCase(),
       currencyCode: row.currencyCode ?? 'USD',
       branchId: scope === 'BRANCH' ? dto.branchId : row.branchId,
     }));
@@ -30,6 +31,13 @@ export class RunReconciliationUseCase {
     const currencies = new Set(rows.map((row) => row.currencyCode));
     if (currencies.size !== 1) {
       throw new BadRequestException('Mỗi lần đối chiếu chỉ được dùng một loại tiền');
+    }
+    const rowKeys = rows.map((row) => `${row.code}::${row.currencyCode}`);
+    const duplicateKeys = [...new Set(rowKeys.filter((key, index) => rowKeys.indexOf(key) !== index))];
+    if (duplicateKeys.length > 0) {
+      throw new BadRequestException(
+        `Journal có MTCN/Reference bị trùng: ${duplicateKeys.map((key) => key.split('::')[0]).join(', ')}`,
+      );
     }
     const currencyCode = rows[0].currencyCode;
     const system = await this.repo.listSystemTxByProvider(dto.provider, businessDate, dto.branchId);

@@ -603,6 +603,9 @@ export class PrismaFundRepository implements IFundRepository {
       if (t.status !== 'PENDING_APPROVAL') {
         throw new BadRequestException(`Chỉ xác nhận được phiếu đang chờ (hiện tại: ${t.status})`);
       }
+      if (t.created_by_user_id === confirmedByUserId) {
+        throw new BadRequestException('Người lập phiếu không được tự xác nhận phiếu tiếp quỹ');
+      }
 
       const sourceAccountIds = [...new Set(t.fund_transfer_items.map((item) => item.source_account_id))].sort();
       for (const sourceAccountId of sourceAccountIds) {
@@ -692,6 +695,9 @@ export class PrismaFundRepository implements IFundRepository {
       });
       if (t.status !== 'PENDING_APPROVAL') {
         throw new BadRequestException(`Chỉ từ chối được phiếu đang chờ (hiện tại: ${t.status})`);
+      }
+      if (t.created_by_user_id === userId) {
+        throw new BadRequestException('Người lập phiếu không được tự từ chối phiếu tiếp quỹ');
       }
       const claimed = await tx.fund_transfers.updateMany({
         where: { id, status: 'PENDING_APPROVAL' },

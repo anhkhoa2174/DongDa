@@ -1,9 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
 
-export type DeactivateTransactionPayload = {
-  reason: string;
-};
-
 export type UpdateTransactionMetadataPayload = {
   customerName?: string;
   customerPhone?: string;
@@ -26,6 +22,11 @@ export type TransactionAdjustmentRequest = {
   note?: string | null;
   requested_at: string;
   completed_at?: string | null;
+  payload?: {
+    action?: 'VOID' | 'REPLACE';
+    correctedData?: Record<string, number>;
+    originalRateSnapshot?: Record<string, number>;
+  };
   users?: {
     username?: string;
     employees?: { full_name?: string };
@@ -40,8 +41,8 @@ export type TransactionAdjustmentRequest = {
 };
 
 export const transactionAdminApi = {
-  deactivate: (transactionId: string, payload: DeactivateTransactionPayload) =>
-    httpClient.post(`/transactions/${transactionId}/deactivate`, payload).then((response) => response.data),
+  voidDirectly: (transactionId: string, reason: string) =>
+    httpClient.post(`/transactions/${transactionId}/void`, { reason }).then((response) => response.data),
   updateMetadata: (transactionId: string, payload: UpdateTransactionMetadataPayload) =>
     httpClient.patch<UpdatedTransactionMetadata>(`/transactions/${transactionId}/metadata`, payload)
       .then((response) => response.data),
@@ -50,7 +51,12 @@ export const transactionAdminApi = {
       .then((response) => response.data),
   createAdjustmentRequest: (
     transactionId: string,
-    payload: { reason: string; proposedCorrection?: string },
+    payload: {
+      action: 'VOID' | 'REPLACE';
+      reason: string;
+      proposedCorrection?: string;
+      correctedData?: Record<string, number>;
+    },
   ) => httpClient.post(`/transactions/${transactionId}/adjustment-requests`, payload)
     .then((response) => response.data),
   approveAdjustmentRequest: (requestId: string, reason: string) =>

@@ -1,7 +1,7 @@
 // Prisma MG Repository — tạo GD MoneyGram (atomic: ca + quỹ + công nợ)
 // Layer: Infrastructure
 
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { IMgRepository, CreateMgInput, ListMgFilter } from '../../../domain/repositories/mg.repository';
 import { MgTransaction, Currency2, mgImpliedRate, mgProfit } from '../../../domain/entities/mg.entity';
@@ -12,7 +12,9 @@ export class PrismaMgRepository implements IMgRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async referenceExists(referenceNo: string): Promise<boolean> {
-    const count = await this.prisma.mg_transaction_details.count({ where: { reference_no: referenceNo } });
+    const count = await this.prisma.mg_transaction_details.count({
+      where: { reference_no: referenceNo, customer_transactions: { status: 'COMPLETED' } },
+    });
     return count > 0;
   }
 
@@ -23,6 +25,11 @@ export class PrismaMgRepository implements IMgRepository {
 
     const txnId = await this.prisma.$transaction(async (tx) => {
       const shift = await this.ensureShift(tx, input.branchId);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'MG:' + input.referenceNo}))`;
+      const duplicate = await tx.mg_transaction_details.count({
+        where: { reference_no: input.referenceNo, customer_transactions: { status: 'COMPLETED' } },
+      });
+      if (duplicate > 0) throw new ConflictException(`Reference Number ${input.referenceNo} đã được xử lý`);
 
       const txn = await tx.customer_transactions.create({
         data: {

@@ -16,6 +16,8 @@ export interface WuTransactionDto {
   wuRate: number;
   systemRate: number;
   appliedRate: number;
+  paidCurrency: 'USD' | 'VND';
+  payoutCurrency: 'USD' | 'VND';
   profit: number;
   createdAt: string;
 }

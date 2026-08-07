@@ -16,7 +16,7 @@ export class CreateTransferItemDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
   currencyCode: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 }
@@ -59,7 +59,7 @@ export class CreateCentralFundMovementItemDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
   currencyCode: string;
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 

@@ -71,7 +71,14 @@ export function FundTransferWorkspacePage() {
   const isBranchCreationFlow = searchParams.get('origin') === 'branch-creation';
   const user = useAuthStore((state) => state.user);
   const isBranchUser = user?.role === 'branch';
-  const canConfirm = user?.role === 'director' || user?.role === 'accountant';
+  const canConfirm = (transfer: FundTransferDto) => (
+    transfer.createdByUserId !== user?.id
+    && (
+      user?.role === 'director'
+      || user?.role === 'accountant'
+      || (user?.role === 'branch' && transfer.destinationBranchId === user.branchId)
+    )
+  );
   const { data: branches = [] } = useBranches();
   const sourceBranch = isBranchUser
     ? branches.find((branch) => branch.id === user?.branchId)
@@ -192,7 +199,7 @@ export function FundTransferWorkspacePage() {
       key: 'actions',
       fixed: 'right',
       width: 180,
-      render: (_, transfer) => transfer.status === 'PENDING_APPROVAL' && canConfirm ? (
+      render: (_, transfer) => transfer.status === 'PENDING_APPROVAL' && canConfirm(transfer) ? (
         <Space>
           <Popconfirm
             title="Xác nhận đã nhận đủ tất cả loại tiền?"
