@@ -58,8 +58,21 @@ export interface ParseJournalResult {
   summary: { total: number; parsed: number; failed: number };
 }
 
+export interface FundReconItemDto {
+  branchId: string;
+  branchCode: string;
+  currencyCode: string;
+  systemBalance: number;
+  physicalActual: number | null;
+  variance: number;
+  status: 'MATCH' | 'OVERAGE' | 'SHORTAGE' | 'NO_COUNT';
+  countedAt: string | null;
+}
+
 export const reconApi = {
   runs: () => httpClient.get<ReconRunDto[]>('/reconciliation/runs').then((r) => r.data),
+  fundReconciliation: (branchId?: string) =>
+    httpClient.get<FundReconItemDto[]>('/reconciliation/fund', { params: branchId ? { branchId } : {} }).then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
   run: (input: RunReconInput) =>

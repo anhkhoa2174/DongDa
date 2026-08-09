@@ -11,6 +11,20 @@ export enum ReconItemStatus {
   AMOUNT_VARIANCE = 'AMOUNT_VARIANCE', // khớp mã, lệch số tiền
 }
 
+// F9.1 — Đối chiếu quỹ: tồn hệ thống (ledger) vs tồn thực tế (kiểm quỹ gần nhất)
+export type FundReconStatus = 'MATCH' | 'OVERAGE' | 'SHORTAGE' | 'NO_COUNT';
+
+export interface FundReconItem {
+  branchId: string;
+  branchCode: string;
+  currencyCode: string;
+  systemBalance: number; // tồn hệ thống hiện tại (từ ledger)
+  physicalActual: number | null; // tồn thực tế lần kiểm quỹ gần nhất (null nếu chưa kiểm)
+  variance: number; // physicalActual - systemBalance (0 nếu chưa kiểm)
+  status: FundReconStatus;
+  countedAt: Date | null;
+}
+
 export interface SystemTxn {
   code: string; // MSKH / Reference
   transactionId: string;

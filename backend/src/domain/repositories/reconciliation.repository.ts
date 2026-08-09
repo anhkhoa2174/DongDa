@@ -1,7 +1,7 @@
 // Repository Interface: Đối chiếu (Port)
 // Layer: Domain
 
-import type { SystemTxn, ReconItem, ReconResult } from '../entities/reconciliation.entity';
+import type { SystemTxn, ReconItem, ReconResult, FundReconItem } from '../entities/reconciliation.entity';
 
 export interface SaveRunInput {
   provider: string; // WU | MG
@@ -35,4 +35,6 @@ export interface IReconciliationRepository {
   saveRun(input: SaveRunInput): Promise<ReconRunSummary>;
   listRuns(): Promise<ReconRunSummary[]>;
   getItems(runId: string): Promise<ReconItem[]>;
+  // F9.1 — đối chiếu quỹ hệ thống vs kiểm quỹ thực tế gần nhất
+  fundReconciliation(branchId?: string): Promise<FundReconItem[]>;
 }

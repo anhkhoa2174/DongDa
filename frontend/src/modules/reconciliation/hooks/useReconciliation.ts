@@ -6,6 +6,12 @@ const KEY = ['reconciliation'] as const;
 export function useReconRuns() {
   return useQuery({ queryKey: [...KEY, 'runs'], queryFn: () => reconApi.runs() });
 }
+export function useFundReconciliation(branchId?: string) {
+  return useQuery({
+    queryKey: [...KEY, 'fund', branchId ?? 'all'],
+    queryFn: () => reconApi.fundReconciliation(branchId),
+  });
+}
 export function useReconItems(runId: string | null) {
   return useQuery({
     queryKey: [...KEY, 'items', runId],

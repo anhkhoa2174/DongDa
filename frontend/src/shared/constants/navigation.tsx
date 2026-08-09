@@ -89,7 +89,7 @@ export const navigationItems: AppMenuItem[] = [
     icon: <CheckSquareOutlined />,
     label: 'Đối Chiếu',
     children: [
-      { key: '/reconciliation', label: 'Tổng quan', path: '/reconciliation' },
+      { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation' },
       { key: '/reconciliation/journal', label: 'Đối chiếu Journal', path: '/reconciliation/journal' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor'],

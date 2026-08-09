@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma.service';
 import {
   IReconciliationRepository, SaveRunInput, ReconRunSummary,
 } from '../../../domain/repositories/reconciliation.repository';
-import { SystemTxn, ReconItem, ReconItemStatus } from '../../../domain/entities/reconciliation.entity';
+import { SystemTxn, ReconItem, ReconItemStatus, FundReconItem } from '../../../domain/entities/reconciliation.entity';
 import { NotificationService } from '../../notifications/notification.service';
 
 @Injectable()
@@ -198,6 +198,76 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         note: rest.join(' · ') || undefined,
       };
     });
+  }
+
+  // F9.1 — Đối chiếu quỹ: tồn hệ thống (ledger) vs tồn thực tế (kiểm quỹ gần nhất).
+  async fundReconciliation(branchId?: string): Promise<FundReconItem[]> {
+    const [accounts, branches, counts] = await Promise.all([
+      this.prisma.fund_accounts.findMany({
+        where: { status: 'ACTIVE', account_type: { in: ['CASH', 'FUND_A'] }, ...(branchId ? { branch_id: branchId } : {}) },
+        select: { id: true, branch_id: true, currency_code: true },
+      }),
+      this.prisma.branch.findMany({ select: { id: true, code: true } }),
+      this.prisma.cash_counts.findMany({
+        where: { ...(branchId ? { branch_id: branchId } : {}) },
+        orderBy: { counted_at: 'desc' },
+        include: { cash_count_lines: { select: { currency_code: true, actual_amount: true } } },
+      }),
+    ]);
+    const branchCode = new Map(branches.map((b) => [b.id, b.code]));
+
+    // Tồn hệ thống: cộng số dư ledger của mọi sổ cùng (chi nhánh, loại tiền).
+    const system = new Map<string, { branchId: string; currencyCode: string; balance: number }>();
+    for (const acc of accounts) {
+      const bal = await this.balanceOf(acc.id);
+      const key = `${acc.branch_id}::${acc.currency_code}`;
+      const cur = system.get(key);
+      system.set(key, { branchId: acc.branch_id, currencyCode: String(acc.currency_code), balance: (cur?.balance ?? 0) + bal });
+    }
+
+    // Tồn thực tế: lần kiểm quỹ gần nhất cho mỗi (chi nhánh, loại tiền).
+    const physical = new Map<string, { actual: number; countedAt: Date }>();
+    for (const count of counts) {
+      for (const line of count.cash_count_lines) {
+        const key = `${count.branch_id}::${line.currency_code}`;
+        if (!physical.has(key)) physical.set(key, { actual: Number(line.actual_amount), countedAt: count.counted_at });
+      }
+    }
+
+    const items: FundReconItem[] = [];
+    for (const [key, sys] of system) {
+      const phys = physical.get(key);
+      const physicalActual = phys ? phys.actual : null;
+      const variance = phys ? phys.actual - sys.balance : 0;
+      let status: FundReconItem['status'];
+      if (!phys) status = 'NO_COUNT';
+      else if (Math.abs(variance) < 0.01) status = 'MATCH';
+      else status = variance > 0 ? 'OVERAGE' : 'SHORTAGE';
+      items.push({
+        branchId: sys.branchId,
+        branchCode: branchCode.get(sys.branchId) ?? sys.branchId.slice(0, 8),
+        currencyCode: sys.currencyCode,
+        systemBalance: sys.balance,
+        physicalActual,
+        variance,
+        status,
+        countedAt: phys ? phys.countedAt : null,
+      });
+    }
+    // Ưu tiên hiện các dòng có lệch trước, rồi theo chi nhánh + loại tiền.
+    const rank = { SHORTAGE: 0, OVERAGE: 1, NO_COUNT: 2, MATCH: 3 } as const;
+    return items.sort((a, b) =>
+      rank[a.status] - rank[b.status]
+      || a.branchCode.localeCompare(b.branchCode)
+      || a.currencyCode.localeCompare(b.currencyCode));
+  }
+
+  private async balanceOf(fundAccountId: string): Promise<number> {
+    const lines = await this.prisma.ledger_lines.findMany({
+      where: { fund_account_id: fundAccountId, ledger_entries: { status: 'POSTED' } },
+      select: { direction: true, amount: true },
+    });
+    return lines.reduce((s, l) => s + (l.direction === 'DEBIT' ? Number(l.amount) : -Number(l.amount)), 0);
   }
 
   private toSummary(run: any, matchedCount: number, totalCount: number, matchRate: number): ReconRunSummary {

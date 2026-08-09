@@ -65,4 +65,8 @@ export class ListReconciliationUseCase {
   items(runId: string) {
     return this.repo.getItems(runId);
   }
+  // F9.1 — đối chiếu quỹ hệ thống vs kiểm quỹ thực tế
+  fundReconciliation(branchId?: string) {
+    return this.repo.fundReconciliation(branchId);
+  }
 }

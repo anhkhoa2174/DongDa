@@ -39,6 +39,14 @@ export class ReconciliationController {
     return this.listRecon.items(id);
   }
 
+  // F9.1 — Đối chiếu quỹ: tồn hệ thống vs kiểm quỹ thực tế gần nhất (KTTH/GĐ/kiểm toán)
+  @Get('fund')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
+  fund(@Query('branchId') branchId?: string) {
+    return this.listRecon.fundReconciliation(branchId);
+  }
+
   // Chạy đối chiếu — KTTH/GĐ
   @Post('run')
   @UseGuards(RolesGuard)
