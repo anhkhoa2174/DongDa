@@ -50,9 +50,13 @@ export function ReportsPage() {
         dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD'),
       }),
     onSuccess: (_, { format }) => notify.success(
-      format === 'PREVIEW' ? 'Đã tổng hợp dữ liệu báo cáo' : `Đã chuẩn bị báo cáo ${format}`,
+      format === 'PREVIEW' ? 'Đã tổng hợp dữ liệu báo cáo'
+        : format === 'EXCEL' ? 'Đã tải file Excel báo cáo'
+        : `Đã chuẩn bị báo cáo ${format}`,
     ),
-    onError: () => notify.error('Không thể tạo báo cáo'),
+    onError: (e: any) => notify.error(
+      typeof e?.response?.data?.message === 'string' ? e.response.data.message : 'Không thể tạo báo cáo',
+    ),
   });
 
   return (

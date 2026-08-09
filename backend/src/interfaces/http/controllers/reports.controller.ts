@@ -1,12 +1,17 @@
 // Reports Controller — Báo cáo tổng hợp + Dashboard summary
 // Layer: Interface (HTTP)
 
-import { Body, Controller, Get, Post, Query, Request, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException, Body, Controller, Get, Post, Query, Request, Res, StreamableFile, UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { IsDateString, IsIn, IsOptional, IsUUID } from 'class-validator';
+import * as XLSX from 'xlsx';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { GetSummaryUseCase } from '../../../application/use-cases/reports/get-summary.use-case';
+import { buildReportModel } from '../../../application/use-cases/reports/report-model';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 
 class GenerateReportDto {
@@ -39,15 +44,45 @@ export class ReportsController {
   ) {}
 
   @Post('generate')
-  async generate(@Request() req: any, @Body() dto: GenerateReportDto) {
+  async generate(@Request() req: any, @Body() dto: GenerateReportDto, @Res({ passthrough: true }) res: Response) {
+    if (dto.format === 'PDF') {
+      throw new BadRequestException('Xuất PDF chưa được hỗ trợ. Vui lòng dùng Excel hoặc Xem trước.');
+    }
+    const generatedAt = new Date();
     const data = await this.getSummary.execute(this.reportFilter(dto.branchId, dto.dateFrom, dto.dateTo));
+    const model = buildReportModel(dto.reportType, data, {
+      branchId: dto.branchId,
+      dateFrom: dto.dateFrom,
+      dateTo: dto.dateTo,
+      generatedAt: generatedAt.toISOString(),
+    });
+
     await this.notifications.notifyUsers({
       title: 'Báo cáo đã sẵn sàng',
-      body: `Báo cáo ${dto.reportType.toUpperCase()} (${dto.format}) đã được tổng hợp thành công.`,
+      body: `${model.title} (${dto.format}) đã được tổng hợp thành công.`,
       sourceType: 'REPORT_GENERATED',
       sourceId: req.user.id,
     }, { userIds: [req.user.id] });
-    return { reportType: dto.reportType, format: dto.format, generatedAt: new Date(), data };
+
+    // EXCEL: dựng workbook thật và trả file tải về.
+    if (dto.format === 'EXCEL') {
+      const wb = XLSX.utils.book_new();
+      for (const sheet of model.sheets) {
+        const ws = XLSX.utils.aoa_to_sheet(sheet.aoa);
+        // tên sheet tối đa 31 ký tự theo chuẩn Excel
+        XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31));
+      }
+      const buffer: Buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const fileName = `bao-cao-${dto.reportType}-${generatedAt.toISOString().slice(0, 10)}.xlsx`;
+      res.set({
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+      });
+      return new StreamableFile(buffer);
+    }
+
+    // PREVIEW: trả JSON đúng theo loại báo cáo (không còn trả cùng một cục).
+    return { reportType: dto.reportType, format: dto.format, generatedAt, title: model.title, sheets: model.sheets };
   }
 
   // Dùng chung cho cả Dashboard và Báo cáo tổng hợp

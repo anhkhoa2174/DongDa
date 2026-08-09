@@ -80,8 +80,26 @@ export interface CompanyDashboardDto {
 
 export const summaryApi = {
   get: () => httpClient.get<SummaryDto>('/reports/summary').then((r) => r.data),
-  generate: (input: { reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string }) =>
-    httpClient.post('/reports/generate', input).then((response) => response.data),
+  generate: async (input: { reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string }) => {
+    if (input.format === 'EXCEL') {
+      // Nhận file nhị phân và tải về.
+      const response = await httpClient.post('/reports/generate', input, { responseType: 'blob' });
+      const disposition = String(response.headers['content-disposition'] ?? '');
+      const match = /filename="?([^"]+)"?/.exec(disposition);
+      const fileName = match?.[1] ?? `bao-cao-${input.reportType}.xlsx`;
+      const url = URL.createObjectURL(response.data as Blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      return { downloaded: true, fileName };
+    }
+    const response = await httpClient.post('/reports/generate', input);
+    return response.data;
+  },
   dashboardOperations: (date: string) =>
     httpClient.get<DashboardOperationsDto>('/reports/dashboard-operations', { params: { date } })
       .then((response) => response.data),
