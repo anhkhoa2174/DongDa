@@ -56,6 +56,14 @@ export class PrismaShiftRepository implements IShiftRepository {
       if (input.branchId && shift.branch_id !== input.branchId) throw new BadRequestException('Không thể đóng ca của chi nhánh khác');
       if (shift.status !== 'OPEN') throw new BadRequestException(`Ca không ở trạng thái mở (hiện tại: ${shift.status})`);
       const count = await this.createCashCount(tx, shift.id, shift.branch_id, input.closedByUserId, input.closingCounts, now, 'Kiểm quỹ cuối ca');
+      // BR-F8.4-01: có chênh lệch quỹ thì bắt buộc nhập lý do (ghi vào closing_note).
+      const variances = count.lines.filter((line) => Number(line.variance) !== 0);
+      if (variances.length > 0 && !input.note?.trim()) {
+        const detail = variances
+          .map((line) => `${line.currencyCode} ${Number(line.variance) > 0 ? '+' : ''}${line.variance}`)
+          .join(', ');
+        throw new BadRequestException(`Kiểm quỹ cuối ca có chênh lệch (${detail}). Vui lòng nhập lý do chênh lệch để đóng ca.`);
+      }
       const claimed = await tx.shifts.updateMany({
         where: { id: shift.id, status: 'OPEN' },
         data: { status: 'CLOSED', closed_by_user_id: input.closedByUserId, closed_at: now, closing_note: input.note ?? 'Kiểm quỹ cuối ca' },
