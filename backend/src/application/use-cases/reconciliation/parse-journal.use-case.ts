@@ -34,17 +34,21 @@ const MAX_ROWS = 5000;
 
 // Từ khoá dò cột theo tiêu đề (không dấu, thường hoá) — bao gồm cả tiếng Việt có dấu.
 const COLUMN_KEYWORDS = {
-  code: ['mskh', 'mtcn', 'reference', 'refno', 'ref', 'ma', 'code', 'sothamchieu', 'mã'],
-  amount: ['amountusd', 'usd', 'amount', 'sotien', 'sotienusd', 'số tiền', 'sotiengoc'],
-  customerName: ['customername', 'customer', 'hoten', 'ten', 'name', 'khachhang', 'họ tên', 'kh'],
-  currency: ['currency', 'ccy', 'loaitien', 'tiente', 'loại tiền'],
+  code: ['mskh', 'mtcn', 'reference', 'refno', 'referencenumber', 'sothamchieu', 'ma', 'code'],
+  amount: ['amountusd', 'usdamount', 'sotienusd', 'sotiengoc', 'amount', 'usd', 'sotien'],
+  customerName: ['customername', 'hoten', 'hotenkhachhang', 'tenkhachhang', 'khachhang', 'customer', 'name', 'ten'],
+  currency: ['currency', 'ccy', 'loaitien', 'tiente'],
 };
+
+// Combining diacritical marks U+0300–U+036F — build từ chuỗi ASCII để source không
+// chứa ký tự tổ hợp (tránh bị mã hoá sai khi lưu file).
+const DIACRITICS_RE = new RegExp('[\\u0300-\\u036f]', 'g');
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? '')
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // bỏ dấu tiếng Việt
+    .replace(DIACRITICS_RE, '') // bỏ dấu tiếng Việt
     .replace(/đ/g, 'd')
     .replace(/\s+/g, '')
     .trim();
@@ -70,7 +74,8 @@ export class ParseJournalUseCase {
 
     let sheet: XLSX.WorkSheet;
     try {
-      const wb = XLSX.read(fileBuffer, { type: 'buffer' });
+      // codepage 65001 = UTF-8 để đọc đúng tiêu đề/tên tiếng Việt trong file CSV.
+      const wb = XLSX.read(fileBuffer, { type: 'buffer', codepage: 65001 });
       const sheetName = wb.SheetNames[0];
       if (!sheetName) throw new Error('empty');
       sheet = wb.Sheets[sheetName];
