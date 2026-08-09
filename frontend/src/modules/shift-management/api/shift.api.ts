@@ -32,7 +32,7 @@ export const shiftApi = {
     httpClient.get<CurrentShiftDto>('/shifts/current', { params: { branchId } }).then((r) => r.data),
   open: (branchId: string, openingCounts: CountInput[]) =>
     httpClient.post('/shifts/open', { branchId, openingCounts }).then((r) => r.data),
-  close: (shiftId: string, closingCounts: CountInput[], branchId?: string) =>
-    httpClient.post(`/shifts/${shiftId}/close`, { branchId, closingCounts }).then((r) => r.data),
+  close: (shiftId: string, closingCounts: CountInput[], branchId?: string, note?: string) =>
+    httpClient.post(`/shifts/${shiftId}/close`, { branchId, closingCounts, note }).then((r) => r.data),
   branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };

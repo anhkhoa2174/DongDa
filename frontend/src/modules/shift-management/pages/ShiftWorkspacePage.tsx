@@ -7,6 +7,7 @@ import {
   Card,
   Col,
   Form,
+  Input,
   InputNumber,
   Modal,
   Result,
@@ -48,6 +49,7 @@ import type { CashCountLineDto, CountInput } from '../api/shift.api';
 
 type CountFormValues = {
   counts?: Record<string, number>;
+  note?: string;
 };
 
 type CountItem = {
@@ -206,6 +208,7 @@ export function ShiftWorkspacePage() {
         shiftId: shift.id,
         branchId,
         closingCounts: countLines(values, countItems),
+        note: values.note?.trim() || undefined,
       });
       message.success('Đã đóng ca và ghi nhận kiểm quỹ cuối ca');
       setIsCloseModalOpen(false);
@@ -329,6 +332,7 @@ export function ShiftWorkspacePage() {
             submitText="Đóng ca"
             loading={closeShift.isPending}
             danger
+            showNote
             onCancel={() => setIsCloseModalOpen(false)}
             onFinish={onClose}
           />
@@ -367,6 +371,7 @@ function CountModal({
   submitText,
   loading,
   danger,
+  showNote,
   onCancel,
   onFinish,
 }: {
@@ -379,9 +384,16 @@ function CountModal({
   submitText: string;
   loading: boolean;
   danger?: boolean;
+  showNote?: boolean;
   onCancel: () => void;
   onFinish: (values: CountFormValues) => void;
 }) {
+  const watchedCounts = Form.useWatch('counts', form);
+  // Có chênh lệch nếu thực đếm khác tồn hệ thống ở bất kỳ loại tiền -> bắt buộc nhập lý do (BR-F8.4-01).
+  const hasVariance = items.some((item) => {
+    const actual = watchedCounts?.[item.code];
+    return actual != null && Number(actual) !== Number(item.balance);
+  });
   return (
     <Modal className="shift-count-modal" title={title} open={open} onCancel={onCancel} footer={null} width={820} destroyOnClose>
       <Alert type={alertType} showIcon className="mb-4" message={alertMessage} />
@@ -416,6 +428,16 @@ function CountModal({
             </div>
           ))}
         </div>
+        {showNote && (
+          <Form.Item
+            name="note"
+            label={hasVariance ? 'Lý do chênh lệch (bắt buộc)' : 'Ghi chú (tuỳ chọn)'}
+            className="mt-4"
+            rules={hasVariance ? [{ required: true, message: 'Kiểm quỹ có chênh lệch — vui lòng nhập lý do' }] : []}
+          >
+            <Input.TextArea rows={2} maxLength={500} showCount placeholder="VD: thiếu 100k do chi lẻ chưa ghi sổ" />
+          </Form.Item>
+        )}
         <Button
           type={danger ? 'default' : 'primary'}
           danger={danger}

@@ -28,7 +28,7 @@ export function useOpenShift() {
 export function useCloseShift() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (v: { shiftId: string; branchId?: string; closingCounts: CountInput[] }) => shiftApi.close(v.shiftId, v.closingCounts, v.branchId),
+    mutationFn: (v: { shiftId: string; branchId?: string; closingCounts: CountInput[]; note?: string }) => shiftApi.close(v.shiftId, v.closingCounts, v.branchId, v.note),
     onSuccess: invalidate,
   });
 }
