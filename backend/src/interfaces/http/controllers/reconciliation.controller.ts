@@ -4,11 +4,16 @@
 //   GET  /reconciliation/runs       danh sách lần đối chiếu
 //   GET  /reconciliation/runs/:id/items   chi tiết sai lệch
 
-import { Controller, Post, Get, Body, Param, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller, Post, Get, Body, Param, Query, UseGuards, Request,
+  UseInterceptors, UploadedFile, BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { RunReconciliationUseCase, ListReconciliationUseCase } from '../../../application/use-cases/reconciliation/reconciliation.use-cases';
+import { ParseJournalUseCase } from '../../../application/use-cases/reconciliation/parse-journal.use-case';
 import { RunReconciliationDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
 
 @Controller('reconciliation')
@@ -17,6 +22,7 @@ export class ReconciliationController {
   constructor(
     private readonly runRecon: RunReconciliationUseCase,
     private readonly listRecon: ListReconciliationUseCase,
+    private readonly parseJournal: ParseJournalUseCase,
   ) {}
 
   @Get('runs')
@@ -39,5 +45,22 @@ export class ReconciliationController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   run(@Request() req: any, @Body() dto: RunReconciliationDto) {
     return this.runRecon.execute(dto, req.user.id);
+  }
+
+  // Upload file WU/MG Journal (CSV/XLSX) -> parse ra danh sách dòng đối chiếu.
+  // FE hiển thị cho KTTH rà lại rồi bấm "Chạy đối chiếu" (POST /reconciliation/run).
+  @Post('parse-journal')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  parse(
+    @UploadedFile() file: any,
+    @Query('provider') provider: string,
+  ) {
+    if (!file) throw new BadRequestException('Vui lòng chọn file Journal (.csv/.xlsx/.xls)');
+    if (provider !== 'WU' && provider !== 'MG') {
+      throw new BadRequestException('provider phải là WU hoặc MG');
+    }
+    return this.parseJournal.execute(file.buffer, file.originalname, provider);
   }
 }

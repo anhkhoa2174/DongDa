@@ -1,12 +1,12 @@
 // Flow Đối chiếu Journal (diagram 4) — nối API thật
 import { useState } from 'react';
 import {
-  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Segmented, Select, Space, Table, Tag, Typography,
+  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Segmented, Select, Space, Table, Tag, Typography, Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { MinusCircleOutlined, PlusOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { useReconItems, useReconRuns, useRunReconciliation } from '../hooks/useReconciliation';
+import { useReconItems, useReconRuns, useRunReconciliation, useParseJournal } from '../hooks/useReconciliation';
 import type { ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
 import { useBranches } from '@/modules/western-union/hooks/useWu';
 import dayjs from 'dayjs';
@@ -24,10 +24,36 @@ export function ReconciliationWorkspacePage() {
   const { message } = App.useApp();
   const { data: runs = [] } = useReconRuns();
   const run = useRunReconciliation();
+  const parse = useParseJournal();
   const { data: branches = [] } = useBranches();
   const [form] = Form.useForm();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const { data: items = [] } = useReconItems(selectedRun);
+
+  // Upload file WU/MG Journal -> parse -> đổ vào danh sách dòng để KTTH rà lại.
+  const onUploadJournal = async (file: File) => {
+    const provider = form.getFieldValue('provider') as 'WU' | 'MG';
+    try {
+      const res = await parse.mutateAsync({ provider, file });
+      form.setFieldsValue({
+        rows: res.rows.map((r) => ({ code: r.code, amount: r.amount, currencyCode: r.currencyCode })),
+      });
+      if (res.rows.length === 0) {
+        message.warning('File không có dòng hợp lệ nào');
+      } else {
+        message.success(`Đọc ${res.rows.length} dòng từ "${res.fileName}"${res.errors.length ? `, ${res.errors.length} dòng lỗi` : ''}`);
+      }
+      if (res.errors.length) {
+        message.warning(`Dòng lỗi: ${res.errors.slice(0, 5).map((e) => `#${e.rowNo} ${e.message}`).join('; ')}${res.errors.length > 5 ? '…' : ''}`, 6);
+      }
+      if (provider === 'MG' && res.rows.length) {
+        message.info('Journal MG: vui lòng chọn chi nhánh cho từng dòng trước khi chạy đối chiếu');
+      }
+    } catch (e: any) {
+      message.error(e?.response?.data?.message ?? 'Đọc file thất bại');
+    }
+    return false; // chặn antd tự upload
+  };
 
   const onRun = async (v: any) => {
     const rows = (v.rows ?? []).filter((r: any) => r?.code && r?.amount != null);
@@ -89,7 +115,19 @@ export function ReconciliationWorkspacePage() {
                   </Form.Item>
                 ) : null}
               </Form.Item>
-              <Typography.Text type="secondary">Dòng Journal (mã + số USD):</Typography.Text>
+              <div className="flex items-center justify-between mb-1">
+                <Typography.Text type="secondary">Dòng Journal (mã + số USD):</Typography.Text>
+                <Upload
+                  accept=".csv,.xlsx,.xls"
+                  maxCount={1}
+                  showUploadList={false}
+                  beforeUpload={(file) => onUploadJournal(file as unknown as File)}
+                >
+                  <Button size="small" icon={<UploadOutlined />} loading={parse.isPending}>
+                    Upload file Journal
+                  </Button>
+                </Upload>
+              </div>
               <Form.List name="rows">
                 {(fields, { add, remove }) => (
                   <div className="mt-2">

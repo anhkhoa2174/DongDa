@@ -20,3 +20,10 @@ export function useRunReconciliation() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }
+
+export function useParseJournal() {
+  return useMutation({
+    mutationFn: ({ provider, file }: { provider: 'WU' | 'MG'; file: File }) =>
+      reconApi.parseJournal(provider, file),
+  });
+}

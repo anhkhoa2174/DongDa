@@ -41,10 +41,37 @@ export interface RunReconInput {
   rows: JournalRowInput[];
 }
 
+export interface ParsedJournalRow {
+  rowNo: number;
+  code: string;
+  amount: number;
+  currencyCode: 'USD' | 'VND';
+  customerName?: string;
+}
+
+export interface ParseJournalResult {
+  provider: 'WU' | 'MG';
+  fileName: string;
+  detectedColumns: Record<string, number>;
+  rows: ParsedJournalRow[];
+  errors: { rowNo: number; message: string }[];
+  summary: { total: number; parsed: number; failed: number };
+}
+
 export const reconApi = {
   runs: () => httpClient.get<ReconRunDto[]>('/reconciliation/runs').then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
   run: (input: RunReconInput) =>
     httpClient.post<ReconRunDto>('/reconciliation/run', input).then((r) => r.data),
+  parseJournal: (provider: 'WU' | 'MG', file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return httpClient
+      .post<ParseJournalResult>('/reconciliation/parse-journal', form, {
+        params: { provider },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
 };

@@ -42,6 +42,7 @@ import { ListBankUseCase, ReceiveFromProviderUseCase } from './application/use-c
 import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
 import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
 import { RunReconciliationUseCase, ListReconciliationUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
+import { ParseJournalUseCase } from './application/use-cases/reconciliation/parse-journal.use-case';
 import { AuditLogController } from './interfaces/http/controllers/audit-log.controller';
 import { PrismaAuditRepository } from './infrastructure/database/repositories/prisma-audit.repository';
 import { ListAuditUseCase } from './application/use-cases/audit/list-audit.use-case';
@@ -179,6 +180,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     RunReconciliationUseCase,
     ListReconciliationUseCase,
+    ParseJournalUseCase,
 
     ListAuditUseCase,
 
