@@ -4,8 +4,10 @@
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IDebtRepository } from '../../../domain/repositories/debt.repository';
 import { DebtMovement } from '../../../domain/entities/debt.entity';
+import type { DebtBatchSettlementResult } from '../../../domain/repositories/debt.repository';
 import type { SettleUsdCashDebtDto } from '../../dtos/debt/debt.dto';
 import type { SettleVndCashDebtDto } from '../../dtos/debt/debt.dto';
+import type { SettleDebtBatchDto } from '../../dtos/debt/debt.dto';
 
 @Injectable()
 export class SettleUsdCashDebtUseCase {
@@ -61,5 +63,19 @@ export class SettleVndCashDebtUseCase {
       description: dto.description,
       createdByUserId,
     });
+  }
+}
+
+@Injectable()
+export class SettleDebtBatchUseCase {
+  constructor(
+    @Inject('IDebtRepository') private readonly debtRepo: IDebtRepository,
+  ) {}
+
+  execute(dto: SettleDebtBatchDto, createdByUserId: string): Promise<DebtBatchSettlementResult> {
+    if (dto.settlementSource === 'BANK' && !dto.bankAccountId) {
+      throw new BadRequestException('Phải chọn tài khoản ngân hàng nhận tiền');
+    }
+    return this.debtRepo.settleBatch({ ...dto, createdByUserId });
   }
 }

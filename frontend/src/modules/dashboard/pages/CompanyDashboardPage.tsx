@@ -220,6 +220,18 @@ export function CompanyDashboardPage() {
   const hiddenRateCount = Math.max(0, activeRates.length - visibleRates.length);
   const changePercent = overview?.changePercent;
   const changeValue = overview?.changeValueVnd;
+  const usdConversionRate = dashboard?.activeRates.find((rate) => (
+    rate.fromCurrency === 'USD'
+    && rate.toCurrency === 'VND'
+    && rate.rateType === 'PAID_BUY'
+  ))?.rate ?? dashboard?.activeRates.find((rate) => (
+    rate.fromCurrency === 'USD'
+    && rate.toCurrency === 'VND'
+    && rate.rateType === 'FX_BUY'
+  ))?.rate ?? 0;
+  const totalCapitalUsd = usdConversionRate > 0
+    ? (overview?.totalCapitalVnd ?? 0) / usdConversionRate
+    : null;
   const summaryTransactions = summary?.transactions;
   const operationRows: OperationSummaryRow[] = [
     {
@@ -292,6 +304,10 @@ export function CompanyDashboardPage() {
         loading={isDashboardLoading}
         eyebrow="Tổng vốn công ty"
         amount={formatExchangeRate(overview?.totalCapitalVnd ?? 0, 0)}
+        secondaryAmount={totalCapitalUsd === null ? 'Chưa có tỷ giá USD' : formatUsd(totalCapitalUsd)}
+        secondaryAmountLabel="Quy đổi USD"
+        compactPrimaryAmount
+        emphasizeSubBalances
         statusTag={{
           label: changePercent === null || changePercent === undefined ? 'Hiện tại' : `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`,
           color: changePercent === null || changePercent === undefined ? 'default' : changePercent >= 0 ? 'green' : 'red',

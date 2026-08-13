@@ -320,7 +320,7 @@ Số endpoint được đếm từ các decorator HTTP trong `backend/src/interf
 | Tiếp quỹ | Một phiếu có nhiều loại tiền; nguồn cố định theo tài khoản; chờ duyệt, xác nhận hoặc từ chối; xác nhận mới post ledger | **API THẬT** |
 | Tỷ giá | Tạo, duyệt, từ chối, lấy tỷ giá active và lịch sử; duyệt tỷ giá mới sẽ supersede bản active cùng loại | Trang tạo/duyệt và lịch sử dùng **API THẬT**; hai route legacy `wu-mg-rates`, `fx-rates` còn **MOCK DATA** |
 | Ngân hàng | Danh sách tài khoản, số dư, lịch sử biến động; nhận tiền WU/MG về làm tăng ngân hàng và giảm công nợ | **API THẬT** |
-| Công nợ | Mỗi ngày tạo một khoản theo chi nhánh + WU/MG + loại tiền; giao dịch trong ngày cộng dồn; xử lý một phần/toàn bộ và xem lịch sử | Page `debt-list` dùng **API THẬT**; route `settlement` quy về danh sách chung |
+| Công nợ | Mỗi ngày tạo một khoản theo chi nhánh + WU/MG + loại tiền; giao dịch trong ngày cộng dồn; tổng hợp toàn hệ thống theo ngày + đối tác + loại tiền và tất toán bằng một lần đối chiếu | Page `debt-list` và API xử lý tổng dùng **API THẬT**; route `settlement` quy về danh sách chung |
 | Đối chiếu Journal | Nhận dòng Journal đã parse, đối chiếu theo provider/reference/amount, lưu run và item sai lệch | Page `journal` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
 | Báo cáo | Tổng hợp WU/MG/FX, quỹ, công nợ và cảnh báo theo database | Page `summary` dùng **API THẬT**; page tạo/xuất báo cáo cũ còn **MOCK DATA**, chưa xuất Excel/PDF thật |
 | Audit Log | Đọc nhật ký append-only từ database, lọc theo action/entity/user | Page `live` dùng **API THẬT**; page tổng quan cũ còn **MOCK DATA** |
@@ -469,7 +469,9 @@ Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành
 
 ### 7. Ngân hàng và công nợ
 
-**Nghiệp vụ:** giao dịch WU/MG tạo `EXPECTED_DEBT`. Khóa duy nhất của một khoản nợ ngày là `business_date + branch_id + provider_code + currency_code`; nhiều giao dịch cùng khóa được cộng vào một khoản, ngày mới tự tạo khoản mới. Trạng thái `PENDING`, `PARTIALLY_SETTLED`, `SETTLED` được suy ra từ tổng phát sinh và tổng đã xử lý. Khi tiền nhà cung cấp về ngân hàng, backend khóa tài khoản ngân hàng và khoản nợ, kiểm tra không nhận vượt số còn nợ, tăng số dư ngân hàng và tạo `SETTLEMENT` trong cùng database transaction.
+**Nghiệp vụ:** giao dịch WU/MG tạo `EXPECTED_DEBT`. Khóa duy nhất của một khoản nợ ngày là `business_date + branch_id + provider_code + currency_code`; nhiều giao dịch cùng khóa được cộng vào một khoản, ngày mới tự tạo khoản mới. Mỗi giao dịch nguồn chỉ được phép có một `EXPECTED_DEBT`, được bảo vệ bằng partial unique index `uq_debt_expected_source`. Trạng thái `PENDING`, `PARTIALLY_SETTLED`, `SETTLED` được suy ra từ tổng phát sinh và tổng đã xử lý.
+
+Màn hình vẫn giữ chi tiết từng chi nhánh để đối chiếu, đồng thời tổng hợp các khoản đang mở theo `business_date + provider_code + currency_code`. Khi tổng ngân hàng khớp, GĐ/KTTH dùng một nút **Xử lý toàn bộ**. Backend khóa tất cả khoản thuộc nhóm, tính lại số còn nợ, yêu cầu số tiền đối chiếu khớp chính xác tổng, ghi một biến động ngân hàng hoặc phiếu thu tiền mặt và phân bổ `SETTLEMENT` về từng chi nhánh trong cùng database transaction. Nếu một khoản đã thay đổi hoặc tổng không khớp, toàn bộ thao tác rollback.
 
 ```txt
 GET  /api/v1/bank/accounts
@@ -480,17 +482,19 @@ GET  /api/v1/debts?branchId=:branchId&providerCode=WU&currencyCode=USD
 GET  /api/v1/debts?businessDate=YYYY-MM-DD
 GET  /api/v1/debts?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
 GET  /api/v1/debts/:id/movements
-POST /api/v1/debts/:id/settle
 POST /api/v1/debts/:id/settle-usd-cash
+POST /api/v1/debts/:id/settle-vnd-cash
+POST /api/v1/debts/settle-batch
 POST /api/v1/debts/record
 ```
 
 `POST /debts/record` hiện được giữ để test/ghi nhận công nợ thủ công và nhận `businessDate` tùy chọn. Luồng production chính để WU/MG hoặc kết quả đối chiếu Journal sinh công nợ.
 
-Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có lọc khoảng ngày, chi nhánh, đối tác, loại tiền, trạng thái; thao tác xử lý và lịch sử nằm ngay trên từng khoản. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng.
+Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có bảng tổng hợp để xử lý một lần và bảng chi tiết theo chi nhánh để kiểm tra lịch sử. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng. Diễn giải mặc định là `Đã nhận thanh khoản từ Ngân hàng` và chỉ cần sửa khi phát sinh nội dung khác.
 
-- Công nợ VND: form chọn tài khoản VND và gọi `POST /bank/receive`; số dư ngân hàng tăng và công nợ giảm trong cùng transaction.
-- Công nợ USD: form tách phần nguyên USD tiền mặt và phần lẻ dưới `1 USD`; backend lấy `BANK_RATE` USD/VND active, tăng quỹ tiền mặt USD/VND, ghi ledger và giảm công nợ trong cùng transaction qua `POST /debts/:id/settle-usd-cash`.
+- Nguồn ngân hàng: chọn tài khoản cùng loại tiền, tăng số dư đúng một lần theo tổng và phân bổ giảm công nợ từng chi nhánh.
+- Nguồn tiền mặt VND: tăng quỹ tiền mặt VND Hội sở theo tổng và phân bổ giảm công nợ từng chi nhánh.
+- Nguồn tiền mặt USD: phần nguyên tăng quỹ USD Hội sở; phần lẻ dưới `1 USD` được quy đổi theo `BANK_RATE` active và tăng quỹ VND; ledger và toàn bộ phân bổ công nợ được post cùng transaction.
 
 ### 8. Đối chiếu Journal
 

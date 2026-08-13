@@ -735,39 +735,22 @@
   text-transform: uppercase;
 }
 
+.central-fund-overview__amount {
+  margin: 5px 0 2px !important;
+  color: #ffffff !important;
+  font-size: 34px !important;
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere;
+}
+
 .central-fund-overview__amount-usd {
   display: block;
-  margin-top: 6px;
+  margin-bottom: 7px;
   color: #ffffff !important;
-  font-size: 30px;
-  font-weight: 780;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.central-fund-overview__amount-vnd {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 5px 0 8px;
-  color: #d4d4d4;
-  overflow-wrap: anywhere;
-}
-
-.central-fund-overview__amount-vnd span {
-  flex: 0 0 auto;
-  color: #8f8f8f;
-  font-size: 10px;
+  font-size: 22px;
   font-weight: 700;
-  text-transform: uppercase;
-}
-
-.central-fund-overview__amount-vnd strong {
-  min-width: 0;
-  color: #d4d4d4;
-  font-size: 18px;
-  font-weight: 680;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .central-fund-overview__meta {
@@ -857,21 +840,16 @@
 
 .central-fund-kpi__values {
   display: grid;
-  gap: 5px;
-  margin-top: 8px;
+  gap: 3px;
+  margin-top: 6px;
 }
 
-.central-fund-kpi__value {
-  display: block;
+.central-fund-kpi__values strong {
   color: #f5b301;
-  font-size: 23px;
-  font-weight: 780;
-  line-height: 1.2;
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.25;
   overflow-wrap: anywhere;
-}
-
-.central-fund-kpi__value--vnd {
-  font-size: 21px;
 }
 
 .central-fund-detail {
@@ -1446,6 +1424,40 @@
   font-size: 24px;
 }
 
+.balance-card--compact-primary .balance-card__amount {
+  margin-bottom: 3px;
+  font-size: 27px;
+  font-weight: 720;
+}
+
+.balance-card--compact-primary .balance-card__amount span {
+  font-size: 18px;
+}
+
+.balance-card__secondary-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 9px;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.balance-card__secondary-amount span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.balance-card__secondary-amount strong {
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 25px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
 .balance-card__sparkline {
   min-width: 160px;
   text-align: right;
@@ -1496,6 +1508,18 @@
   color: #ffffff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 17px;
+}
+
+.balance-card--emphasized-balances .sub-balance-grid {
+  gap: 20px;
+}
+
+.balance-card--emphasized-balances .sub-balance-grid strong {
+  margin-top: 7px;
+  color: #f5b301;
+  font-size: 22px;
+  font-weight: 780;
+  line-height: 1.2;
 }
 
 .dashboard-actions {
@@ -1600,18 +1624,8 @@
     padding: 20px;
   }
 
-  .central-fund-overview__amount-usd {
-    font-size: 25px;
-  }
-
-  .central-fund-overview__amount-vnd {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .central-fund-overview__amount-vnd strong {
-    font-size: 17px;
+  .central-fund-overview__amount {
+    font-size: 27px !important;
   }
 
   .central-fund-overview__meta,
@@ -1632,14 +1646,6 @@
 
   .central-fund-kpi:nth-child(3) {
     border-bottom: 1px solid #262626;
-  }
-
-  .central-fund-kpi__value {
-    font-size: 21px;
-  }
-
-  .central-fund-kpi__value--vnd {
-    font-size: 19px;
   }
 
   .central-fund-row {
@@ -1667,6 +1673,24 @@
 
   .balance-card__amount {
     font-size: 30px;
+  }
+
+  .balance-card--compact-primary .balance-card__amount {
+    font-size: 23px;
+  }
+
+  .balance-card__secondary-amount {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .balance-card__secondary-amount strong {
+    font-size: 22px;
+  }
+
+  .balance-card--emphasized-balances .sub-balance-grid strong {
+    font-size: 20px;
   }
 
   .sub-balance-grid {

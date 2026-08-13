@@ -314,14 +314,11 @@ export function CentralFundPage() {
         <Card loading={isLoading} className="central-fund-overview overflow-hidden" classNames={{ body: 'p-0!' }}>
           <div className="central-fund-overview__header">
             <div className="min-w-0">
-              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn công ty quy đổi</Typography.Text>
+              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn kiểm soát</Typography.Text>
+              <Typography.Title level={2} className="central-fund-overview__amount">{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</Typography.Title>
               <Typography.Text className="central-fund-overview__amount-usd">
                 {totalCompanyFundUsd === null ? 'Chưa có tỷ giá quy đổi USD' : formatUsd(totalCompanyFundUsd)}
               </Typography.Text>
-              <div className="central-fund-overview__amount-vnd">
-                <span>Quy đổi VND</span>
-                <strong>{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</strong>
-              </div>
               <Typography.Text className="central-fund-overview__caption">
                 Tiền mặt, ngân hàng và công nợ phải thu trên toàn hệ thống.
               </Typography.Text>
@@ -379,8 +376,8 @@ export function CentralFundPage() {
                 <div className="min-w-0">
                   <div className="central-fund-kpi__label">{item.label}</div>
                   <div className="central-fund-kpi__values">
-                    <strong className="central-fund-kpi__value central-fund-kpi__value--usd">{item.usd}</strong>
-                    <strong className="central-fund-kpi__value central-fund-kpi__value--vnd">{item.vnd}</strong>
+                    <strong>{item.usd}</strong>
+                    <strong>{item.vnd}</strong>
                   </div>
                 </div>
               </div>

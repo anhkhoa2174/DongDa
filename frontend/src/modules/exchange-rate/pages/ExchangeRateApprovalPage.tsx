@@ -427,15 +427,15 @@ export function ExchangeRateApprovalPage() {
               ) },
               { title: 'Tỷ giá', width: 230, render: (_, rate, index) => rate.rateType === 'BANK_RATE' ? (
                 <Space direction="vertical" size={6} className="w-full">
-                  <InputNumber className="w-full" min={0.000001} value={rate.buyRate ?? rate.rate ?? 0}
+                  <InputNumber className="w-full" min={0} value={rate.buyRate ?? rate.rate ?? 0}
                     addonBefore="Mua" formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
                     onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0), buyRate: Number(value ?? 0) })} />
-                  <InputNumber className="w-full" min={0.000001} value={rate.sellRate ?? 0}
+                  <InputNumber className="w-full" min={0} value={rate.sellRate ?? 0}
                     addonBefore="Bán" formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
                     onChange={(value) => updateParsedRate(index, { sellRate: Number(value ?? 0) })} />
                 </Space>
               ) : (
-                <InputNumber className="w-full" min={0.000001} value={rate.rate ?? 0}
+                <InputNumber className="w-full" min={0} value={rate.rate ?? 0}
                   formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
                   onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0) })} />
               ) },
@@ -502,7 +502,7 @@ function RateInput({ fieldName, name, label }: { fieldName: number; name: 'buyRa
       <InputNumber
         className="w-full"
         size="large"
-        min={0.000001}
+        min={0}
         precision={6}
         step={0.01}
         controls={false}

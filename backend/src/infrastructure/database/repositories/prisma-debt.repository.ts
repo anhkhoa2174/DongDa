@@ -5,7 +5,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
   IDebtRepository, RecordDebtInput, SettleUsdCashDebtInput, ListDebtsFilter,
-  SettleVndCashDebtInput,
+  SettleVndCashDebtInput, SettleDebtBatchInput, DebtBatchSettlementResult,
 } from '../../../domain/repositories/debt.repository';
 import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
@@ -266,6 +266,212 @@ export class PrismaDebtRepository implements IDebtRepository {
         tx, debtAccount, input.amount, outstanding, input.createdByUserId, 'Tiền mặt (Quỹ)',
       );
       return toMovement(settlement);
+    });
+  }
+
+  async settleBatch(input: SettleDebtBatchInput): Promise<DebtBatchSettlementResult> {
+    const now = new Date();
+    const postingDate = toVietnamBusinessDate(now);
+    const description = input.description?.trim() || 'Đã nhận thanh khoản từ Ngân hàng';
+    const settlementNo = `DEBT-BATCH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const accountIds = [...input.debtAccountIds].sort();
+      for (const accountId of accountIds) {
+        await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${accountId}::uuid FOR UPDATE`;
+      }
+      const accounts = await tx.debt_accounts.findMany({
+        where: { id: { in: accountIds }, status: 'ACTIVE' },
+        orderBy: { id: 'asc' },
+      });
+      if (accounts.length !== accountIds.length) {
+        throw new BadRequestException('Một hoặc nhiều khoản công nợ không còn hoạt động');
+      }
+      const first = accounts[0];
+      const sameGroup = accounts.every((account) => (
+        account.provider_code === first.provider_code
+        && account.currency_code === first.currency_code
+        && account.business_date.getTime() === first.business_date.getTime()
+      ));
+      if (!sameGroup) {
+        throw new BadRequestException('Chỉ được xử lý tổng các khoản cùng ngày, đối tác và loại tiền');
+      }
+      if (first.currency_code !== 'USD' && first.currency_code !== 'VND') {
+        throw new BadRequestException('Xử lý tổng hiện chỉ áp dụng cho công nợ USD hoặc VND');
+      }
+
+      const outstandingByAccount = new Map<string, number>();
+      for (const account of accounts) {
+        const outstanding = Number((await this.outstanding(tx, account.id)).toFixed(2));
+        if (outstanding > 0) outstandingByAccount.set(account.id, outstanding);
+      }
+      if (outstandingByAccount.size !== accounts.length) {
+        throw new BadRequestException('Nhóm có khoản đã được tất toán. Vui lòng tải lại dữ liệu');
+      }
+      const totalOutstanding = Number(
+        [...outstandingByAccount.values()].reduce((sum, amount) => sum + amount, 0).toFixed(2),
+      );
+      if (Math.abs(input.amount - totalOutstanding) >= 0.005) {
+        throw new BadRequestException(
+          `Tổng đối chiếu không khớp: yêu cầu ${input.amount}, hệ thống ${totalOutstanding} ${first.currency_code}`,
+        );
+      }
+
+      let sourceType: 'BANK_MOVEMENT' | 'CASH_MOVEMENT';
+      let sourceId: string;
+      if (input.settlementSource === 'BANK') {
+        if (!input.bankAccountId) throw new BadRequestException('Phải chọn tài khoản ngân hàng nhận tiền');
+        await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${input.bankAccountId}::uuid FOR UPDATE`;
+        const bankAccount = await tx.bank_accounts.findFirst({
+          where: { id: input.bankAccountId, status: 'ACTIVE' },
+        });
+        if (!bankAccount) throw new BadRequestException('Không tìm thấy tài khoản ngân hàng đang hoạt động');
+        if (bankAccount.currency_code !== first.currency_code) {
+          throw new BadRequestException(`Tài khoản ngân hàng không sử dụng ${first.currency_code}`);
+        }
+        const before = Number(bankAccount.current_balance);
+        const after = before + totalOutstanding;
+        const movement = await tx.bank_balance_movements.create({
+          data: {
+            movement_no: settlementNo,
+            bank_account_id: bankAccount.id,
+            branch_id: bankAccount.branch_id,
+            movement_type: 'DEPOSIT',
+            business_date: postingDate,
+            amount: totalOutstanding,
+            currency_code: first.currency_code,
+            balance_before: before,
+            balance_after: after,
+            bank_reference: input.bankReference?.trim() || null,
+            description,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.createdByUserId,
+          },
+        });
+        await tx.bank_accounts.update({
+          where: { id: bankAccount.id },
+          data: { current_balance: after, available_balance: after },
+        });
+        sourceType = 'BANK_MOVEMENT';
+        sourceId = movement.id;
+      } else {
+        const headOffice = await tx.branch.findFirst({
+          where: { type: 'HEAD_OFFICE', status: 'ACTIVE' },
+          orderBy: { created_at: 'asc' },
+          select: { id: true },
+        });
+        if (!headOffice) throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO)');
+
+        const receipts: Array<{ currency: 'USD' | 'VND'; amount: number; exchangeRate: number }> = [];
+        if (first.currency_code === 'VND') {
+          receipts.push({ currency: 'VND', amount: totalOutstanding, exchangeRate: 1 });
+        } else {
+          const rate = await tx.exchange_rates.findFirst({
+            where: {
+              rate_type: 'BANK_RATE', from_currency: 'USD', to_currency: 'VND', status: 'ACTIVE',
+              effective_from: { lte: now }, OR: [{ effective_to: null }, { effective_to: { gt: now } }],
+            },
+            orderBy: { effective_from: 'desc' },
+          });
+          if (!rate) throw new BadRequestException('Chưa có tỷ giá ngân hàng USD/VND đang active');
+          const bankRate = Number(rate.rate);
+          const integerUsd = Math.trunc(totalOutstanding);
+          const oddUsd = Number((totalOutstanding - integerUsd).toFixed(2));
+          if (integerUsd > 0) receipts.push({ currency: 'USD', amount: integerUsd, exchangeRate: bankRate });
+          if (oddUsd > 0) receipts.push({ currency: 'VND', amount: Math.round(oddUsd * bankRate), exchangeRate: 1 });
+        }
+
+        let firstMovementId: string | null = null;
+        for (const [index, receipt] of receipts.entries()) {
+          const fundAccount = await canonicalActiveFundAccount(tx, headOffice.id, receipt.currency, true);
+          await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccount.id}::uuid FOR UPDATE`;
+          const movement = await tx.cash_movements.create({
+            data: {
+              movement_no: `${settlementNo}-${index + 1}`,
+              branch_id: headOffice.id,
+              fund_account_id: fundAccount.id,
+              movement_type: 'CASH_IN',
+              business_date: postingDate,
+              amount: receipt.amount,
+              currency_code: receipt.currency,
+              source_name: `${first.provider_code} - thanh khoản tổng`,
+              description,
+              status: 'POSTED',
+              approved_by_user_id: input.createdByUserId,
+              created_by_user_id: input.createdByUserId,
+              posted_at: now,
+            },
+          });
+          firstMovementId ??= movement.id;
+          await tx.ledger_entries.create({
+            data: {
+              entry_no: `LE-${movement.movement_no}`,
+              business_date: postingDate,
+              branch_id: headOffice.id,
+              source_type: 'CASH_MOVEMENT',
+              source_id: movement.id,
+              status: 'POSTED',
+              posted_at: now,
+              description,
+              created_by_user_id: input.createdByUserId,
+              approved_by_user_id: input.createdByUserId,
+              ledger_lines: { create: [{
+                fund_account_id: fundAccount.id,
+                direction: 'DEBIT',
+                amount: receipt.amount,
+                currency_code: receipt.currency,
+                exchange_rate: receipt.exchangeRate,
+                base_amount_vnd: receipt.amount * receipt.exchangeRate,
+              }] },
+            },
+          });
+        }
+        if (!firstMovementId) throw new BadRequestException('Không có số tiền để ghi nhận');
+        sourceType = 'CASH_MOVEMENT';
+        sourceId = firstMovementId;
+      }
+
+      for (const account of accounts) {
+        const amount = outstandingByAccount.get(account.id)!;
+        const settlement = await tx.debt_movements.create({
+          data: {
+            debt_account_id: account.id,
+            branch_id: account.branch_id,
+            movement_type: 'SETTLEMENT',
+            source_type: sourceType,
+            source_id: sourceId,
+            business_date: postingDate,
+            amount,
+            currency_code: account.currency_code,
+            description,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.createdByUserId,
+          },
+        });
+        await allocateDebtSettlement(tx, account.id, settlement.id, amount);
+      }
+
+      await this.notifications.notifyUsers({
+        title: 'Đã tất toán công nợ tổng',
+        body: `${first.provider_code} ngày ${first.business_date.toISOString().slice(0, 10)}: ${accounts.length} chi nhánh, ${totalOutstanding.toLocaleString('en-US')} ${first.currency_code}.`,
+        sourceType: 'DEBT_SETTLED',
+        sourceId: first.id,
+      }, {
+        userIds: [input.createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: accounts.map((account) => account.branch_id),
+      }, tx);
+
+      return {
+        settlementNo,
+        businessDate: first.business_date,
+        providerCode: first.provider_code,
+        currencyCode: first.currency_code as CurrencyCode,
+        accountCount: accounts.length,
+        totalAmount: totalOutstanding,
+      };
     });
   }
 

@@ -31,9 +31,9 @@ import {
   usdInputFormatter, usdInputParser,
 } from '@/shared/utils/formatters';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
-import { useBankAccounts, useReceiveMoney } from '@/modules/bank-management/hooks/useBank';
+import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 import {
-  useBranches, useDebtMovements, useDebts, useSettleUsdCashDebt, useSettleVndCashDebt,
+  useBranches, useDebtMovements, useDebts, useSettleDebtBatch,
 } from '../hooks/useDebts';
 import type { DebtAccountSummaryDto, DebtMovementDto, DebtStatus, ListDebtsParams } from '../api/debt.api';
 
@@ -62,6 +62,17 @@ interface SettlementForm {
   description?: string;
 }
 
+interface DebtSettlementGroup {
+  key: string;
+  businessDate: string;
+  providerCode: string;
+  currencyCode: 'USD' | 'VND';
+  accounts: DebtAccountSummaryDto[];
+  totalOutstanding: number;
+}
+
+const DEFAULT_SETTLEMENT_DESCRIPTION = 'Đã nhận thanh khoản từ Ngân hàng';
+
 export function DebtSettlementPage() {
   const { message } = App.useApp();
   const role = useAuthStore((state) => state.user?.role);
@@ -70,26 +81,25 @@ export function DebtSettlementPage() {
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<DebtStatus | 'ALL'>('ALL');
   const [settlementCurrency, setSettlementCurrency] = useState<'USD' | 'VND' | null>(null);
-  const [settleTarget, setSettleTarget] = useState<DebtAccountSummaryDto | null>(null);
+  const [settleGroup, setSettleGroup] = useState<DebtSettlementGroup | null>(null);
   const [movementTarget, setMovementTarget] = useState<DebtAccountSummaryDto | null>(null);
   const [settleForm] = Form.useForm<SettlementForm>();
   const [filterForm] = Form.useForm();
 
-  const { data: debts = [], isLoading } = useDebts(query);
+  const hasQuery = Object.values(query).some((value) => value !== undefined && value !== '');
+  const { data: debts = [], isLoading } = useDebts(hasQuery ? query : undefined);
+  const { data: allDebts = [] } = useDebts();
   const { data: branches = [] } = useBranches();
   const { data: movements = [], isLoading: isLoadingMovements } = useDebtMovements(movementTarget?.id ?? null);
-  const settleUsdCash = useSettleUsdCashDebt();
-  const settleVndCash = useSettleVndCashDebt();
-  const receiveMoney = useReceiveMoney();
+  const settleBatch = useSettleDebtBatch();
   const { data: bankAccounts = [] } = useBankAccounts();
   const { data: activeRates = [] } = useActiveRates();
-  const oddUsdAmount = Form.useWatch('oddUsdAmount', settleForm) ?? 0;
   const settlementSource = Form.useWatch('settlementSource', settleForm) ?? 'CASH';
   const bankRate = activeRates.find((rate) => (
     rate.rateType === 'BANK_RATE' && rate.fromCurrency === 'USD' && rate.toCurrency === 'VND'
   ));
   const matchingBankAccounts = bankAccounts.filter((account) => (
-    account.currencyCode === settleTarget?.currencyCode
+    account.currencyCode === settlementCurrency
   ));
 
   const branchById = useMemo(
@@ -109,17 +119,39 @@ export function DebtSettlementPage() {
       return matchesStatus && (!normalizedKeyword || searchableText.includes(normalizedKeyword));
     });
   }, [branchById, debts, keyword, status]);
+  const settlementGroups = useMemo<DebtSettlementGroup[]>(() => {
+    const groups = new Map<string, DebtSettlementGroup>();
+    allDebts.filter((debt) => debt.outstanding > 0 && (debt.currencyCode === 'USD' || debt.currencyCode === 'VND'))
+      .forEach((debt) => {
+        const businessDate = debt.businessDate.slice(0, 10);
+        const key = `${businessDate}:${debt.providerCode}:${debt.currencyCode}`;
+        const current = groups.get(key) ?? {
+          key,
+          businessDate: debt.businessDate,
+          providerCode: debt.providerCode,
+          currencyCode: debt.currencyCode as 'USD' | 'VND',
+          accounts: [],
+          totalOutstanding: 0,
+        };
+        current.accounts.push(debt);
+        current.totalOutstanding = Number((current.totalOutstanding + debt.outstanding).toFixed(2));
+        groups.set(key, current);
+      });
+    return [...groups.values()].sort((left, right) => right.businessDate.localeCompare(left.businessDate)
+      || left.providerCode.localeCompare(right.providerCode)
+      || left.currencyCode.localeCompare(right.currencyCode));
+  }, [allDebts]);
   const totals = useMemo(() => ({
-    open: debts.filter((debt) => debt.outstanding > 0).length,
-    partial: debts.filter((debt) => debt.status === 'PARTIALLY_SETTLED').length,
-    settled: debts.filter((debt) => debt.status === 'SETTLED').length,
-    outstandingVnd: debts
+    open: allDebts.filter((debt) => debt.outstanding > 0).length,
+    partial: allDebts.filter((debt) => debt.status === 'PARTIALLY_SETTLED').length,
+    settled: allDebts.filter((debt) => debt.status === 'SETTLED').length,
+    outstandingVnd: allDebts
       .filter((debt) => debt.currencyCode === 'VND')
       .reduce((sum, debt) => sum + debt.outstanding, 0),
-    outstandingUsd: debts
+    outstandingUsd: allDebts
       .filter((debt) => debt.currencyCode === 'USD')
       .reduce((sum, debt) => sum + debt.outstanding, 0),
-  }), [debts]);
+  }), [allDebts]);
 
   const resetFilters = () => {
     filterForm.resetFields();
@@ -128,71 +160,49 @@ export function DebtSettlementPage() {
     setStatus('ALL');
   };
 
-  const openSettlement = (debt: DebtAccountSummaryDto) => {
-    setSettlementCurrency(debt.currencyCode as 'USD' | 'VND');
-    setSettleTarget(debt);
+  const openSettlement = (group: DebtSettlementGroup) => {
+    setSettlementCurrency(group.currencyCode);
+    setSettleGroup(group);
     settleForm.resetFields();
-    if (debt.currencyCode === 'USD') {
-      const cashUsdAmount = Math.trunc(debt.outstanding);
-      settleForm.setFieldsValue({
-        settlementSource: 'CASH',
-        amount: debt.outstanding,
-        cashUsdAmount,
-        oddUsdAmount: Number((debt.outstanding - cashUsdAmount).toFixed(2)),
-      });
-    } else {
-      settleForm.setFieldsValue({ settlementSource: 'CASH', amount: debt.outstanding });
-    }
+    settleForm.setFieldsValue({
+      settlementSource: 'BANK',
+      amount: group.totalOutstanding,
+      description: DEFAULT_SETTLEMENT_DESCRIPTION,
+    });
   };
 
   const openSettlementPicker = (currency: 'USD' | 'VND') => {
     settleForm.resetFields();
-    settleForm.setFieldValue('settlementSource', 'CASH');
-    setSettleTarget(null);
+    settleForm.setFieldsValue({ settlementSource: 'BANK', description: DEFAULT_SETTLEMENT_DESCRIPTION });
+    setSettleGroup(null);
     setSettlementCurrency(currency);
   };
 
   const closeSettlement = () => {
     settleForm.resetFields();
-    setSettleTarget(null);
+    setSettleGroup(null);
     setSettlementCurrency(null);
   };
 
-  const settlementOptions = debts
-    .filter((debt) => debt.currencyCode === settlementCurrency && debt.outstanding > 0)
-    .map((debt) => ({
-      value: debt.id,
-      label: `${toDateLabel(debt.businessDate)} - ${debt.providerCode} - ${branchById.get(debt.branchId) ?? debt.branchId} - ${formatCurrency(debt.outstanding, debt.currencyCode)}`,
+  const settlementOptions = settlementGroups
+    .filter((group) => group.currencyCode === settlementCurrency)
+    .map((group) => ({
+      value: group.key,
+      label: `${toDateLabel(group.businessDate)} - ${group.providerCode} - ${group.accounts.length} chi nhánh - ${formatCurrency(group.totalOutstanding, group.currencyCode)}`,
     }));
 
   const submitSettlement = async (values: SettlementForm) => {
-    if (!settleTarget) return;
+    if (!settleGroup) return;
     try {
-      if (values.settlementSource === 'BANK') {
-        if (!values.bankAccountId || !values.amount) return;
-        await receiveMoney.mutateAsync({
-          debtAccountId: settleTarget.id,
-          bankAccountId: values.bankAccountId,
-          amount: values.amount,
-          bankReference: values.bankReference,
-          description: values.description,
-        });
-      } else if (settleTarget.currencyCode === 'USD') {
-        await settleUsdCash.mutateAsync({
-          id: settleTarget.id,
-          cashUsdAmount: values.cashUsdAmount ?? 0,
-          oddUsdAmount: values.oddUsdAmount ?? 0,
-          description: values.description,
-        });
-      } else {
-        if (!values.amount) return;
-        await settleVndCash.mutateAsync({
-          id: settleTarget.id,
-          amount: values.amount,
-          description: values.description,
-        });
-      }
-      message.success('Đã ghi nhận xử lý công nợ');
+      await settleBatch.mutateAsync({
+        debtAccountIds: settleGroup.accounts.map((account) => account.id),
+        amount: settleGroup.totalOutstanding,
+        settlementSource: values.settlementSource ?? 'BANK',
+        bankAccountId: values.bankAccountId,
+        bankReference: values.bankReference,
+        description: values.description?.trim() || DEFAULT_SETTLEMENT_DESCRIPTION,
+      });
+      message.success(`Đã tất toán tổng ${settleGroup.accounts.length} khoản công nợ chi nhánh`);
       closeSettlement();
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error) ?? 'Không thể xử lý công nợ');
@@ -262,8 +272,17 @@ export function DebtSettlementPage() {
             Lịch sử
           </Button>
           {canSettle && record.outstanding > 0 && (
-            <Button type="primary" size="small" icon={<PayCircleOutlined />} onClick={() => openSettlement(record)}>
-              Xử lý
+            <Button
+              type="primary"
+              size="small"
+              icon={<PayCircleOutlined />}
+              onClick={() => {
+                const key = `${record.businessDate.slice(0, 10)}:${record.providerCode}:${record.currencyCode}`;
+                const group = settlementGroups.find((item) => item.key === key);
+                if (group) openSettlement(group);
+              }}
+            >
+              Xử lý tổng
             </Button>
           )}
         </Space>
@@ -324,6 +343,30 @@ export function DebtSettlementPage() {
         </section>
 
         <Card
+          title={<div><Typography.Text strong>Tổng hợp để đối chiếu và xử lý</Typography.Text><div className="text-xs font-normal text-slate-500">Một dòng cho mỗi ngày, đối tác và loại tiền trên toàn hệ thống</div></div>}
+          extra={<Tag color="gold">{settlementGroups.length} nhóm đang mở</Tag>}
+          classNames={{ body: 'pt-3!' }}
+        >
+          <Table<DebtSettlementGroup>
+            rowKey="key"
+            size="small"
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            dataSource={settlementGroups}
+            columns={[
+              { title: 'Ngày', dataIndex: 'businessDate', width: 120, render: toDateLabel },
+              { title: 'Đối tác', dataIndex: 'providerCode', width: 90, render: (value) => <Tag color={value === 'WU' ? 'blue' : 'cyan'}>{value}</Tag> },
+              { title: 'Loại tiền', dataIndex: 'currencyCode', width: 90, align: 'center' },
+              { title: 'Chi nhánh', dataIndex: 'accounts', width: 110, align: 'right', render: (accounts) => `${accounts.length} CN` },
+              { title: 'Tổng còn nợ', dataIndex: 'totalOutstanding', align: 'right', render: (value, group) => <Typography.Text strong type="danger">{formatCurrency(value, group.currencyCode)}</Typography.Text> },
+              ...(canSettle ? [{
+                title: 'Thao tác', key: 'action', width: 150, align: 'right' as const,
+                render: (_: unknown, group: DebtSettlementGroup) => <Button type="primary" icon={<PayCircleOutlined />} onClick={() => openSettlement(group)}>Xử lý toàn bộ</Button>,
+              }] : []),
+            ]}
+          />
+        </Card>
+
+        <Card
           title={<div><Typography.Text strong>Danh sách công nợ</Typography.Text><div className="text-xs font-normal text-slate-500">Một khoản cho mỗi ngày, chi nhánh, đối tác và loại tiền</div></div>}
           extra={<Tag>{visibleDebts.length} / {debts.length} khoản</Tag>}
           classNames={{ body: 'pt-4!' }}
@@ -382,10 +425,10 @@ export function DebtSettlementPage() {
         open={!!settlementCurrency}
         onCancel={closeSettlement}
         onOk={() => settleForm.submit()}
-        confirmLoading={settleUsdCash.isPending || settleVndCash.isPending || receiveMoney.isPending}
+        confirmLoading={settleBatch.isPending}
         okText="Xác nhận xử lý"
         okButtonProps={{
-          disabled: !settleTarget
+          disabled: !settleGroup
             || (settlementSource === 'CASH' && settlementCurrency === 'USD' && !bankRate)
             || (settlementSource === 'BANK' && matchingBankAccounts.length === 0),
         }}
@@ -397,24 +440,24 @@ export function DebtSettlementPage() {
             className="mt-2 w-full"
             showSearch
             optionFilterProp="label"
-            value={settleTarget?.id}
-            placeholder={`Chọn khoản công nợ ${settlementCurrency ?? ''} đang mở`}
+            value={settleGroup?.key}
+            placeholder={`Chọn tổng công nợ ${settlementCurrency ?? ''} theo ngày`}
             options={settlementOptions}
             notFoundContent={`Không có công nợ ${settlementCurrency ?? ''} đang mở`}
             onChange={(id) => {
-              const debt = debts.find((item) => item.id === id);
-              if (debt) openSettlement(debt);
+              const group = settlementGroups.find((item) => item.key === id);
+              if (group) openSettlement(group);
             }}
           />
         </div>
-        {settleTarget && (
+        {settleGroup && (
           <>
             <Card size="small" className="mb-4">
               <Row gutter={[12, 8]}>
-                <Col span={12}><Typography.Text type="secondary">Ngày công nợ</Typography.Text><div className="font-semibold">{toDateLabel(settleTarget.businessDate)}</div></Col>
-                <Col span={12}><Typography.Text type="secondary">Đối tác</Typography.Text><div className="font-semibold">{settleTarget.providerCode}</div></Col>
-                <Col span={12}><Typography.Text type="secondary">Chi nhánh</Typography.Text><div className="font-semibold">{branchById.get(settleTarget.branchId) ?? settleTarget.branchId}</div></Col>
-                <Col span={12}><Typography.Text type="secondary">Còn lại</Typography.Text><div className="font-semibold text-red-600">{formatCurrency(settleTarget.outstanding, settleTarget.currencyCode)}</div></Col>
+                <Col span={12}><Typography.Text type="secondary">Ngày công nợ</Typography.Text><div className="font-semibold">{toDateLabel(settleGroup.businessDate)}</div></Col>
+                <Col span={12}><Typography.Text type="secondary">Đối tác</Typography.Text><div className="font-semibold">{settleGroup.providerCode}</div></Col>
+                <Col span={12}><Typography.Text type="secondary">Phạm vi</Typography.Text><div className="font-semibold">{settleGroup.accounts.length} chi nhánh</div></Col>
+                <Col span={12}><Typography.Text type="secondary">Tổng chính xác</Typography.Text><div className="font-semibold text-red-600">{formatCurrency(settleGroup.totalOutstanding, settleGroup.currencyCode)}</div></Col>
               </Row>
             </Card>
             <Form form={settleForm} layout="vertical" onFinish={submitSettlement}>
@@ -435,37 +478,37 @@ export function DebtSettlementPage() {
                     type={matchingBankAccounts.length > 0 ? 'info' : 'warning'}
                     showIcon
                     message={matchingBankAccounts.length > 0
-                      ? `Tiền ${settleTarget.currencyCode} nhận vào tài khoản ngân hàng và đồng thời giảm công nợ.`
-                      : `Chưa có tài khoản ngân hàng ${settleTarget.currencyCode} đang hoạt động. Có thể chuyển sang nguồn Tiền mặt (Quỹ).`}
+                      ? `Tiền ${settleGroup.currencyCode} nhận vào một lần và phân bổ tất toán ${settleGroup.accounts.length} chi nhánh.`
+                      : `Chưa có tài khoản ngân hàng ${settleGroup.currencyCode} đang hoạt động. Có thể chuyển sang nguồn Tiền mặt (Quỹ).`}
                   />
                   <Form.Item name="bankAccountId" label="Tài khoản ngân hàng nhận" rules={[{ required: true, message: 'Chọn tài khoản ngân hàng' }]}>
                     <Select
                       showSearch
                       optionFilterProp="label"
-                      placeholder={`Chọn tài khoản ${settleTarget.currencyCode}`}
+                      placeholder={`Chọn tài khoản ${settleGroup.currencyCode}`}
                       options={matchingBankAccounts.map((account) => ({
                         value: account.id,
                         label: `${account.bankCode} - ${account.accountNo} (${formatCurrency(account.currentBalance, account.currencyCode)})`,
                       }))}
                     />
                   </Form.Item>
-                  <Form.Item name="amount" label="Số tiền nhận" rules={[{ required: true, message: 'Nhập số tiền nhận' }]}>
+                  <Form.Item name="amount" label="Tổng tiền nhận đã đối chiếu">
                     <InputNumber
                       className="w-full"
-                      min={settleTarget.currencyCode === 'VND' ? 1 : 0.01}
-                      max={settleTarget.outstanding}
-                      precision={settleTarget.currencyCode === 'VND' ? 0 : 2}
+                      value={settleGroup.totalOutstanding}
+                      precision={settleGroup.currencyCode === 'VND' ? 0 : 2}
                       controls={false}
+                      readOnly
                       formatter={numberInputFormatter}
                       parser={numberInputParser}
-                      addonAfter={settleTarget.currencyCode}
+                      addonAfter={settleGroup.currencyCode}
                     />
                   </Form.Item>
-                  <Form.Item name="bankReference" label="Mã tham chiếu ngân hàng" rules={[{ required: true, message: 'Nhập mã tham chiếu' }]}>
-                    <Input prefix={<BankOutlined />} maxLength={100} placeholder="Mã giao dịch trên sao kê" />
+                  <Form.Item name="bankReference" label="Mã tham chiếu ngân hàng (không bắt buộc)">
+                    <Input prefix={<BankOutlined />} maxLength={100} placeholder="Nhập khi có mã trên sao kê" />
                   </Form.Item>
                 </>
-              ) : settleTarget.currencyCode === 'USD' ? (
+              ) : settleGroup.currencyCode === 'USD' ? (
                 <>
                   <Alert
                     className="mb-4"
@@ -477,21 +520,9 @@ export function DebtSettlementPage() {
                     description="Phần nguyên nhận bằng USD tiền mặt; phần lẻ dưới 1 USD được quy đổi và nhận bằng VND."
                   />
                   <Row gutter={12}>
-                    <Col span={12}>
-                      <Form.Item name="cashUsdAmount" label="Phần nguyên USD" rules={[{ required: true, message: 'Nhập phần nguyên USD' }]}>
-                        <InputNumber className="w-full" min={0} precision={0} controls={false} formatter={usdInputFormatter} parser={usdInputParser} addonAfter="USD" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name="oddUsdAmount" label="Phần lẻ USD" rules={[{ required: true, message: 'Nhập phần lẻ USD' }]}>
-                        <InputNumber className="w-full" min={0} max={0.99} precision={2} controls={false} formatter={usdInputFormatter} parser={usdInputParser} addonAfter="USD" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={24}>
-                      <Form.Item label="VND nhận cho phần lẻ">
-                        <InputNumber className="w-full" value={Math.round(oddUsdAmount * (bankRate?.rate ?? 0))} readOnly controls={false} formatter={numberInputFormatter} parser={numberInputParser} addonAfter="VND" />
-                      </Form.Item>
-                    </Col>
+                    <Col span={12}><Form.Item label="Phần nguyên USD"><InputNumber className="w-full" value={Math.trunc(settleGroup.totalOutstanding)} precision={0} readOnly controls={false} formatter={usdInputFormatter} parser={usdInputParser} addonAfter="USD" /></Form.Item></Col>
+                    <Col span={12}><Form.Item label="Phần lẻ USD"><InputNumber className="w-full" value={Number((settleGroup.totalOutstanding - Math.trunc(settleGroup.totalOutstanding)).toFixed(2))} precision={2} readOnly controls={false} formatter={usdInputFormatter} parser={usdInputParser} addonAfter="USD" /></Form.Item></Col>
+                    <Col span={24}><Form.Item label="VND nhận cho phần lẻ"><InputNumber className="w-full" value={Math.round(Number((settleGroup.totalOutstanding - Math.trunc(settleGroup.totalOutstanding)).toFixed(2)) * (bankRate?.rate ?? 0))} readOnly controls={false} formatter={numberInputFormatter} parser={numberInputParser} addonAfter="VND" /></Form.Item></Col>
                   </Row>
                 </>
               ) : (
@@ -502,13 +533,13 @@ export function DebtSettlementPage() {
                     showIcon
                     message="Tiền VND được ghi tăng vào quỹ tiền mặt Hội sở và đồng thời giảm công nợ."
                   />
-                  <Form.Item name="amount" label="Số tiền nhận" rules={[{ required: true, message: 'Nhập số tiền nhận' }]}>
-                    <InputNumber className="w-full" min={1} max={settleTarget.outstanding} precision={0} controls={false} formatter={numberInputFormatter} parser={numberInputParser} addonAfter="VND" />
+                  <Form.Item name="amount" label="Tổng tiền nhận đã đối chiếu">
+                    <InputNumber className="w-full" value={settleGroup.totalOutstanding} precision={0} readOnly controls={false} formatter={numberInputFormatter} parser={numberInputParser} addonAfter="VND" />
                   </Form.Item>
                 </>
               )}
               <Form.Item name="description" label="Diễn giải" rules={[{ required: true, message: 'Nhập diễn giải xử lý' }]}>
-                <Input.TextArea rows={3} maxLength={500} showCount placeholder="Nguồn tiền nhận hoặc nội dung bù trừ" />
+                <Input.TextArea rows={3} maxLength={500} showCount placeholder="Chỉ sửa khi có diễn giải khác" />
               </Form.Item>
             </Form>
           </>

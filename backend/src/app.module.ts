@@ -74,7 +74,7 @@ import { GeminiExchangeRateParserService } from './infrastructure/ai/gemini-exch
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
 import { RecordDebtUseCase } from './application/use-cases/debt/record-debt.use-case';
 import {
-  SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
+  SettleDebtBatchUseCase, SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
 } from './application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-case';
 
@@ -158,6 +158,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     RecordDebtUseCase,
     SettleUsdCashDebtUseCase,
     SettleVndCashDebtUseCase,
+    SettleDebtBatchUseCase,
     ListDebtsUseCase,
 
     CreateTransferUseCase,

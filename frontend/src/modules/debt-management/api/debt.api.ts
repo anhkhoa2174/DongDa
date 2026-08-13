@@ -41,6 +41,15 @@ export interface ListDebtsParams {
   dateTo?: string;
 }
 
+export interface SettleDebtBatchPayload {
+  debtAccountIds: string[];
+  amount: number;
+  settlementSource: 'CASH' | 'BANK';
+  bankAccountId?: string;
+  bankReference?: string;
+  description?: string;
+}
+
 export const debtApi = {
   list: (params?: ListDebtsParams) =>
     httpClient.get<DebtAccountSummaryDto[]>('/debts', { params }).then((r) => r.data),
@@ -53,6 +62,9 @@ export const debtApi = {
 
   settleVndCash: (id: string, payload: { amount: number; description?: string }) =>
     httpClient.post(`/debts/${id}/settle-vnd-cash`, payload).then((r) => r.data),
+
+  settleBatch: (payload: SettleDebtBatchPayload) =>
+    httpClient.post('/debts/settle-batch', payload).then((r) => r.data),
 
   record: (payload: { branchId: string; providerCode: string; currencyCode: string; amount: number; description?: string }) =>
     httpClient.post('/debts/record', payload).then((r) => r.data),

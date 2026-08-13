@@ -53,6 +53,20 @@ export function useSettleVndCashDebt() {
   });
 }
 
+export function useSettleDebtBatch() {
+  const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: debtApi.settleBatch,
+    onSuccess: () => {
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['fund'] });
+      queryClient.invalidateQueries({ queryKey: ['bank'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
+  });
+}
+
 export function useRecordDebt() {
   const invalidate = useInvalidate();
   return useMutation({

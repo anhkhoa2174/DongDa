@@ -15,11 +15,11 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { RecordDebtUseCase } from '../../../application/use-cases/debt/record-debt.use-case';
 import {
-  SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
+  SettleDebtBatchUseCase, SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
 } from '../../../application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from '../../../application/use-cases/debt/list-debts.use-case';
 import {
-  RecordDebtDto, SettleUsdCashDebtDto, SettleVndCashDebtDto, ListDebtsQueryDto,
+  RecordDebtDto, SettleDebtBatchDto, SettleUsdCashDebtDto, SettleVndCashDebtDto, ListDebtsQueryDto,
 } from '../../../application/dtos/debt/debt.dto';
 
 @Controller('debts')
@@ -29,6 +29,7 @@ export class DebtController {
     private readonly recordDebt: RecordDebtUseCase,
     private readonly settleUsdCashDebt: SettleUsdCashDebtUseCase,
     private readonly settleVndCashDebt: SettleVndCashDebtUseCase,
+    private readonly settleDebtBatch: SettleDebtBatchUseCase,
     private readonly listDebts: ListDebtsUseCase,
   ) {}
 
@@ -72,5 +73,12 @@ export class DebtController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   settleVndCash(@Request() req: any, @Param('id') id: string, @Body() dto: SettleVndCashDebtDto) {
     return this.settleVndCashDebt.execute(id, dto, req.user.id);
+  }
+
+  @Post('settle-batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  settleBatch(@Request() req: any, @Body() dto: SettleDebtBatchDto) {
+    return this.settleDebtBatch.execute(dto, req.user.id);
   }
 }

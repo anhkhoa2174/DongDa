@@ -2,7 +2,8 @@
 // Layer: Application
 
 import {
-  IsDateString, IsEnum, IsInt, IsOptional, IsNumber, IsPositive, IsString, IsUUID, Max, Min,
+  ArrayMinSize, ArrayUnique, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsOptional,
+  IsNumber, IsPositive, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
@@ -54,6 +55,35 @@ export class SettleVndCashDebtDto {
 
   @IsOptional()
   @IsString()
+  description?: string;
+}
+
+export class SettleDebtBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  debtAccountIds: string[];
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  amount: number;
+
+  @IsIn(['CASH', 'BANK'])
+  settlementSource: 'CASH' | 'BANK';
+
+  @IsOptional()
+  @IsUUID()
+  bankAccountId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  bankReference?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   description?: string;
 }
 
