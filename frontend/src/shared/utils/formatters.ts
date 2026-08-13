@@ -86,7 +86,7 @@ export function formatWuMtcn(value: string | number | null | undefined) {
 
 /**
  * Format tiền Việt
- * Example: 1250000 -> 1,250,000 ₫
+ * Example: 1250000 -> 1,250,000 VND
  */
 export function formatVnd(value: NullableNumber) {
   if (!isValidNumber(value)) return FALLBACK;
@@ -94,15 +94,15 @@ export function formatVnd(value: NullableNumber) {
   return `${new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value)} ₫`;
+  }).format(value)} VND`;
 }
 
 /**
  * Format ngoại tệ theo mã tiền tệ
  * Example:
- * USD 1234.5 -> USD 1,234.50
- * EUR 1234.5 -> EUR 1,234.50
- * JPY 85000 -> JPY 85,000
+ * USD 1234.5 -> 1,234.5 USD
+ * EUR 1234.5 -> 1,234.5 EUR
+ * JPY 85000 -> 85,000 JPY
  */
 export function formatForeignCurrency(
   value: NullableNumber,
@@ -111,23 +111,23 @@ export function formatForeignCurrency(
 ) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return `${currencyCode.toUpperCase()} ${new Intl.NumberFormat('en-US', {
+  return `${new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
-  }).format(value)}`;
+  }).format(value)} ${currencyCode.toUpperCase()}`;
 }
 
 /**
  * Format USD riêng để tránh nhầm với VND
- * Example: 1234.5 -> $ 1,234.50
+ * Example: 1234.5 -> 1,234.5 USD
  */
 export function formatUsd(value: NullableNumber, maximumFractionDigits = 2) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return `$ ${new Intl.NumberFormat('en-US', {
+  return `${new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
-  }).format(value)}`;
+  }).format(value)} USD`;
 }
 
 /**

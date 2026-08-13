@@ -374,7 +374,7 @@ export function CompanyDashboardPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={16}>
-          <Card loading={isDashboardLoading} title="Giá trị giao dịch và lợi nhuận 7 ngày" extra={<Typography.Text type="secondary">Đơn vị: tỷ ₫ / triệu ₫</Typography.Text>}>
+          <Card loading={isDashboardLoading} title="Giá trị giao dịch và lợi nhuận 7 ngày" extra={<Typography.Text type="secondary">Đơn vị: tỷ VND / triệu VND</Typography.Text>}>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={revenueTrend} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
@@ -384,8 +384,8 @@ export function CompanyDashboardPage() {
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip />
                   <Legend />
-                  <Bar yAxisId="left" dataKey="revenue" name="Giá trị giao dịch (tỷ ₫)" fill="#f5b301" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="profit" name="LN WU/MG (triệu ₫)" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
+                  <Bar yAxisId="left" dataKey="revenue" name="Giá trị giao dịch (tỷ VND)" fill="#f5b301" radius={[4, 4, 0, 0]} />
+                  <Line yAxisId="right" type="monotone" dataKey="profit" name="LN WU/MG (triệu VND)" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

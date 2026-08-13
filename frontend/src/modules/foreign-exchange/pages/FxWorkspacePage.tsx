@@ -241,9 +241,6 @@ export function FxWorkspacePage() {
                   </Col>
                 </Row>
               </div>
-              {!canCreateTransaction && (
-                <Alert type="info" showIcon className="mb-3" message="Đăng nhập bằng tài khoản chi nhánh hoặc GĐ/KTTH để tạo giao dịch." />
-              )}
               {!systemRate && (
                 <Alert type="warning" showIcon className="mb-3" message={`Chưa có tỷ giá ${side === 'buy' ? 'mua' : 'bán'} ACTIVE cho ${fxCurrency}. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch.`} />
               )}

@@ -258,10 +258,6 @@ export function MgWorkspacePage() {
                 <Alert type="warning" showIcon className="mb-3" message="Chưa có tỷ giá hệ thống ACTIVE cho MG. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch." />
               )}
 
-              {!canCreateTransaction && (
-                <Alert type="info" showIcon className="mb-3" message="Đăng nhập bằng tài khoản chi nhánh hoặc GĐ/KTTH để tạo giao dịch." />
-              )}
-
               <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate} block>
                 Tạo giao dịch
               </Button>

@@ -66,6 +66,7 @@ export type TransactionField = {
   rangeMaxField?: string;
   precision?: number;
   prefix?: string;
+  suffix?: string;
   inputFormat?: 'vnd' | 'usd' | 'exchangeRate' | 'number';
   maxLength?: number;
   pattern?: RegExp;
@@ -386,7 +387,7 @@ export function TransactionWorkspacePage({
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Tổng giao dịch" value={records.length} /></Card></Col>
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Hoàn tất" value={records.filter((item) => item.status === 'COMPLETED').length} /></Card></Col>
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Void / Điều chỉnh" value={records.filter((item) => ['VOID', 'ADJUSTED'].includes(item.status)).length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Giá trị quy đổi" value={totalValue} suffix="₫" /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Giá trị quy đổi" value={totalValue} suffix="VND" /></Card></Col>
         </Row>
 
         <Card className="polished-card">
@@ -652,6 +653,7 @@ function renderField(
         controls={false}
         keyboard={false}
         prefix={field.prefix}
+        suffix={field.suffix}
         formatter={inputFormatter}
         parser={inputParser}
         placeholder={field.placeholder}
@@ -678,8 +680,8 @@ function getNumberInputFormat(field: TransactionField) {
   const normalizedName = field.name.toLowerCase();
   const normalizedLabel = field.label.toLowerCase();
 
-  if (field.prefix === '$') return 'usd';
-  if (field.prefix === '₫') return 'vnd';
+  if (field.prefix === '$' || field.suffix === 'USD') return 'usd';
+  if (field.prefix === '₫' || field.prefix === 'VND' || field.suffix === 'VND') return 'vnd';
   if (normalizedName.includes('rate') || normalizedLabel.includes('tỷ giá')) return 'exchangeRate';
   if (normalizedName.includes('vnd') || normalizedName.includes('fee')) return 'vnd';
   if (normalizedName.includes('amount') && !field.precision) return 'vnd';

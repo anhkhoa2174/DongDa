@@ -39,6 +39,7 @@ import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers'
 import {
   formatCurrency,
   formatDateTime,
+  formatNumber,
   numberInputFormatter,
   numberInputParser,
   usdInputFormatter,
@@ -64,6 +65,10 @@ const currencyPriority = ['VND', 'USD'];
 
 function money(n: number, currencyCode: string) {
   return formatCurrency(n, currencyCode, currencyCode === 'VND' ? 0 : 2);
+}
+
+function quantity(n: number, currencyCode: string) {
+  return `${formatNumber(n, currencyCode === 'VND' ? 0 : 2)} ${currencyCode}`;
 }
 
 function varianceTag(v: number, currencyCode: string) {
@@ -98,9 +103,10 @@ function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
 
   return [...grouped.values()]
     .sort((a, b) => {
+      const balanceOrder = Number(Math.abs(b.balance) >= 0.005) - Number(Math.abs(a.balance) >= 0.005);
       const ap = currencyPriority.includes(a.code) ? currencyPriority.indexOf(a.code) : 99;
       const bp = currencyPriority.includes(b.code) ? currencyPriority.indexOf(b.code) : 99;
-      return ap - bp || a.code.localeCompare(b.code) || a.name.localeCompare(b.name);
+      return balanceOrder || ap - bp || a.code.localeCompare(b.code) || a.name.localeCompare(b.name);
     });
 }
 
@@ -131,10 +137,10 @@ function inputProps(currencyCode: string) {
 const countCols: ColumnsType<CashCountLineDto> = [
   { title: 'Loại tiền', dataIndex: 'currencyCode' },
   {
-    title: 'Tồn hệ thống',
+    title: 'Số lượng',
     dataIndex: 'systemAmount',
     align: 'right',
-    render: (value, row) => money(Number(value), row.currencyCode),
+    render: (value, row) => quantity(Number(value), row.currencyCode),
   },
   {
     title: 'Thực đếm',
@@ -281,15 +287,15 @@ export function ShiftWorkspacePage() {
                   <ShiftProcessStep number="02" title="Thực hiện giao dịch" detail={shift ? 'WU, MG, ngoại tệ và chuyển tiền' : 'Khả dụng sau khi mở ca'} active={Boolean(shift)} />
                   <ShiftProcessStep number="03" title="Kiểm quỹ cuối ca" detail="Đối chiếu thực đếm với hệ thống" />
                 </div>
-                <Alert
-                  type={shift ? 'info' : 'warning'}
-                  showIcon
-                  className="mt-4"
-                  message={shift ? 'Giao dịch đang được phép thực hiện trong ca này.' : 'Các nghiệp vụ giao dịch đang tạm khóa.'}
-                  description={shift
-                    ? 'Khi kết thúc, thực hiện kiểm quỹ để ghi nhận mọi chênh lệch.'
-                    : 'Xác nhận tồn tiền thực tế để bắt đầu ca làm việc.'}
-                />
+                {!shift && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    className="mt-3"
+                    message="Giao dịch đang tạm khóa"
+                    description="Xác nhận tồn tiền thực tế để bắt đầu ca làm việc."
+                  />
+                )}
               </Card>
             </Col>
           </Row>
@@ -397,7 +403,7 @@ function CountModal({
       <Form form={form} layout="vertical" onFinish={onFinish}>
         <div className="shift-count-header">
           <span>Loại quỹ</span>
-          <span>Tồn hệ thống</span>
+          <span>Số lượng</span>
           <span>Thực đếm</span>
         </div>
         <div className="shift-count-list">
@@ -407,7 +413,7 @@ function CountModal({
                 <strong>{item.code}</strong>
                 <Typography.Text type="secondary">{accountTypeLabel(item.accountType)} · {item.name}</Typography.Text>
               </div>
-              <Typography.Text className="shift-count-row__system">{money(item.balance, item.code)}</Typography.Text>
+              <Typography.Text className="shift-count-row__system">{quantity(item.balance, item.code)}</Typography.Text>
               <div>
                 <Form.Item
                   name={['counts', item.code]}

@@ -57,7 +57,7 @@ const fields: TransactionField[] = [
     positive: true,
     span: 8,
     precision: 2,
-    prefix: '$',
+    suffix: 'USD',
     visibleWhen: (values) => values.paidCurrency === 'USD',
   },
   {
@@ -67,7 +67,7 @@ const fields: TransactionField[] = [
     required: true,
     positive: true,
     span: 8,
-    prefix: '₫',
+    suffix: 'VND',
     visibleWhen: (values) => values.paidCurrency === 'VND',
   },
   {
@@ -78,7 +78,7 @@ const fields: TransactionField[] = [
     positive: true,
     span: 8,
     precision: 2,
-    prefix: '$',
+    suffix: 'USD',
     visibleWhen: (values) => values.transactionType === 'RECEIVE_USD',
   },
   {
@@ -88,7 +88,7 @@ const fields: TransactionField[] = [
     required: true,
     positive: true,
     span: 8,
-    prefix: '₫',
+    suffix: 'VND',
     visibleWhen: (values) => values.transactionType === 'RECEIVE_VND',
   },
   { name: 'mgRate', label: 'MG Implied Rate (auto)', kind: 'number', span: 8, readOnly: true, precision: 4 },

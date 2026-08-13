@@ -66,11 +66,11 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
     { name: 'accountNumber', label: 'Số tài khoản (không bắt buộc)', kind: 'text', span: 12, maxLength: 30 },
     {
       name: 'amount', label: 'Số tiền giao dịch', kind: 'number', required: true,
-      min: 0, positive: true, precision: 0, inputFormat: 'vnd', prefix: 'VND', span: 12,
+      min: 0, positive: true, precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
     },
     {
       name: 'fee', label: 'Phí giao dịch', kind: 'number', min: 0,
-      precision: 0, inputFormat: 'vnd', prefix: 'VND', span: 12,
+      precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
     },
   ], [branchOptions, isBranchUser]);
 

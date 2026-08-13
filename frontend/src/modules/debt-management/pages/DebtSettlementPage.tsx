@@ -14,7 +14,6 @@ import {
   Segmented,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Typography,
@@ -24,6 +23,7 @@ import {
   BankOutlined, DollarOutlined, EyeOutlined, PayCircleOutlined, ReloadOutlined, SearchOutlined, WalletOutlined,
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
@@ -297,50 +297,23 @@ export function DebtSettlementPage() {
       moduleName="debt-management"
     >
       <Space direction="vertical" size={16} className="w-full">
-        <section className="overflow-hidden rounded-lg bg-black p-5 text-white shadow-sm lg:p-6">
-          <div className="flex flex-col gap-4 border-b border-white/15 pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <Typography.Text className="text-xs font-semibold uppercase text-[#f5b301]!">Tổng quan hiện tại</Typography.Text>
-              <Typography.Title level={4} className="mt-1! mb-0! text-white!">Công nợ WU/MG toàn hệ thống</Typography.Title>
-              <Typography.Text className="text-white/60!">Dữ liệu được tổng hợp theo từng ngày nghiệp vụ.</Typography.Text>
-            </div>
-            {canSettle && (
-              <Space wrap size={10}>
-                <Button
-                  className="border-[#f5b301]! bg-[#f5b301]! font-semibold text-black! shadow-[0_4px_12px_rgba(245,179,1,0.22)]"
-                  icon={<DollarOutlined />}
-                  onClick={() => openSettlementPicker('USD')}
-                >
-                  Xử lý công nợ USD
-                </Button>
-                <Button
-                  className="border-[#f5b301]! bg-[#f5b301]! font-semibold text-black! shadow-[0_4px_12px_rgba(245,179,1,0.22)]"
-                  icon={<WalletOutlined />}
-                  onClick={() => openSettlementPicker('VND')}
-                >
-                  Xử lý công nợ VND
-                </Button>
-              </Space>
-            )}
-          </div>
-          <Row gutter={[0, 20]} className="pt-5">
-            <Col xs={24} sm={12} lg={6} className="border-white/15 sm:border-r sm:pr-5">
-              <Statistic title={<span className="text-white/55">Còn nợ VND</span>} value={totals.outstandingVnd} formatter={(value) => formatCurrency(Number(value), 'VND')} valueStyle={{ color: '#fff', fontSize: 25, fontWeight: 650 }} />
-            </Col>
-            <Col xs={24} sm={12} lg={6} className="border-white/15 sm:pl-5 lg:border-r lg:pr-5">
-              <Statistic title={<span className="text-white/55">Còn nợ USD</span>} value={totals.outstandingUsd} precision={2} suffix="USD" valueStyle={{ color: '#fff', fontSize: 25, fontWeight: 650 }} />
-            </Col>
-            <Col xs={8} lg={4} className="lg:pl-5">
-              <Statistic title={<span className="text-white/55">Đang mở</span>} value={totals.open} valueStyle={{ color: '#f5b301', fontSize: 24, fontWeight: 650 }} suffix={<span className="text-sm text-white/50">khoản</span>} />
-            </Col>
-            <Col xs={8} lg={4}>
-              <Statistic title={<span className="text-white/55">Một phần</span>} value={totals.partial} valueStyle={{ color: '#fff', fontSize: 24, fontWeight: 650 }} suffix={<span className="text-sm text-white/50">khoản</span>} />
-            </Col>
-            <Col xs={8} lg={4}>
-              <Statistic title={<span className="text-white/55">Hoàn tất</span>} value={totals.settled} valueStyle={{ color: '#fff', fontSize: 24, fontWeight: 650 }} suffix={<span className="text-sm text-white/50">khoản</span>} />
-            </Col>
-          </Row>
-        </section>
+        <OperationalOverviewCard
+          eyebrow="Tổng quan hiện tại"
+          title="Công nợ WU/MG toàn hệ thống"
+          icon={<PayCircleOutlined />}
+          aside={canSettle ? (
+            <Space wrap size={8}>
+              <Button className="shift-hero__open-button" icon={<DollarOutlined />} onClick={() => openSettlementPicker('USD')}>Xử lý USD</Button>
+              <Button className="shift-hero__open-button" icon={<WalletOutlined />} onClick={() => openSettlementPicker('VND')}>Xử lý VND</Button>
+            </Space>
+          ) : undefined}
+          metrics={[
+            { label: 'Còn nợ VND', value: formatCurrency(totals.outstandingVnd, 'VND') },
+            { label: 'Còn nợ USD', value: formatCurrency(totals.outstandingUsd, 'USD') },
+            { label: 'Đang xử lý', value: `${totals.open} khoản`, note: `${totals.partial} khoản đã xử lý một phần` },
+            { label: 'Hoàn tất', value: `${totals.settled} khoản` },
+          ]}
+        />
 
         <Card
           title={<div><Typography.Text strong>Tổng hợp để đối chiếu và xử lý</Typography.Text><div className="text-xs font-normal text-slate-500">Một dòng cho mỗi ngày, đối tác và loại tiền trên toàn hệ thống</div></div>}

@@ -81,9 +81,28 @@
 }
 
 .page-heading {
-  margin-bottom: 18px;
-  padding-bottom: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #eef0f3;
+}
+
+.ant-alert {
+  border-radius: 6px !important;
+  padding: 9px 12px !important;
+}
+
+.ant-alert-with-description {
+  align-items: flex-start;
+  padding: 10px 12px !important;
+}
+
+.ant-alert-message {
+  line-height: 1.35;
+}
+
+.ant-alert-description {
+  margin-top: 2px;
+  line-height: 1.4;
 }
 
 .polished-card,
@@ -176,7 +195,7 @@
   border-radius: 8px !important;
   background: #0b0b0b !important;
   color: #ffffff;
-  box-shadow: 0 18px 42px rgba(17, 24, 39, 0.15) !important;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.12) !important;
 }
 
 .operational-overview .ant-card-body {
@@ -187,28 +206,28 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 32px;
-  padding: 24px;
+  gap: 20px;
+  padding: 16px 18px;
 }
 
 .operational-overview__identity {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .operational-overview__icon {
   display: grid;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
   place-items: center;
   border: 1px solid rgba(245, 179, 1, 0.42);
   border-radius: 7px;
   background: rgba(245, 179, 1, 0.1);
   color: #f5b301;
-  font-size: 21px;
+  font-size: 18px;
 }
 
 .operational-overview__icon.is-success {
@@ -228,9 +247,9 @@
 
 .operational-overview__title {
   max-width: 720px;
-  margin: 0 0 5px !important;
+  margin: 0 0 3px !important;
   color: #ffffff !important;
-  font-size: 26px !important;
+  font-size: 20px !important;
   line-height: 1.25 !important;
   overflow-wrap: anywhere;
 }
@@ -291,9 +310,9 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 12px;
-  min-height: 104px;
-  padding: 16px 20px;
+  gap: 10px;
+  min-height: 76px;
+  padding: 12px 16px;
   border-right: 1px solid #282828;
 }
 
@@ -303,9 +322,9 @@
 
 .operational-overview__metric-icon {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   place-items: center;
   border-radius: 6px;
   background: rgba(245, 179, 1, 0.12);
@@ -326,15 +345,15 @@
 }
 
 .operational-overview__metric strong {
-  margin-top: 4px;
+  margin-top: 2px;
   color: #ffffff;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 .operational-overview__metric div > span {
-  margin-top: 4px;
+  margin-top: 2px;
   color: #737373;
   font-size: 10px;
 }
@@ -480,7 +499,8 @@
   .operational-overview__header {
     align-items: stretch;
     flex-direction: column;
-    padding: 18px;
+    gap: 12px;
+    padding: 14px;
   }
 
   .operational-overview__identity {
@@ -488,7 +508,7 @@
   }
 
   .operational-overview__title {
-    font-size: 22px !important;
+    font-size: 19px !important;
   }
 
   .operational-overview__aside {
@@ -527,7 +547,7 @@
   .shift-count-row__system::before {
     margin-right: 6px;
     color: #6b7280;
-    content: "Hệ thống:";
+    content: "Số lượng:";
     font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     font-size: 12px;
     font-weight: 500;

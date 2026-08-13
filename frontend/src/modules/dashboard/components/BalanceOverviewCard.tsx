@@ -36,7 +36,7 @@ type BalanceOverviewCardProps = {
 export function BalanceOverviewCard({
   eyebrow,
   amount,
-  amountSuffix = '₫',
+  amountSuffix = 'VND',
   secondaryAmount,
   secondaryAmountLabel,
   compactPrimaryAmount = false,
