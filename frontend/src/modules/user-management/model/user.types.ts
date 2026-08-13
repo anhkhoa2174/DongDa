@@ -6,7 +6,7 @@ export type AppUser = {
   id: string;
   username: string;
   fullName: string;
-  email: string;
+  email?: string;
   phone?: string;
   role: UserRoleCode;
   branchCode?: string;

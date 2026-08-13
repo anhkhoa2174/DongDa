@@ -3,6 +3,7 @@ import { AuthGuard } from '@/app/guards/AuthGuard';
 import { AppLayout } from '@/app/layouts/AppLayout';
 import { ForgotPasswordPage } from '@/modules/auth/pages/ForgotPasswordPage';
 import { LoginPage } from '@/modules/auth/pages/LoginPage';
+import { ProfilePage } from '@/modules/auth/pages/ProfilePage';
 import { TwoFactorPage } from '@/modules/auth/pages/TwoFactorPage';
 import { moduleRoutes } from './moduleRoutes';
 
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'profile', element: <ProfilePage /> },
       ...moduleRoutes,
     ],
   },

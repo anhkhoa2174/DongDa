@@ -13,7 +13,7 @@ import { IUserRepository } from '../../../domain/repositories/user.repository';
 import { User, UserRole } from '../../../domain/entities/user.entity';
 
 const INCLUDE = {
-  employees: true,
+  employees: { include: { branches: true } },
   user_roles: { include: { roles: true } },
 } as const;
 
@@ -64,7 +64,7 @@ export class PrismaUserRepository implements IUserRepository {
           branch_id: branchId,
           employee_code: `EMP_${user.username.toUpperCase()}`,
           full_name: user.fullName,
-          email: user.email,
+          email: user.email ?? null,
           status: 'ACTIVE',
         },
       });
@@ -107,7 +107,7 @@ export class PrismaUserRepository implements IUserRepository {
           where: { id: current.employee_id },
           data: {
             ...(data.fullName !== undefined && { full_name: data.fullName }),
-            ...(data.email !== undefined && { email: data.email }),
+            ...(data.email !== undefined && { email: data.email || null }),
             ...(data.branchId !== undefined && { branch_id: data.branchId }),
           },
         });
@@ -151,11 +151,12 @@ function toDomain(row: any): User | null {
   return {
     id: row.id,
     username: row.username,
-    email: row.employees?.email ?? '',
+    email: row.employees?.email ?? undefined,
     password: row.password_hash,
     fullName: row.employees?.full_name ?? '',
     role: roleCode,
     branchId: row.employees?.branch_id ?? undefined,
+    branchName: row.employees?.branches?.name ?? undefined,
     isActive: row.status === 'ACTIVE',
     createdAt: row.created_at,
     updatedAt: row.updated_at,

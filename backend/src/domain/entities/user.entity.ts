@@ -48,11 +48,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
 export interface User {
   id: string;
   username: string;
-  email: string;
+  email?: string;
   password: string;   // bcrypt hashed, không bao giờ expose ra ngoài
   fullName: string;
   role: UserRole;
   branchId?: string;  // ADMIN/MANAGER/AUDITOR thường gắn Hội sở; STAFF gắn chi nhánh làm việc
+  branchName?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;

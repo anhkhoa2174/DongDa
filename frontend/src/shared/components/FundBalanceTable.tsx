@@ -19,12 +19,16 @@ type FundBalanceTableProps = {
 };
 
 function accountTypeMeta(accountType: string) {
-  if (accountType === 'CASH') return { label: 'Tiền mặt', color: 'green' };
+  if (accountType === 'CASH') return { label: 'Quỹ gốc', color: 'gold' };
   if (accountType === 'FUND_A') return { label: 'Quỹ A', color: 'gold' };
   return { label: accountType, color: 'default' };
 }
 
-const columns: ColumnsType<FundBalanceTableItem> = [
+type GroupedFundBalanceTableItem = FundBalanceTableItem & {
+  groupRowSpan: number;
+};
+
+const columns: ColumnsType<GroupedFundBalanceTableItem> = [
   {
     title: 'Loại tiền',
     dataIndex: 'currencyCode',
@@ -39,6 +43,7 @@ const columns: ColumnsType<FundBalanceTableItem> = [
       const meta = accountTypeMeta(value);
       return <Tag color={meta.color}>{meta.label}</Tag>;
     },
+    onCell: (record) => ({ rowSpan: record.groupRowSpan }),
   },
   {
     title: 'Tài khoản quỹ',
@@ -69,13 +74,30 @@ export function FundBalanceTable({
   emptyText = 'Chưa có số dư quỹ',
   scrollY,
 }: FundBalanceTableProps) {
+  const sortedItems = [...items].sort((a, b) => {
+    const groupOrder = (type: string) => type === 'CASH' ? 0 : type === 'FUND_A' ? 1 : 2;
+    return groupOrder(a.accountType) - groupOrder(b.accountType)
+      || a.accountType.localeCompare(b.accountType)
+      || a.currencyCode.localeCompare(b.currencyCode);
+  });
+  const groupSizes = sortedItems.reduce<Record<string, number>>((sizes, item) => {
+    sizes[item.accountType] = (sizes[item.accountType] ?? 0) + 1;
+    return sizes;
+  }, {});
+  const seenGroups = new Set<string>();
+  const groupedItems: GroupedFundBalanceTableItem[] = sortedItems.map((item) => {
+    const isFirst = !seenGroups.has(item.accountType);
+    seenGroups.add(item.accountType);
+    return { ...item, groupRowSpan: isFirst ? groupSizes[item.accountType] : 0 };
+  });
+
   return (
-    <Table<FundBalanceTableItem>
+    <Table<GroupedFundBalanceTableItem>
       className="fund-balance-table"
       rowKey="key"
       loading={loading}
       columns={columns}
-      dataSource={items}
+      dataSource={groupedItems}
       pagination={false}
       rowClassName={(record) => record.balance < 0 ? 'fund-balance-row--negative' : ''}
       scroll={{ x: 720, ...(scrollY ? { y: scrollY } : {}) }}

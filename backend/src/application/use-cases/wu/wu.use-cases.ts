@@ -68,8 +68,8 @@ export function validateAppliedRate(value: number, firstRate: number, secondRate
   if (!Number.isFinite(value) || value <= 0) {
     throw new BadRequestException('Tỷ giá áp dụng phải là số dương hợp lệ');
   }
-  if (!Number.isInteger(value) || value % 50 !== 0) {
-    throw new BadRequestException('Tỷ giá áp dụng WU phải là số nguyên theo bước 50 VND');
+  if (!Number.isInteger(value) || value % 5 !== 0) {
+    throw new BadRequestException('Tỷ giá áp dụng WU phải là số nguyên theo bước 5 VND');
   }
   const rates = [firstRate, secondRate].filter((rate) => Number.isFinite(rate) && rate > 0);
   if (rates.length === 0) return value;
@@ -97,20 +97,20 @@ export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
     if (receivedVnd <= 0) {
       throw new BadRequestException('WU: khách nhận VND thì phải nhập số VND thực trả');
     }
-    if (Math.abs(receivedVnd - Number(dto.wuVndAmount)) > 1) {
-      throw new BadRequestException(`WU: khách nhận VND phải nhận đúng Amount VND của WU (${dto.wuVndAmount} VND)`);
+    const expectedVnd = Math.round(wuUsd * appliedRate);
+    if (Math.abs(receivedVnd - expectedVnd) > 1) {
+      throw new BadRequestException(`WU: VND thực trả phải bằng Amount USD nhân tỷ giá áp dụng (${expectedVnd} VND)`);
     }
     return;
   }
 
-  const expectedUsd = Math.trunc(Math.max(wuUsd, 0));
-  const fractionalUsd = Math.max(wuUsd - expectedUsd, 0);
-  const expectedVnd = Math.round(fractionalUsd * appliedRate);
-
-  if (receivedUsd !== expectedUsd) {
-    throw new BadRequestException(`WU: USD thực trả phải là phần nguyên của Amount USD (${expectedUsd} USD)`);
+  const maxReceivedUsd = Math.trunc(Math.max(wuUsd, 0));
+  if (receivedUsd < 0 || receivedUsd > maxReceivedUsd) {
+    throw new BadRequestException(`WU: USD thực trả phải nằm trong khoảng 0 - ${maxReceivedUsd} USD`);
   }
+  const convertedUsd = Math.max(wuUsd - receivedUsd, 0);
+  const expectedVnd = Math.round(convertedUsd * appliedRate);
   if (Math.abs(receivedVnd - expectedVnd) > 1) {
-    throw new BadRequestException(`WU: VND thực trả phải là phần lẻ USD quy đổi theo tỷ giá (${expectedVnd} VND)`);
+    throw new BadRequestException(`WU: VND thực trả phải bằng phần USD còn lại quy đổi theo tỷ giá (${expectedVnd} VND)`);
   }
 }

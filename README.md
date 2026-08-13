@@ -590,16 +590,16 @@ Luồng tạo giao dịch WU:
 4. Hệ thống tính WU implied rate = Amount VND / Amount USD.
 5. Chọn tiền khách nhận: USD hoặc VND.
 6. Nếu khách nhận USD:
-   - Trả USD phần chẵn.
-   - Phần lẻ USD quy đổi sang VND theo tỷ giá giao dịch.
+   - Hệ thống gợi ý trả USD bằng phần nguyên của Amount USD.
+   - Nhân viên được giảm số USD thực trả; phần USD còn lại quy đổi sang VND theo tỷ giá giao dịch.
    - Ledger ghi giảm quỹ USD và có thể giảm thêm quỹ VND.
 7. Nếu khách nhận VND:
-   - Trả một số VND.
+   - Received VND = Amount USD (WU) × tỷ giá giao dịch.
    - Ledger ghi giảm quỹ VND.
 8. Hệ thống lấy tỷ giá WU active:
    - Khách nhận USD dùng PAID_SELL.
    - Khách nhận VND dùng PAID_BUY.
-9. Nhân viên chọn tỷ giá giao dịch bằng slider bước 50 VND trong biên độ giữa WU implied rate và tỷ giá hệ thống.
+9. Nhân viên chọn tỷ giá giao dịch bằng slider bước 5 VND trong biên độ giữa WU implied rate và tỷ giá hệ thống.
 10. Xem tóm tắt giao dịch và xác nhận tạo.
 11. Backend lưu giao dịch, ghi ledger quỹ và tạo công nợ WU theo Paid Currency.
 ```
@@ -610,11 +610,11 @@ Các field tài chính chính:
 wu_usd_amount    Số USD gốc của WU
 wu_vnd_amount    Số VND gốc của WU
 received_usd     USD thực chi cho khách
-received_vnd     VND thực chi cho khách, gồm phần lẻ USD quy đổi
+received_vnd     VND thực chi cho phần Amount USD không trả bằng tiền mặt USD
 wu_rate          Tỷ giá implied từ WU
 system_rate      Tỷ giá active của hệ thống tại thời điểm giao dịch
 applied_rate     Tỷ giá giao dịch được chọn
-payout_currency  Loại tiền khách nhận, dùng để chọn PAID_SELL/PAID_BUY
+payout_currency  USD = kết hợp USD/VND; VND = nhận toàn bộ VND; dùng chọn PAID_SELL/PAID_BUY
 paid_currency    Loại tiền WU hoàn, dùng để tạo công nợ
 ```
 

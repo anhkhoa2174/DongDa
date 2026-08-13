@@ -279,6 +279,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.operational-overview__metrics--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .operational-overview__metrics--4 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -562,7 +566,7 @@
   font-size: 12px;
 }
 
-.branch-fund-action {
+.branch-fund-action--primary {
   border-color: #e0a500 !important;
   background: #f5b301 !important;
   color: #111111 !important;
@@ -570,7 +574,7 @@
   box-shadow: 0 5px 14px rgba(245, 179, 1, 0.16);
 }
 
-.branch-fund-action--out {
+.branch-fund-action--secondary {
   border-color: #111111 !important;
   background: #111111 !important;
   color: #f5b301 !important;
@@ -618,6 +622,44 @@
 
 .fund-balance-table .ant-table-tbody > tr:hover > td {
   background: #fffaf0 !important;
+}
+
+.wu-currency-segmented.ant-segmented {
+  border: 1px solid #e0a500;
+  border-radius: 6px;
+  padding: 4px;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.14);
+}
+
+.wu-currency-segmented .ant-segmented-group {
+  gap: 4px;
+}
+
+.wu-currency-segmented .ant-segmented-item {
+  min-height: 36px;
+  border-radius: 4px;
+  color: #111111;
+  font-weight: 750;
+}
+
+.wu-currency-segmented .ant-segmented-item-label {
+  display: grid;
+  min-height: 36px;
+  place-items: center;
+  padding: 0 18px;
+}
+
+.wu-currency-segmented .ant-segmented-thumb,
+.wu-currency-segmented .ant-segmented-item-selected {
+  background: #f5b301 !important;
+  color: #111111 !important;
+  box-shadow: 0 4px 12px rgba(245, 179, 1, 0.28) !important;
+}
+
+.wu-currency-segmented:not(.ant-segmented-disabled) .ant-segmented-item:not(.ant-segmented-item-selected):hover {
+  background: #fff8df;
+  color: #111111;
 }
 
 @media (max-width: 991px) {

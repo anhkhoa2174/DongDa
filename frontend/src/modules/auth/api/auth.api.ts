@@ -4,6 +4,7 @@ import type { AppRole, AuthUser, BackendRole } from '../model/auth.types';
 type BackendUser = {
   id: string;
   username: string;
+  email?: string | null;
   fullName: string;
   role: BackendRole;
   branchId?: string | null;
@@ -72,6 +73,7 @@ export function mapBackendUser(user: BackendUser): AuthUser {
   return {
     id: user.id,
     username: user.username,
+    email: user.email ?? undefined,
     name: user.fullName,
     role: mapBackendRole(user.role),
     backendRole: user.role,
@@ -103,4 +105,8 @@ export async function refreshAuthToken(refreshToken: string) {
 
 export async function logoutWithApi() {
   await httpClient.post('/auth/logout');
+}
+
+export async function changePasswordWithApi(input: { currentPassword: string; newPassword: string }) {
+  await httpClient.patch('/auth/change-password', input);
 }

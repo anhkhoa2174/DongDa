@@ -85,7 +85,7 @@ export function UsersPage() {
     const keyword = search.trim().toLowerCase();
     return users.filter((user) => {
       const matchesSearch = !keyword || [user.username, user.fullName, user.email]
-        .some((value) => value.toLowerCase().includes(keyword));
+        .some((value) => value?.toLowerCase().includes(keyword));
       const matchesRole = roleFilter === 'ALL' || user.role === roleFilter;
       const matchesStatus = statusFilter === 'ALL'
         || (statusFilter === 'ACTIVE' ? user.isActive : !user.isActive);
@@ -113,7 +113,11 @@ export function UsersPage() {
         message.error(values.role === 'MANAGER' ? 'Chưa cấu hình Hội sở' : 'Vui lòng chọn chi nhánh');
         return;
       }
-      await createUser.mutateAsync({ ...values, branchId });
+      await createUser.mutateAsync({
+        ...values,
+        email: values.email?.trim() || undefined,
+        branchId,
+      });
       message.success('Đã tạo tài khoản');
       setAccountModalOpen(false);
       accountForm.resetFields();
@@ -144,7 +148,7 @@ export function UsersPage() {
             <Typography.Text strong>{user.fullName}</Typography.Text>
             <br />
             <Typography.Text type="secondary" className="text-xs!">
-              @{user.username} · {user.email}
+              @{user.username} · {user.email || 'Chưa có email'}
             </Typography.Text>
           </div>
         </Space>
@@ -294,7 +298,7 @@ export function UsersPage() {
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="email" label="Email" rules={[{ required: true }, { type: 'email', message: 'Email không hợp lệ' }]}>
+              <Form.Item name="email" label="Email (không bắt buộc)" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
                 <Input autoComplete="email" />
               </Form.Item>
             </Col>
@@ -302,11 +306,10 @@ export function UsersPage() {
           <Form.Item
             name="password"
             label="Mật khẩu ban đầu"
-            extra="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số."
+            extra="Tối thiểu 6 ký tự."
             rules={[
               { required: true, message: 'Vui lòng nhập mật khẩu' },
-              { min: 8, message: 'Mật khẩu phải có ít nhất 8 ký tự' },
-              { pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, message: 'Mật khẩu phải có chữ hoa, chữ thường và số' },
+              { min: 6, message: 'Mật khẩu phải có ít nhất 6 ký tự' },
             ]}
           >
             <Input.Password autoComplete="new-password" />

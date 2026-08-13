@@ -6,7 +6,7 @@ export type CreatableUserRole = 'MANAGER' | 'STAFF';
 export type UserDto = {
   id: string;
   username: string;
-  email: string;
+  email?: string;
   fullName: string;
   role: UserRoleCode;
   branchId?: string;
@@ -25,7 +25,7 @@ export type BranchDto = {
 
 export type CreateUserPayload = {
   username: string;
-  email: string;
+  email?: string;
   password: string;
   fullName: string;
   role: CreatableUserRole;

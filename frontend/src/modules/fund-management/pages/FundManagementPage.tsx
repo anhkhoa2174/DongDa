@@ -202,10 +202,16 @@ function BranchFundMainPage() {
             </Tag>
           )}
           metrics={[
-            { label: 'Tiền mặt VND', value: formatVnd(vndCash), note: `${cashBalances.filter((item) => item.currencyCode === 'VND').length} tài khoản` },
-            { label: 'Tiền mặt USD', value: formatUsd(usdCash), note: `${cashBalances.filter((item) => item.currencyCode === 'USD').length} tài khoản` },
-            { label: 'Quỹ A', value: `${fundABalances.length} ngoại tệ`, note: 'Tồn thực tế theo từng loại tiền' },
-            { label: 'Tổng sổ quỹ', value: `${balances.length} tài khoản`, note: 'Dữ liệu ledger đã ghi sổ' },
+            {
+              label: 'Quỹ gốc',
+              value: formatVnd(vndCash),
+              note: `${formatUsd(usdCash)} · VND và USD tiền mặt`,
+            },
+            {
+              label: 'Quỹ A',
+              value: `${fundABalances.length} loại ngoại tệ`,
+              note: 'Ngoại tệ khác USD theo tồn ledger',
+            },
           ]}
         />
 
@@ -215,10 +221,10 @@ function BranchFundMainPage() {
             <Typography.Text type="secondary">Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh</Typography.Text>
           </div>
           <Space wrap size={8}>
-            <Button className="branch-fund-action branch-fund-action--in" icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
-            <Button className="branch-fund-action branch-fund-action--out" icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
-            <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
-            <Button icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+            <Button className="branch-fund-action branch-fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+            <Button className="branch-fund-action branch-fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+            <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
+            <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
           </Space>
         </div>
 

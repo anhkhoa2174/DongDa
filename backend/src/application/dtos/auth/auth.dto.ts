@@ -1,7 +1,7 @@
 // DTOs: Auth
 // Layer: Application — dữ liệu đi vào/ra use-cases, validate bằng class-validator
 
-import { IsString, IsNotEmpty, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, MinLength, MaxLength } from 'class-validator';
 
 export class LoginDto {
   @IsString()
@@ -21,9 +21,11 @@ export class LoginResponseDto {
   user: {
     id: string;
     username: string;
+    email?: string;
     fullName: string;
     role: string;
     branchId?: string;
+    branchName?: string;
   };
 }
 
@@ -39,10 +41,7 @@ export class ChangePasswordDto {
   currentPassword: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   @MaxLength(100)
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'Mật khẩu phải có ít nhất 1 chữ hoa, 1 chữ thường, 1 số',
-  })
   newPassword: string;
 }

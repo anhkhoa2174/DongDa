@@ -540,8 +540,10 @@ export class TransactionAdminController {
       const wuVndAmount = Number(correctedData.wuVndAmount);
       const rate = Number(detail.applied_rate);
       const payoutUsd = detail.payout_currency === 'USD';
-      const receivedUsd = payoutUsd ? Math.trunc(wuUsdAmount) : 0;
-      const receivedVnd = payoutUsd ? Math.round((wuUsdAmount - receivedUsd) * rate) : wuVndAmount;
+      const receivedUsd = payoutUsd
+        ? Math.min(Math.max(Math.trunc(Number(detail.received_usd)), 0), Math.trunc(wuUsdAmount))
+        : 0;
+      const receivedVnd = Math.round((wuUsdAmount - receivedUsd) * rate);
       replacement = await tx.customer_transactions.create({ data: {
         ...commonTransaction,
         transaction_no: `WU-R${commonTransaction.revision}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

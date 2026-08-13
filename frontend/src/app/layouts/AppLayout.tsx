@@ -144,6 +144,16 @@ export function AppLayout() {
   ];
 
   const handleUserMenuClick: MenuProps['onClick'] = async ({ key }) => {
+    if (key === 'profile') {
+      navigate('/profile');
+      return;
+    }
+
+    if (key === 'settings') {
+      navigate('/profile#security');
+      return;
+    }
+
     if (key === 'logout') {
       try {
         await logoutWithApi();
