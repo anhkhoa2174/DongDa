@@ -2,9 +2,10 @@
 import { Card, Col, Row, Statistic, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { formatNumber } from '@/shared/utils/formatters';
 import { useSummary } from '../hooks/useSummary';
 
-const vnd = (n: number) => n.toLocaleString('vi-VN');
+const vnd = (n: number) => formatNumber(n, 2);
 
 export function ReportsLivePage() {
   const { data, isLoading } = useSummary();

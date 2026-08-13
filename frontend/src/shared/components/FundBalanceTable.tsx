@@ -1,5 +1,6 @@
 import { Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { getCurrencyMetadata } from '@/shared/constants/currencies';
 import { formatCurrency } from '@/shared/utils/formatters';
 
 export type FundBalanceTableItem = {
@@ -34,6 +35,12 @@ const columns: ColumnsType<GroupedFundBalanceTableItem> = [
     dataIndex: 'currencyCode',
     width: 120,
     render: (value: string) => <span className="fund-balance-currency">{value}</span>,
+  },
+  {
+    title: 'Quốc gia',
+    dataIndex: 'currencyCode',
+    width: 170,
+    render: (value: string) => getCurrencyMetadata(value).country,
   },
   {
     title: 'Loại quỹ',
@@ -74,7 +81,26 @@ export function FundBalanceTable({
   emptyText = 'Chưa có số dư quỹ',
   scrollY,
 }: FundBalanceTableProps) {
-  const sortedItems = [...items].sort((a, b) => {
+  const unifiedItems = [...items.reduce<Map<string, FundBalanceTableItem>>((result, item) => {
+    const isPhysicalFund = item.accountType === 'CASH' || item.accountType === 'FUND_A';
+    const key = isPhysicalFund ? `PHYSICAL:${item.currencyCode}` : item.key;
+    const current = result.get(key);
+    const isBaseCash = item.currencyCode === 'VND' || item.currencyCode === 'USD';
+    result.set(key, {
+      ...item,
+      key,
+      accountType: isPhysicalFund ? (isBaseCash ? 'CASH' : 'FUND_A') : item.accountType,
+      accountName: isPhysicalFund
+        ? (isBaseCash ? `Quỹ tiền mặt ${item.currencyCode}` : `Quỹ A ${item.currencyCode}`)
+        : item.accountName,
+      accountCode: isPhysicalFund
+        ? `${isBaseCash ? 'CASH' : 'FUND_A'}_${item.currencyCode}`
+        : item.accountCode,
+      balance: (current?.balance ?? 0) + item.balance,
+    });
+    return result;
+  }, new Map()).values()];
+  const sortedItems = unifiedItems.sort((a, b) => {
     const groupOrder = (type: string) => type === 'CASH' ? 0 : type === 'FUND_A' ? 1 : 2;
     return groupOrder(a.accountType) - groupOrder(b.accountType)
       || a.accountType.localeCompare(b.accountType)
@@ -100,7 +126,7 @@ export function FundBalanceTable({
       dataSource={groupedItems}
       pagination={false}
       rowClassName={(record) => record.balance < 0 ? 'fund-balance-row--negative' : ''}
-      scroll={{ x: 720, ...(scrollY ? { y: scrollY } : {}) }}
+      scroll={{ x: 900, ...(scrollY ? { y: scrollY } : {}) }}
       locale={{ emptyText }}
     />
   );

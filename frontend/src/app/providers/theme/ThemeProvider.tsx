@@ -31,10 +31,14 @@ export function ThemeProvider({ children }: PropsWithChildren) {
             borderRadiusLG: 10,
             headerBg: '#ffffff',
             colorBorderSecondary: '#e5e7eb',
+            bodyPadding: 20,
+            headerHeight: 50,
           },
           Form: {
             labelColor: '#374151',
             labelFontSize: 13,
+            itemMarginBottom: 16,
+            verticalLabelPadding: '0 0 5px',
           },
           Input: {
             borderRadius: 8,
@@ -62,6 +66,10 @@ export function ThemeProvider({ children }: PropsWithChildren) {
             headerBg: '#fafafa',
             headerColor: '#374151',
             rowHoverBg: '#fff8db',
+            cellPaddingBlock: 11,
+            cellPaddingInline: 12,
+            cellPaddingBlockSM: 8,
+            cellPaddingInlineSM: 10,
           },
         },
       }}

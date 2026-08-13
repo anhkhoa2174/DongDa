@@ -3,11 +3,9 @@
 
 import { IsUUID, IsArray, ValidateNested, IsEnum, IsNumber, Min, IsOptional, IsString, ArrayMinSize } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
-const CURRENCIES = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES = [...SUPPORTED_CURRENCIES];
 
 export class CountLineDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })

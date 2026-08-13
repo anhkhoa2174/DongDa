@@ -32,10 +32,13 @@ const backendPermissionByRole: Record<BackendRole, string[]> = {
     'shift:open',
     'shift:close',
     'exchange-rate:read',
+    'exchange-rate:manage',
+    'exchange-rate:approve',
     'report:read',
     'report:export',
     'capital-transfer:create',
     'capital-transfer:read',
+    'debt:settle',
     'user:read',
   ],
   STAFF: [

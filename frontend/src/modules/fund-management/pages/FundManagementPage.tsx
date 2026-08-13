@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { Alert, Button, Card, Col, Row, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
@@ -25,6 +26,24 @@ import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
 import type { FundACurrencyBalance } from '../model/fund.types';
 import type { FundMovementHistoryDto } from '../api/centralFund.api';
 import { useCentralFundSummary, useFundMovementHistory } from '../hooks/useCentralFund';
+
+function FundActionBar({
+  description,
+  children,
+}: {
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fund-actions">
+      <div>
+        <Typography.Text strong>Thao tác quỹ</Typography.Text>
+        <Typography.Text type="secondary">{description}</Typography.Text>
+      </div>
+      <Space wrap size={8}>{children}</Space>
+    </div>
+  );
+}
 
 function FundBreakdownRow({
   label,
@@ -215,18 +234,12 @@ function BranchFundMainPage() {
           ]}
         />
 
-        <div className="branch-fund-actions">
-          <div>
-            <Typography.Text strong>Thao tác quỹ</Typography.Text>
-            <Typography.Text type="secondary">Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh</Typography.Text>
-          </div>
-          <Space wrap size={8}>
-            <Button className="branch-fund-action branch-fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
-            <Button className="branch-fund-action branch-fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
-            <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
-            <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
-          </Space>
-        </div>
+        <FundActionBar description="Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh">
+          <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+          <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
+          <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
+        </FundActionBar>
 
         <Card
           className="branch-fund-table-card"
@@ -253,6 +266,11 @@ export function CentralFundPage() {
   const { data: movementHistory = [], isLoading: isLoadingHistory } = useFundMovementHistory(headOffice?.id);
   const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
   const fundA = summary?.fundA ?? [];
+  const totalCompanyFundUsd = summary?.paidBuyRate
+    ? (summary.totalCompanyFundVnd / summary.paidBuyRate)
+    : null;
+  const weeklyChange = summary?.weeklyCapitalChangeVnd ?? 0;
+  const weeklyChangeLabel = weeklyChange > 0 ? 'Tăng' : weeklyChange < 0 ? 'Giảm' : 'Không đổi';
 
   return (
     <PageScaffold
@@ -260,19 +278,7 @@ export function CentralFundPage() {
       description="Theo dõi nguồn vốn trung tâm, tiền mặt VND/USD, ngân hàng, Quỹ A và công nợ quy đổi."
       moduleName="fund-management"
       extra={(
-        <Space wrap>
-          <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Đồng bộ số dư</Button>
-          {canCreateCashMovement && (
-            <>
-              <Button icon={<MoneyCollectOutlined />} onClick={() => navigate('/fund-management/central-fund/receipts')}>Tạo Phiếu Thu</Button>
-              <Button type="primary" icon={<MoneyCollectOutlined />} onClick={() => navigate('/fund-management/central-fund/expenses')}>Tạo Phiếu Chi</Button>
-            </>
-          )}
-          <Button icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
-          {canTransfer && (
-            <Button type="primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
-          )}
-        </Space>
+        <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Đồng bộ số dư</Button>
       )}
     >
       <Space direction="vertical" size={20} className="w-full">
@@ -292,11 +298,30 @@ export function CentralFundPage() {
             description="Giá trị quy đổi của các loại tiền này đang được tính bằng 0."
           />
         ) : null}
+        <FundActionBar description="Điều chuyển vốn, kiểm quỹ và ghi nhận thu chi tại Hội sở">
+          {canTransfer && (
+            <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          )}
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
+          {canCreateCashMovement && (
+            <>
+              <Button className="fund-action--conversion" icon={<SwapOutlined />} onClick={() => navigate('/fund-management/central-fund/convert-fund-a')}>Bán ngoại tệ Quỹ A</Button>
+              <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/receipts')}>Tạo Phiếu Thu</Button>
+              <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/expenses')}>Tạo Phiếu Chi</Button>
+            </>
+          )}
+        </FundActionBar>
         <Card loading={isLoading} className="central-fund-overview overflow-hidden" classNames={{ body: 'p-0!' }}>
           <div className="central-fund-overview__header">
             <div className="min-w-0">
-              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn kiểm soát</Typography.Text>
-              <Typography.Title level={2} className="central-fund-overview__amount">{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</Typography.Title>
+              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn công ty quy đổi</Typography.Text>
+              <Typography.Text className="central-fund-overview__amount-usd">
+                {totalCompanyFundUsd === null ? 'Chưa có tỷ giá quy đổi USD' : formatUsd(totalCompanyFundUsd)}
+              </Typography.Text>
+              <div className="central-fund-overview__amount-vnd">
+                <span>Quy đổi VND</span>
+                <strong>{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</strong>
+              </div>
               <Typography.Text className="central-fund-overview__caption">
                 Tiền mặt, ngân hàng và công nợ phải thu trên toàn hệ thống.
               </Typography.Text>
@@ -310,21 +335,53 @@ export function CentralFundPage() {
                 <span>Đối chiếu gần nhất</span>
                 <strong>{summary?.lastReconciledAt ? formatDateTime(summary.lastReconciledAt) : 'Chưa đối chiếu'}</strong>
               </div>
+              <div>
+                <span>Biến động từ đầu tuần</span>
+                <strong className={weeklyChange > 0 ? 'is-positive' : weeklyChange < 0 ? 'is-negative' : ''}>
+                  {weeklyChangeLabel} {formatVnd(Math.abs(weeklyChange))}
+                  {summary?.weeklyCapitalChangePercent === null || summary?.weeklyCapitalChangePercent === undefined
+                    ? ''
+                    : ` (${Math.abs(summary.weeklyCapitalChangePercent).toFixed(2)}%)`}
+                </strong>
+              </div>
             </div>
           </div>
 
           <div className="central-fund-kpis">
             {[
-              { label: 'Tiền mặt quy đổi', value: formatVnd(summary?.centralCashValueVnd ?? 0), icon: <MoneyCollectOutlined /> },
-              { label: 'Số dư ngân hàng', value: formatVnd(summary?.bankValueVnd ?? 0), icon: <BankOutlined /> },
-              { label: 'Công nợ phải thu', value: formatVnd(summary?.debtValueVnd ?? 0), icon: <AuditOutlined /> },
-              { label: 'Quỹ tại chi nhánh', value: formatVnd(summary?.branchFundValueVnd ?? 0), icon: <InboxOutlined /> },
+              {
+                label: 'Tiền mặt Hội sở',
+                usd: formatUsd(summary?.usdCash ?? 0),
+                vnd: formatVnd(summary?.vndCash ?? 0),
+                icon: <MoneyCollectOutlined />,
+              },
+              {
+                label: 'Số dư ngân hàng',
+                usd: formatUsd(summary?.bankUsd ?? 0),
+                vnd: formatVnd(summary?.bankVnd ?? 0),
+                icon: <BankOutlined />,
+              },
+              {
+                label: 'Công nợ phải thu',
+                usd: formatUsd(summary?.debtUsd ?? 0),
+                vnd: formatVnd(summary?.debtVnd ?? 0),
+                icon: <AuditOutlined />,
+              },
+              {
+                label: 'Quỹ tại chi nhánh',
+                usd: formatUsd(summary?.branchFundUsd ?? 0),
+                vnd: formatVnd(summary?.branchFundVnd ?? 0),
+                icon: <InboxOutlined />,
+              },
             ].map((item) => (
               <div className="central-fund-kpi" key={item.label}>
                 <span className="central-fund-kpi__icon">{item.icon}</span>
                 <div className="min-w-0">
                   <div className="central-fund-kpi__label">{item.label}</div>
-                  <div className="central-fund-kpi__value">{item.value}</div>
+                  <div className="central-fund-kpi__values">
+                    <strong className="central-fund-kpi__value central-fund-kpi__value--usd">{item.usd}</strong>
+                    <strong className="central-fund-kpi__value central-fund-kpi__value--vnd">{item.vnd}</strong>
+                  </div>
                 </div>
               </div>
             ))}
@@ -339,6 +396,7 @@ export function CentralFundPage() {
               className="central-fund-detail w-full"
             >
               <FundBreakdownRow label="Tiền mặt VND" value={formatVnd(summary?.vndCash ?? 0)} />
+              <FundBreakdownRow label="Tiền mặt USD" value={formatUsd(summary?.usdCash ?? 0)} />
               <FundBreakdownRow
                 label="Tiền mặt USD quy đổi"
                 value={formatVnd(summary?.usdCashValueVnd ?? 0)}

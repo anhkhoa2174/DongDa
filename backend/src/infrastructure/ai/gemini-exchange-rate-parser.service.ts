@@ -29,7 +29,7 @@ QUY TẮC AN TOÀN VÀ NGHIỆP VỤ BẮT BUỘC:
 5. fromCurrency dùng mã ISO 4217 viết hoa; toCurrency luôn là VND.
 6. Paid mua / WU-MG mua -> PAID_BUY, provider WU_MG.
 7. Paid bán / WU-MG bán -> PAID_SELL, provider WU_MG.
-8. Tỷ giá ngân hàng chỉ được tạo khi ảnh ghi rõ tỷ giá ngân hàng -> BANK_RATE, provider BANK.
+8. Tỷ giá ngân hàng chỉ được tạo khi ảnh ghi rõ tỷ giá ngân hàng -> một BANK_RATE, provider BANK. Nếu bảng có cột Mua/Bán, đặt buyRate và sellRate tương ứng; rate phải bằng buyRate để tương thích nghiệp vụ công nợ.
 9. Bảng mua/bán ngoại tệ: mỗi cột Mua tạo FX_BUY, mỗi cột Bán tạo FX_SELL, provider INTERNAL.
 10. Không dùng Amount WU/MG, tỷ giá giao dịch khách hàng, số tiền, phí hoặc tổng cộng làm tỷ giá hệ thống.
 11. Không đảo cột mua và bán. Nếu nhãn cột không rõ, bỏ dòng đó và nêu cảnh báo ở dòng liên quan nếu có thể.
@@ -50,6 +50,8 @@ const RESPONSE_SCHEMA = {
           fromCurrency: { type: 'string' },
           toCurrency: { type: 'string', enum: ['VND'] },
           rate: { type: 'number', minimum: 0.000001 },
+          buyRate: { type: ['number', 'null'], minimum: 0.000001 },
+          sellRate: { type: ['number', 'null'], minimum: 0.000001 },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           sourceLabel: { type: 'string' },
           warning: { type: ['string', 'null'] },
@@ -142,6 +144,8 @@ export function sanitizeGeminiRates(value: unknown): ParsedExchangeRateCandidate
     const candidate: ParsedExchangeRateCandidate = {
       rateType, provider, fromCurrency, toCurrency: 'VND' as CurrencyCode,
       rate, confidence,
+      ...(Number.isFinite(Number(raw?.buyRate)) && Number(raw.buyRate) > 0 ? { buyRate: Number(raw.buyRate) } : {}),
+      ...(Number.isFinite(Number(raw?.sellRate)) && Number(raw.sellRate) > 0 ? { sellRate: Number(raw.sellRate) } : {}),
       sourceLabel: String(raw?.sourceLabel ?? '').slice(0, 160),
       ...(raw?.warning ? { warning: String(raw.warning).slice(0, 300) } : {}),
     };

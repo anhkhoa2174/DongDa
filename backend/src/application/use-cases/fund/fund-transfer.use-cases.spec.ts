@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { ConfirmTransferUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
+import { ConfirmTransferUseCase, ConvertCentralFundUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
 import { FundTransferStatus } from '../../../domain/entities/fund.entity';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -43,5 +43,23 @@ describe('fund transfer receiver controls', () => {
       id: 'staff-b', role: UserRole.STAFF, branchId: 'branch-b',
     })).resolves.toMatchObject({ status: FundTransferStatus.CONFIRMED });
     expect(repo.confirmTransfer).toHaveBeenCalledWith('transfer-1', 'staff-b');
+  });
+});
+
+describe('central Fund A conversion', () => {
+  it('passes a normalized conversion request and actor to the repository', async () => {
+    const converted = {
+      voucherNo: 'QDA-001',
+      items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, vndAmount: 3_000_000 }],
+      totalVndAmount: 3_000_000, postedAt: new Date(),
+    };
+    const repo = { convertCentralFund: jest.fn().mockResolvedValue(converted) };
+    const useCase = new ConvertCentralFundUseCase(repo as any);
+
+    await expect(useCase.execute({ items: [{ currencyCode: 'EUR', amount: 100 }], note: '  Đổi tại ngân hàng  ' }, 'admin-1'))
+      .resolves.toEqual(converted);
+    expect(repo.convertCentralFund).toHaveBeenCalledWith({
+      items: [{ currencyCode: 'EUR', amount: 100 }], note: 'Đổi tại ngân hàng', createdByUserId: 'admin-1',
+    });
   });
 });

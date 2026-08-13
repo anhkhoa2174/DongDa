@@ -4,9 +4,8 @@
 // Mở ca: kiểm quỹ đầu ca (đếm tiền thực tế). Mọi GD WU/MG/FX phải thuộc ca đang mở.
 // Đóng ca: kiểm quỹ cuối ca → so tồn hệ thống (ledger) vs tồn thực tế → khớp/thừa/thiếu.
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 export interface Shift {
   id: string;

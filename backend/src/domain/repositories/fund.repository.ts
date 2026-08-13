@@ -4,7 +4,7 @@
 import type {
   FundTransfer, FundAccountBalance, CurrencyCode, CentralFundSummary,
   CentralFundMovement, CentralCashMovementDirection, CentralFundSourceType,
-  FundMovementHistoryItem,
+  FundMovementHistoryItem, CentralFundConversion,
 } from '../entities/fund.entity';
 
 export interface CreateTransferInput {
@@ -41,12 +41,19 @@ export interface ListFundMovementHistoryFilter {
   dateTo?: Date;
 }
 
+export interface ConvertCentralFundInput {
+  items: Array<{ currencyCode: CurrencyCode; amount: number }>;
+  note?: string;
+  createdByUserId: string;
+}
+
 export interface IFundRepository {
   // Số dư quỹ (tính từ ledger)
   listBalances(branchId?: string): Promise<FundAccountBalance[]>;
   getBalance(fundAccountId: string): Promise<number>;
   getCentralSummary(): Promise<CentralFundSummary>;
   createFundMovement(input: CreateFundMovementInput): Promise<CentralFundMovement>;
+  convertCentralFund(input: ConvertCentralFundInput): Promise<CentralFundConversion>;
   listMovementHistory(filter?: ListFundMovementHistoryFilter): Promise<FundMovementHistoryItem[]>;
 
   findHeadOfficeBranchId(): Promise<string | null>;

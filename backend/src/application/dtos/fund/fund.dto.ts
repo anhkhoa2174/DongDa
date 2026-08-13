@@ -6,11 +6,9 @@ import {
   IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
-const CURRENCIES = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES = [...SUPPORTED_CURRENCIES];
 
 export class CreateTransferItemDto {
   @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
@@ -80,6 +78,28 @@ export class CreateCentralFundMovementDto {
   @ValidateNested({ each: true })
   @Type(() => CreateCentralFundMovementItemDto)
   items: CreateCentralFundMovementItemDto[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
+}
+
+export class ConvertCentralFundItemDto {
+  @IsIn(CURRENCIES.filter((currency) => currency !== 'VND' && currency !== 'USD'))
+  currencyCode: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  amount: number;
+}
+
+export class ConvertCentralFundDto {
+  @ArrayMinSize(1, { message: 'Phiếu quy đổi phải có ít nhất một loại ngoại tệ' })
+  @ArrayMaxSize(18, { message: 'Phiếu quy đổi có tối đa 18 loại ngoại tệ' })
+  @ValidateNested({ each: true })
+  @Type(() => ConvertCentralFundItemDto)
+  items: ConvertCentralFundItemDto[];
 
   @IsOptional()
   @IsString()

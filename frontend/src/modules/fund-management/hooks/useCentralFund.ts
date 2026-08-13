@@ -39,3 +39,11 @@ export function useCreateCentralFundMovement() {
     },
   });
 }
+
+export function useConvertCentralFundA() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: centralFundApi.convertFundA,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fund'] }),
+  });
+}

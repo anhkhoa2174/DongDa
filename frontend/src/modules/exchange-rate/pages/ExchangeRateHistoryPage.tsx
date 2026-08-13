@@ -13,30 +13,27 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatDateTime, formatExchangeRatePair } from '@/shared/utils/formatters';
+import { getCurrencyMetadata } from '@/shared/constants/currencies';
+import { formatDateTime, formatExchangeRate } from '@/shared/utils/formatters';
 import type {
+  ExchangeRateGroup,
+  ExchangeRateHistoryGroupDto,
   ExchangeRateHistoryDto,
-  ExchangeRateType,
   RateStatus,
-  ServiceProvider,
 } from '../api/exchangeRate.api';
 import { useExchangeRateHistory } from '../hooks/useExchangeRates';
 
-const RATE_TYPES: Array<{ value: ExchangeRateType; label: string }> = [
-  { value: 'PAID_BUY', label: 'Paid mua' },
-  { value: 'PAID_SELL', label: 'Paid bán' },
-  { value: 'BANK_RATE', label: 'Tỷ giá ngân hàng' },
-  { value: 'FX_BUY', label: 'Mua ngoại tệ' },
-  { value: 'FX_SELL', label: 'Bán ngoại tệ' },
-  { value: 'WU_SYSTEM', label: 'WU hệ thống (cũ)' },
-  { value: 'WU_PROVIDER', label: 'WU provider (cũ)' },
-  { value: 'MG_SYSTEM', label: 'MG hệ thống (cũ)' },
+const RATE_GROUPS: Array<{ value: ExchangeRateGroup; label: string }> = [
+  { value: 'PAID', label: 'Tỷ giá Paid' },
+  { value: 'FX', label: 'Tỷ giá mua/bán' },
+  { value: 'BANK', label: 'Tỷ giá Ngân hàng' },
 ];
 
 const STATUS_META: Record<RateStatus, { label: string; color?: string }> = {
@@ -46,35 +43,27 @@ const STATUS_META: Record<RateStatus, { label: string; color?: string }> = {
   REJECTED: { label: 'Đã từ chối', color: 'red' },
 };
 
-const PROVIDERS: Array<{ value: ServiceProvider; label: string }> = [
-  { value: 'WU_MG', label: 'WU/MG' },
-  { value: 'BANK', label: 'Ngân hàng' },
-  { value: 'INTERNAL', label: 'Nội bộ' },
-  { value: 'WU', label: 'WU (cũ)' },
-  { value: 'MG', label: 'MG (cũ)' },
-];
-
 export function ExchangeRateHistoryPage() {
   const navigate = useNavigate();
   const [keywordInput, setKeywordInput] = useState('');
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<RateStatus>();
-  const [rateType, setRateType] = useState<ExchangeRateType>();
+  const [rateGroup, setRateGroup] = useState<ExchangeRateGroup>();
   const [from, setFrom] = useState<string>();
   const [to, setTo] = useState<string>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [selectedRate, setSelectedRate] = useState<ExchangeRateHistoryDto | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<ExchangeRateHistoryGroupDto | null>(null);
 
   const params = useMemo(() => ({
     page,
     pageSize,
     status,
-    rateType,
+    rateGroup,
     from,
     to,
     keyword: keyword || undefined,
-  }), [page, pageSize, status, rateType, from, to, keyword]);
+  }), [page, pageSize, status, rateGroup, from, to, keyword]);
   const { data, isLoading, isError, refetch } = useExchangeRateHistory(params);
 
   const applyKeyword = (value: string) => {
@@ -86,77 +75,72 @@ export function ExchangeRateHistoryPage() {
     setKeywordInput('');
     setKeyword('');
     setStatus(undefined);
-    setRateType(undefined);
+    setRateGroup(undefined);
     setFrom(undefined);
     setTo(undefined);
     setPage(1);
   };
 
-  const columns: ColumnsType<ExchangeRateHistoryDto> = [
+  const columns: ColumnsType<ExchangeRateHistoryGroupDto> = [
     {
       title: 'Loại tỷ giá',
-      dataIndex: 'rateType',
+      dataIndex: 'category',
       fixed: 'left',
-      width: 180,
-      render: (value: ExchangeRateType, record) => (
+      width: 150,
+      render: (value: ExchangeRateGroup) => <Typography.Text strong>{rateGroupLabel(value)}</Typography.Text>,
+    },
+    {
+      title: 'Ngoại tệ',
+      dataIndex: 'fromCurrency',
+      width: 115,
+      render: (value: string) => (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{rateTypeLabel(value)}</Typography.Text>
-          <Typography.Text type="secondary">{providerLabel(record.provider)}</Typography.Text>
+          <Typography.Text className="exchange-rate-code">{value}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">{getCurrencyMetadata(value).name}</Typography.Text>
         </Space>
       ),
     },
     {
-      title: 'Cặp tiền',
-      width: 110,
-      render: (_, record) => <Typography.Text>{record.fromCurrency}/{record.toCurrency}</Typography.Text>,
+      title: 'Quốc gia',
+      dataIndex: 'fromCurrency',
+      width: 145,
+      responsive: ['lg'],
+      render: (value: string) => getCurrencyMetadata(value).country,
     },
     {
-      title: 'Tỷ giá',
-      dataIndex: 'rate',
+      title: 'Giá mua',
+      key: 'buyRate',
       align: 'right',
-      width: 190,
-      render: (value: number, record) => (
-        <Typography.Text strong>
-          {formatExchangeRatePair(value, record.fromCurrency, record.toCurrency, 6)}
-        </Typography.Text>
-      ),
+      width: 145,
+      render: (_, row) => renderHistoryGroupRate(row, 'buy'),
     },
     {
-      title: 'Người nhập / duyệt',
-      width: 210,
+      title: 'Giá bán',
+      key: 'sellRate',
+      align: 'right',
+      width: 145,
+      render: (_, row) => renderHistoryGroupRate(row, 'sell'),
+    },
+    {
+      title: 'Người tạo / thời gian',
+      width: 180,
+      responsive: ['xl'],
       render: (_, record) => (
         <Space direction="vertical" size={0}>
           <Typography.Text>{record.createdByName}</Typography.Text>
-          <Typography.Text type="secondary">Duyệt: {record.approvedByName ?? 'Chưa duyệt'}</Typography.Text>
+          <Typography.Text type="secondary">{formatDateTime(record.createdAt)}</Typography.Text>
         </Space>
       ),
-    },
-    {
-      title: 'Hiệu lực',
-      width: 190,
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text>{formatDateTime(record.effectiveFrom)}</Typography.Text>
-          <Typography.Text type="secondary">Đến: {record.effectiveTo ? formatDateTime(record.effectiveTo) : 'Hiện tại'}</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'Trạng thái',
-      dataIndex: 'status',
-      align: 'center',
-      width: 130,
-      render: (value: RateStatus) => <Tag color={STATUS_META[value].color}>{STATUS_META[value].label}</Tag>,
     },
     {
       title: '',
       key: 'action',
       fixed: 'right',
-      width: 120,
+      width: 48,
       render: (_, record) => (
-        <Button type="text" icon={<EyeOutlined />} onClick={() => setSelectedRate(record)}>
-          Chi tiết
-        </Button>
+        <Tooltip title="Xem chi tiết">
+          <Button type="text" aria-label="Xem chi tiết" icon={<EyeOutlined />} onClick={() => setSelectedGroup(record)} />
+        </Tooltip>
       ),
     },
   ];
@@ -164,7 +148,7 @@ export function ExchangeRateHistoryPage() {
   return (
     <PageScaffold
       title="Lịch sử Tỷ Giá"
-      description="Tra cứu toàn bộ vòng đời tỷ giá đã tạo, duyệt, thay thế hoặc từ chối trên hệ thống."
+      description="Tra cứu theo từng nhóm tỷ giá đã tạo. Giá mua, giá bán và tỷ giá Ngân hàng giữ nguyên trạng thái phê duyệt riêng."
       moduleName="exchange-rate-history"
       extra={
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/exchange-rate')}>
@@ -197,10 +181,10 @@ export function ExchangeRateHistoryPage() {
             <Select
               allowClear
               placeholder="Loại tỷ giá"
-              value={rateType}
+              value={rateGroup}
               className="w-full"
-              onChange={(value) => { setRateType(value); setPage(1); }}
-              options={RATE_TYPES}
+              onChange={(value) => { setRateGroup(value); setPage(1); }}
+              options={RATE_GROUPS}
             />
           </Col>
           <Col xs={24} lg={5}>
@@ -229,18 +213,21 @@ export function ExchangeRateHistoryPage() {
           />
         )}
 
-        <Table<ExchangeRateHistoryDto>
+        <Table<ExchangeRateHistoryGroupDto>
+          className="exchange-rate-table"
           rowKey="id"
           columns={columns}
           dataSource={data?.items ?? []}
           loading={isLoading}
-          scroll={{ x: 1150 }}
+          scroll={{ x: 760 }}
+          size="small"
+          tableLayout="fixed"
           pagination={{
             current: data?.page ?? page,
             pageSize: data?.pageSize ?? pageSize,
             total: data?.total ?? 0,
             showSizeChanger: true,
-            showTotal: (total) => `${total} bản ghi`,
+            showTotal: (total) => `${total} nhóm tỷ giá`,
             onChange: (nextPage, nextPageSize) => {
               setPage(nextPageSize !== pageSize ? 1 : nextPage);
               setPageSize(nextPageSize);
@@ -250,40 +237,81 @@ export function ExchangeRateHistoryPage() {
       </Card>
 
       <Drawer
-        title="Chi tiết tỷ giá"
-        width={560}
-        open={Boolean(selectedRate)}
-        onClose={() => setSelectedRate(null)}
+        title="Chi tiết nhóm tỷ giá"
+        width="min(680px, 100vw)"
+        open={Boolean(selectedGroup)}
+        onClose={() => setSelectedGroup(null)}
       >
-        {selectedRate && (
-          <Descriptions bordered size="small" column={2}>
-            <Descriptions.Item label="Trạng thái" span={2}>
-              <Tag color={STATUS_META[selectedRate.status].color}>{STATUS_META[selectedRate.status].label}</Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="Loại tỷ giá" span={2}>{rateTypeLabel(selectedRate.rateType)}</Descriptions.Item>
-            <Descriptions.Item label="Nhóm áp dụng">{providerLabel(selectedRate.provider)}</Descriptions.Item>
-            <Descriptions.Item label="Cặp tiền">{selectedRate.fromCurrency}/{selectedRate.toCurrency}</Descriptions.Item>
-            <Descriptions.Item label="Tỷ giá" span={2}>
-              {formatExchangeRatePair(selectedRate.rate, selectedRate.fromCurrency, selectedRate.toCurrency, 6)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Người nhập">{selectedRate.createdByName}</Descriptions.Item>
-            <Descriptions.Item label="Tạo lúc">{formatDateTime(selectedRate.createdAt)}</Descriptions.Item>
-            <Descriptions.Item label="Người duyệt">{selectedRate.approvedByName ?? 'Chưa duyệt'}</Descriptions.Item>
-            <Descriptions.Item label="Duyệt lúc">{selectedRate.approvedAt ? formatDateTime(selectedRate.approvedAt) : 'Chưa duyệt'}</Descriptions.Item>
-            <Descriptions.Item label="Hiệu lực từ">{formatDateTime(selectedRate.effectiveFrom)}</Descriptions.Item>
-            <Descriptions.Item label="Hiệu lực đến">{selectedRate.effectiveTo ? formatDateTime(selectedRate.effectiveTo) : 'Hiện tại'}</Descriptions.Item>
-            <Descriptions.Item label="Mã bản ghi" span={2}>{selectedRate.id}</Descriptions.Item>
-          </Descriptions>
+        {selectedGroup && (
+          <Space direction="vertical" size={16} className="w-full">
+            <Descriptions bordered size="small" column={2}>
+              <Descriptions.Item label="Loại tỷ giá">{rateGroupLabel(selectedGroup.category)}</Descriptions.Item>
+              <Descriptions.Item label="Ngoại tệ">{selectedGroup.fromCurrency}/{selectedGroup.toCurrency}</Descriptions.Item>
+              <Descriptions.Item label="Quốc gia">{getCurrencyMetadata(selectedGroup.fromCurrency).country}</Descriptions.Item>
+              <Descriptions.Item label="Người tạo">{selectedGroup.createdByName}</Descriptions.Item>
+              <Descriptions.Item label="Tạo lúc" span={2}>{formatDateTime(selectedGroup.createdAt)}</Descriptions.Item>
+            </Descriptions>
+            {selectedGroup.buy && <HistoryRateDetail title="Giá mua" rate={selectedGroup.buy} />}
+            {selectedGroup.sell && <HistoryRateDetail title="Giá bán" rate={selectedGroup.sell} />}
+            {selectedGroup.bank && <HistoryBankRateDetail rate={selectedGroup.bank} />}
+          </Space>
         )}
       </Drawer>
     </PageScaffold>
   );
 }
 
-function rateTypeLabel(rateType: ExchangeRateType) {
-  return RATE_TYPES.find((option) => option.value === rateType)?.label ?? rateType;
+function rateGroupLabel(rateGroup: ExchangeRateGroup) {
+  return RATE_GROUPS.find((option) => option.value === rateGroup)?.label ?? rateGroup;
 }
 
-function providerLabel(provider?: ServiceProvider | null) {
-  return PROVIDERS.find((option) => option.value === provider)?.label ?? provider ?? 'Không áp dụng';
+function renderHistoryGroupRate(group: ExchangeRateHistoryGroupDto, side: 'buy' | 'sell') {
+  const rate = group.category === 'BANK' ? group.bank : side === 'buy' ? group.buy : group.sell;
+  const value = group.category === 'BANK'
+    ? (side === 'buy' ? rate?.buyRate ?? rate?.rate : rate?.sellRate)
+    : rate?.rate;
+  if (!rate || value === null || value === undefined) return <Typography.Text type="secondary">—</Typography.Text>;
+  return (
+    <div className="exchange-rate-value exchange-rate-value--compact">
+      <strong>{formatExchangeRate(value, 6)}</strong>
+      <Tag color={STATUS_META[rate.status].color}>{STATUS_META[rate.status].label}</Tag>
+    </div>
+  );
+}
+
+function HistoryBankRateDetail({ rate }: { rate: ExchangeRateHistoryDto }) {
+  return (
+    <Card size="small" title="Tỷ giá Ngân hàng" extra={<Tag color={STATUS_META[rate.status].color}>{STATUS_META[rate.status].label}</Tag>}>
+      <Descriptions size="small" column={2}>
+        <Descriptions.Item label="Giá mua">
+          <Typography.Text strong>{formatExchangeRate(rate.buyRate ?? rate.rate, 6)} VND/{rate.fromCurrency}</Typography.Text>
+        </Descriptions.Item>
+        <Descriptions.Item label="Giá bán">
+          <Typography.Text strong>{rate.sellRate ? `${formatExchangeRate(rate.sellRate, 6)} VND/${rate.fromCurrency}` : 'Chưa có'}</Typography.Text>
+        </Descriptions.Item>
+        <Descriptions.Item label="Người duyệt">{rate.approvedByName ?? 'Chưa duyệt'}</Descriptions.Item>
+        <Descriptions.Item label="Duyệt lúc">{rate.approvedAt ? formatDateTime(rate.approvedAt) : 'Chưa duyệt'}</Descriptions.Item>
+        <Descriptions.Item label="Hiệu lực">{formatDateTime(rate.effectiveFrom)}</Descriptions.Item>
+        <Descriptions.Item label="Hiệu lực đến">{rate.effectiveTo ? formatDateTime(rate.effectiveTo) : 'Hiện tại'}</Descriptions.Item>
+        <Descriptions.Item label="Mã bản ghi" span={2}>{rate.id}</Descriptions.Item>
+      </Descriptions>
+    </Card>
+  );
+}
+
+function HistoryRateDetail({ title, rate }: { title: string; rate: ExchangeRateHistoryDto }) {
+  return (
+    <Card size="small" title={title} extra={<Tag color={STATUS_META[rate.status].color}>{STATUS_META[rate.status].label}</Tag>}>
+      <Descriptions size="small" column={2}>
+        <Descriptions.Item label="Tỷ giá">
+          <Typography.Text strong>{formatExchangeRate(rate.rate, 6)} VND/{rate.fromCurrency}</Typography.Text>
+        </Descriptions.Item>
+        <Descriptions.Item label="Người duyệt">{rate.approvedByName ?? 'Chưa duyệt'}</Descriptions.Item>
+        <Descriptions.Item label="Duyệt lúc">{rate.approvedAt ? formatDateTime(rate.approvedAt) : 'Chưa duyệt'}</Descriptions.Item>
+        <Descriptions.Item label="Hiệu lực">{formatDateTime(rate.effectiveFrom)}</Descriptions.Item>
+        <Descriptions.Item label="Hiệu lực đến">{rate.effectiveTo ? formatDateTime(rate.effectiveTo) : 'Hiện tại'}</Descriptions.Item>
+        <Descriptions.Item label="Mã bản ghi">{rate.id}</Descriptions.Item>
+      </Descriptions>
+    </Card>
+  );
 }

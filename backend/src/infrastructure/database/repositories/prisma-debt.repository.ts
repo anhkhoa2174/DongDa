@@ -14,6 +14,7 @@ import {
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
 import { NotificationService } from '../../notifications/notification.service';
+import { canonicalActiveFundAccount } from '../canonical-fund-account';
 
 // movement_type nào là "tăng nợ"
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
@@ -97,19 +98,7 @@ export class PrismaDebtRepository implements IDebtRepository {
         ...(oddVndAmount > 0 ? [{ currency: 'VND' as const, amount: oddVndAmount, exchangeRate: 1 }] : []),
       ];
       const accountRows = await Promise.all(receipts.map(async (receipt) => {
-        return tx.fund_accounts.upsert({
-          where: {
-            branch_id_code: { branch_id: headOffice.id, code: `CASH_${receipt.currency}` },
-          },
-          update: {},
-          create: {
-            branch_id: headOffice.id,
-            code: `CASH_${receipt.currency}`,
-            name: `Quỹ tiền mặt ${receipt.currency}`,
-            account_type: 'CASH',
-            currency_code: receipt.currency,
-          },
-        });
+        return canonicalActiveFundAccount(tx, headOffice.id, receipt.currency, true);
       }));
       for (const account of [...accountRows].sort((left, right) => left.id.localeCompare(right.id))) {
         await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${account.id}::uuid FOR UPDATE`;
@@ -210,17 +199,7 @@ export class PrismaDebtRepository implements IDebtRepository {
       });
       if (!headOffice) throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO)');
 
-      const fundAccount = await tx.fund_accounts.upsert({
-        where: { branch_id_code: { branch_id: headOffice.id, code: 'CASH_VND' } },
-        update: {},
-        create: {
-          branch_id: headOffice.id,
-          code: 'CASH_VND',
-          name: 'Quỹ tiền mặt VND',
-          account_type: 'CASH',
-          currency_code: 'VND',
-        },
-      });
+      const fundAccount = await canonicalActiveFundAccount(tx, headOffice.id, 'VND', true);
       await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccount.id}::uuid FOR UPDATE`;
 
       const movementNo = `DEBT-CASH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;

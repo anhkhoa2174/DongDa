@@ -14,9 +14,8 @@ export enum DebtMovementType {
   REVERSAL = 'REVERSAL',
 }
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 // Trạng thái công nợ (suy ra từ số dư)
 export enum DebtStatus {

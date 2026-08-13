@@ -4,12 +4,12 @@ import { Card, Col, Row, Select, Statistic, Table, Tag, Typography, Alert, Butto
 import type { ColumnsType } from 'antd/es/table';
 import { ReloadOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatDateTime } from '@/shared/utils/formatters';
+import { formatDateTime, formatNumber } from '@/shared/utils/formatters';
 import { useFundReconciliation } from '../hooks/useReconciliation';
 import type { FundReconItemDto } from '../api/reconciliation.api';
 import { useBranches } from '@/modules/western-union/hooks/useWu';
 
-const money = (n: number) => n.toLocaleString('vi-VN');
+const money = (n: number) => formatNumber(n, 2);
 
 const STATUS_META: Record<FundReconItemDto['status'], { color: string; label: string }> = {
   MATCH: { color: 'green', label: 'Khớp' },

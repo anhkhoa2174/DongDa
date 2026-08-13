@@ -27,6 +27,7 @@ import {
   YAxis,
 } from 'recharts';
 import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { getCurrencyMetadata } from '@/shared/constants/currencies';
 import type { CompanyDashboardDto, SummaryDto } from '@/modules/reports/api/summary.api';
 import { useCompanyDashboard, useSummary } from '@/modules/reports/hooks/useSummary';
 import { BalanceOverviewCard } from '../components/BalanceOverviewCard';
@@ -36,6 +37,7 @@ type BranchStatus = CompanyDashboardDto['branches'][number];
 type CompanyExchangeRate = {
   id: string;
   label: string;
+  country: string;
   value: string;
   effectiveFrom: string;
 };
@@ -106,6 +108,7 @@ const sourceLabels = { WU: 'WU', MG: 'MG', FX: 'Ngoại tệ', DOMESTIC: 'Chuy�
 
 const rateColumns: ColumnsType<CompanyExchangeRate> = [
   { title: 'Tỷ giá', dataIndex: 'label', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
+  { title: 'Quốc gia', dataIndex: 'country' },
   {
     title: 'Giá trị',
     dataIndex: 'value',
@@ -209,7 +212,8 @@ export function CompanyDashboardPage() {
   const activeRates: CompanyExchangeRate[] = (dashboard?.activeRates ?? []).map((rate) => ({
     id: rate.id,
     label: rateLabel(rate),
-    value: formatExchangeRate(rate.rate),
+    country: getCurrencyMetadata(rate.fromCurrency).country,
+    value: formatExchangeRate(rate.rate, 6),
     effectiveFrom: rate.effectiveFrom,
   }));
   const visibleRates = activeRates.slice(0, MAX_VISIBLE_RATES);
@@ -287,7 +291,7 @@ export function CompanyDashboardPage() {
       <BalanceOverviewCard
         loading={isDashboardLoading}
         eyebrow="Tổng vốn công ty"
-        amount={(overview?.totalCapitalVnd ?? 0).toLocaleString('vi-VN')}
+        amount={formatExchangeRate(overview?.totalCapitalVnd ?? 0, 0)}
         statusTag={{
           label: changePercent === null || changePercent === undefined ? 'Hiện tại' : `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`,
           color: changePercent === null || changePercent === undefined ? 'default' : changePercent >= 0 ? 'green' : 'red',

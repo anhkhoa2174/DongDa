@@ -7,11 +7,10 @@ import { PrismaService } from '../prisma.service';
 import {
   BranchRef, CreateBranchInput, IBranchRepository,
 } from '../../../domain/repositories/branch.repository';
+import { canonicalFundAccount } from '../../../domain/entities/fund-account';
+import { FOREIGN_CURRENCIES } from '../../../domain/entities/currency';
 
-const FUND_A_CURRENCIES = [
-  'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-] as const;
+const FUND_A_CURRENCIES = FOREIGN_CURRENCIES.filter((currency) => currency !== 'USD');
 
 @Injectable()
 export class PrismaBranchRepository implements IBranchRepository {
@@ -60,13 +59,16 @@ export class PrismaBranchRepository implements IBranchRepository {
               account_type: 'CASH',
               currency_code: 'USD',
             },
-            ...FUND_A_CURRENCIES.map((currency) => ({
-              branch_id: created.id,
-              code: `FUND_A_${currency}`,
-              name: `Quỹ A ${currency}`,
-              account_type: 'FUND_A' as const,
-              currency_code: currency,
-            })),
+            ...FUND_A_CURRENCIES.map((currency) => {
+              const identity = canonicalFundAccount(currency);
+              return {
+                branch_id: created.id,
+                code: identity.code,
+                name: identity.name,
+                account_type: identity.accountType,
+                currency_code: currency,
+              };
+            }),
           ],
         });
         return created;

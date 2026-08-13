@@ -13,10 +13,8 @@ export enum FundTransferStatus {
   CANCELLED = 'CANCELLED', // bên gửi hủy trước khi xác nhận
 }
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW'
-  | 'CAD' | 'CHF' | 'NZD' | 'TWD' | 'MYR' | 'IDR' | 'PHP' | 'LAK' | 'KHR';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 export interface FundTransferItem {
   id: string;
@@ -67,12 +65,19 @@ export interface CentralFundSummary {
   fundA: CentralFundCurrencyBalance[];
   fundAValueVnd: number;
   centralCashValueVnd: number;
+  bankVnd: number;
+  bankUsd: number;
   bankValueVnd: number;
   debtVnd: number;
   debtUsd: number;
   debtValueVnd: number;
+  branchFundVnd: number;
+  branchFundUsd: number;
   branchFundValueVnd: number;
   totalCompanyFundVnd: number;
+  weekStartedAt: Date;
+  weeklyCapitalChangeVnd: number;
+  weeklyCapitalChangePercent: number | null;
   missingRateCurrencies: CurrencyCode[];
 }
 
@@ -90,6 +95,19 @@ export interface CentralFundMovement {
     amount: number;
     bankAccountId?: string;
   }>;
+  note?: string | null;
+  postedAt: Date;
+}
+
+export interface CentralFundConversion {
+  voucherNo: string;
+  items: Array<{
+    currencyCode: CurrencyCode;
+    amount: number;
+    rate: number;
+    vndAmount: number;
+  }>;
+  totalVndAmount: number;
   note?: string | null;
   postedAt: Date;
 }

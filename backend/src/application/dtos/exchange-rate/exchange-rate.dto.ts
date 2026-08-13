@@ -5,16 +5,15 @@ import {
   IsEnum, IsOptional, IsNumber, IsPositive, IsISO8601,
   IsInt, Min, Max, IsString, MaxLength,
   IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested,
+  IsIn,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   ExchangeRateType, RateStatus, ServiceProvider, CurrencyCode,
 } from '../../../domain/entities/exchange-rate.entity';
+import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
-const CURRENCIES: CurrencyCode[] = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES: CurrencyCode[] = [...SUPPORTED_CURRENCIES];
 
 export class CreateExchangeRateDto {
   @IsEnum(ExchangeRateType)
@@ -81,6 +80,10 @@ export class ExchangeRateHistoryQueryDto {
   @IsOptional()
   @IsEnum(ExchangeRateType)
   rateType?: ExchangeRateType;
+
+  @IsOptional()
+  @IsIn(['PAID', 'FX', 'BANK'])
+  rateGroup?: 'PAID' | 'FX' | 'BANK';
 
   @IsOptional()
   @IsISO8601()

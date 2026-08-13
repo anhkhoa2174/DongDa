@@ -5,9 +5,8 @@
 //   BÁN (is_buy=false): khách mua ngoại tệ từ công ty → Quỹ VND tăng, tồn ngoại tệ giảm
 // BR-F5.6: không cho bán vượt tồn (tồn ngoại tệ không âm).
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 export interface FxTransaction {
   id: string;

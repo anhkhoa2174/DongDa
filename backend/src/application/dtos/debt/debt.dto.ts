@@ -4,8 +4,9 @@
 import {
   IsDateString, IsEnum, IsInt, IsOptional, IsNumber, IsPositive, IsString, IsUUID, Max, Min,
 } from 'class-validator';
+import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
-const CURRENCIES = ['VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW'];
+const CURRENCIES = [...SUPPORTED_CURRENCIES];
 const PROVIDERS = ['WU', 'MG'];
 
 export class RecordDebtDto {

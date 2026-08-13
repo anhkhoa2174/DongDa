@@ -5,6 +5,7 @@ import { useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
@@ -57,6 +58,13 @@ export function MgWorkspacePage() {
       form.setFieldsValue({ branchId: user.branchId });
     }
   }, [form, isBranchUser, user?.branchId]);
+
+  const resetTransactionForm = () => {
+    form.resetFields();
+    if (isBranchUser && user?.branchId) {
+      form.setFieldValue('branchId', user.branchId);
+    }
+  };
 
   const paidCurrency = Form.useWatch('paidCurrency', form) ?? 'USD';
   const paidAmount = Number(Form.useWatch('paidAmount', form) ?? 0);
@@ -111,7 +119,7 @@ export function MgWorkspacePage() {
         paidCurrency: v.paidCurrency,
       });
       message.success('Đã tạo GD MG — quỹ giảm, công nợ MG tăng');
-      form.resetFields();
+      resetTransactionForm();
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Tạo GD thất bại');
     }
@@ -128,12 +136,20 @@ export function MgWorkspacePage() {
         <Col xs={24} xl={18}>
           <Card title="Tạo giao dịch MG" size="small">
             <Form form={form} layout="vertical" onFinish={onCreate}
+              onKeyDownCapture={preventNumberInputEnter}
               disabled={!canCreateTransaction}
-              initialValues={{ paidCurrency: 'USD', payoutCurrency: 'VND', paidAmount: 0, payoutAmount: 0, receivedUsd: 0, receivedVnd: 0 }}>
+              initialValues={{
+                branchId: isBranchUser ? user?.branchId : undefined,
+                paidCurrency: 'USD',
+                payoutCurrency: 'VND',
+                paidAmount: 0,
+                payoutAmount: 0,
+                receivedUsd: 0,
+                receivedVnd: 0,
+                appliedRate: 0,
+              }}>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
-                <Select placeholder="Chọn chi nhánh"
-                  disabled={isBranchUser}
-                  options={branchOptions} />
+                <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
               </Form.Item>
               <Row gutter={8}>
                 <Col span={12}><Form.Item
@@ -151,6 +167,7 @@ export function MgWorkspacePage() {
                 <Col span={12}><Form.Item name="paidAmount" label="Số tiền MG" rules={[positiveNumberRule('Số tiền MG')]}>
                   <InputNumber
                     min={0}
+                    keyboard={false}
                     precision={paidCurrency === 'USD' ? 2 : 0}
                     addonBefore={paidCurrency === 'USD' ? '$' : undefined}
                     addonAfter={paidCurrency === 'VND' ? 'VND' : undefined}
@@ -166,6 +183,7 @@ export function MgWorkspacePage() {
                 <Col span={12}><Form.Item name="payoutAmount" label="Số tiền khách nhận theo MG" rules={[positiveNumberRule('Số tiền khách nhận')]}>
                   <InputNumber
                     min={0}
+                    keyboard={false}
                     precision={payoutCurrency === 'USD' ? 2 : 0}
                     addonBefore={payoutCurrency === 'USD' ? '$' : undefined}
                     addonAfter={payoutCurrency === 'VND' ? 'VND' : undefined}

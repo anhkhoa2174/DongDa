@@ -10,8 +10,9 @@ import { useReconItems, useReconRuns, useRunReconciliation, useParseJournal } fr
 import type { ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
 import { useBranches } from '@/modules/western-union/hooks/useWu';
 import dayjs from 'dayjs';
+import { formatNumber } from '@/shared/utils/formatters';
 
-const money = (n: number) => n.toLocaleString('vi-VN');
+const money = (n: number) => formatNumber(n, 2);
 
 const ITEM_STATUS: Record<string, { color: string; label: string }> = {
   MATCHED: { color: 'green', label: 'Khớp' },

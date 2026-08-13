@@ -18,12 +18,19 @@ export interface CentralFundSummaryDto {
   fundA: CentralFundCurrencyBalanceDto[];
   fundAValueVnd: number;
   centralCashValueVnd: number;
+  bankVnd: number;
+  bankUsd: number;
   bankValueVnd: number;
   debtVnd: number;
   debtUsd: number;
   debtValueVnd: number;
+  branchFundVnd: number;
+  branchFundUsd: number;
   branchFundValueVnd: number;
   totalCompanyFundVnd: number;
+  weekStartedAt: string;
+  weeklyCapitalChangeVnd: number;
+  weeklyCapitalChangePercent: number | null;
   missingRateCurrencies: string[];
 }
 
@@ -44,6 +51,14 @@ export interface CentralFundMovementDto extends CreateCentralFundMovementPayload
     id: string;
     movementNo: string;
   }>;
+  postedAt: string;
+}
+
+export interface CentralFundConversionDto {
+  voucherNo: string;
+  items: Array<{ currencyCode: string; amount: number; rate: number; vndAmount: number }>;
+  totalVndAmount: number;
+  note?: string | null;
   postedAt: string;
 }
 
@@ -70,6 +85,9 @@ export const centralFundApi = {
     .then((response) => response.data),
   createBranchMovement: (payload: CreateCentralFundMovementPayload) => httpClient
     .post<CentralFundMovementDto>('/fund/branch-movements', payload)
+    .then((response) => response.data),
+  convertFundA: (payload: { items: Array<{ currencyCode: string; amount: number }>; note?: string }) => httpClient
+    .post<CentralFundConversionDto>('/fund/central-conversions', payload)
     .then((response) => response.data),
   getMovementHistory: (branchId?: string) => httpClient
     .get<FundMovementHistoryDto[]>('/fund/movement-history', { params: { branchId } })

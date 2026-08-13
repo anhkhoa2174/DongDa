@@ -8,6 +8,8 @@ export interface ParsedExchangeRateCandidate {
   fromCurrency: CurrencyCode;
   toCurrency: CurrencyCode;
   rate: number;
+  buyRate?: number;
+  sellRate?: number;
   confidence: number;
   sourceLabel: string;
   warning?: string;

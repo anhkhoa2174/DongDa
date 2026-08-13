@@ -547,7 +547,7 @@
   font-weight: 750;
 }
 
-.branch-fund-actions {
+.fund-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -557,16 +557,16 @@
   border-bottom: 1px solid #eceef1;
 }
 
-.branch-fund-actions > div:first-child .ant-typography {
+.fund-actions > div:first-child .ant-typography {
   display: block;
 }
 
-.branch-fund-actions > div:first-child .ant-typography-secondary {
+.fund-actions > div:first-child .ant-typography-secondary {
   margin-top: 2px;
   font-size: 12px;
 }
 
-.branch-fund-action--primary {
+.fund-action--primary {
   border-color: #e0a500 !important;
   background: #f5b301 !important;
   color: #111111 !important;
@@ -574,11 +574,40 @@
   box-shadow: 0 5px 14px rgba(245, 179, 1, 0.16);
 }
 
-.branch-fund-action--secondary {
+.fund-action--secondary {
   border-color: #111111 !important;
   background: #111111 !important;
   color: #f5b301 !important;
   box-shadow: 0 5px 14px rgba(17, 24, 39, 0.14);
+}
+
+.fund-action--primary:hover,
+.fund-action--primary:focus-visible {
+  border-color: #c89200 !important;
+  background: #e0a500 !important;
+  color: #111111 !important;
+}
+
+.fund-action--secondary:hover,
+.fund-action--secondary:focus-visible {
+  border-color: #2f2f2f !important;
+  background: #2f2f2f !important;
+  color: #f5b301 !important;
+}
+
+.fund-action--conversion {
+  border-color: #e0a500 !important;
+  background: #fff8df !important;
+  color: #8a5a00 !important;
+  font-weight: 700;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.18);
+}
+
+.fund-action--conversion:hover,
+.fund-action--conversion:focus-visible {
+  border-color: #c89200 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
 }
 
 .branch-fund-table-card .ant-card-body {
@@ -663,16 +692,16 @@
 }
 
 @media (max-width: 991px) {
-  .branch-fund-actions {
+  .fund-actions {
     align-items: flex-start;
     flex-direction: column;
   }
 }
 
 @media (max-width: 575px) {
-  .branch-fund-actions .ant-space,
-  .branch-fund-actions .ant-space-item,
-  .branch-fund-actions .ant-btn {
+  .fund-actions .ant-space,
+  .fund-actions .ant-space-item,
+  .fund-actions .ant-btn {
     width: 100%;
   }
 
@@ -706,18 +735,45 @@
   text-transform: uppercase;
 }
 
-.central-fund-overview__amount {
-  margin: 5px 0 4px !important;
+.central-fund-overview__amount-usd {
+  display: block;
+  margin-top: 6px;
   color: #ffffff !important;
-  font-size: 34px !important;
-  line-height: 1.2 !important;
+  font-size: 30px;
+  font-weight: 780;
+  line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.central-fund-overview__amount-vnd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 5px 0 8px;
+  color: #d4d4d4;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-overview__amount-vnd span {
+  flex: 0 0 auto;
+  color: #8f8f8f;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.central-fund-overview__amount-vnd strong {
+  min-width: 0;
+  color: #d4d4d4;
+  font-size: 18px;
+  font-weight: 680;
+  line-height: 1.3;
 }
 
 .central-fund-overview__meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(150px, 1fr));
-  min-width: 390px;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  min-width: 590px;
   border: 1px solid #2f2f2f;
   border-radius: 6px;
 }
@@ -734,6 +790,14 @@
 .central-fund-overview__meta span,
 .central-fund-overview__meta strong {
   display: block;
+}
+
+.central-fund-overview__meta strong.is-positive {
+  color: #86efac;
+}
+
+.central-fund-overview__meta strong.is-negative {
+  color: #fca5a5;
 }
 
 .central-fund-overview__meta span {
@@ -761,7 +825,7 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-  min-height: 102px;
+  min-height: 128px;
   padding: 18px;
   border-right: 1px solid #262626;
 }
@@ -791,17 +855,23 @@
   text-transform: uppercase;
 }
 
+.central-fund-kpi__values {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
 .central-fund-kpi__value {
-  margin-top: 5px;
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.3;
+  display: block;
+  color: #f5b301;
+  font-size: 23px;
+  font-weight: 780;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.central-fund-kpi__value--liability {
-  color: #f5b301;
+.central-fund-kpi__value--vnd {
+  font-size: 21px;
 }
 
 .central-fund-detail {
@@ -836,6 +906,75 @@
   flex: 0 0 auto;
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.fund-conversion-line-result {
+  min-height: 82px;
+  padding: 11px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.fund-conversion-line-result span,
+.fund-conversion-line-result strong,
+.fund-conversion-line-result small {
+  display: block;
+}
+
+.fund-conversion-line-result span {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fund-conversion-line-result strong {
+  margin-top: 3px;
+  color: #111827;
+  font-size: 16px;
+}
+
+.fund-conversion-line-result small {
+  margin-top: 2px;
+  color: #8a5a00;
+  font-weight: 650;
+}
+
+.fund-conversion-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 16px;
+  padding: 15px 18px;
+  border: 1px solid #e0a500;
+  border-radius: 6px;
+  background: #fffaf0;
+}
+
+.fund-conversion-total > span {
+  color: #6b7280;
+}
+
+.fund-conversion-total > div {
+  text-align: right;
+}
+
+.fund-conversion-total small,
+.fund-conversion-total strong {
+  display: block;
+}
+
+.fund-conversion-total small {
+  color: #8a5a00;
+  font-weight: 650;
+}
+
+.fund-conversion-total strong {
+  margin-top: 2px;
+  color: #111827;
+  font-size: 22px;
 }
 
 .fund-transfer-context {
@@ -912,6 +1051,67 @@
   padding-top: 4px;
   color: #64748b;
   font-size: 12px;
+}
+
+.exchange-rate-entry {
+  background: #ffffff;
+}
+
+.exchange-rate-entry__number {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #111111;
+  color: #f5b301;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.exchange-rate-tabs .ant-tabs-tab-btn {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.exchange-rate-code {
+  color: #111827 !important;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.exchange-rate-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.exchange-rate-value strong {
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.exchange-rate-value span {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.exchange-rate-value--compact strong {
+  font-size: 16px;
+}
+
+.exchange-rate-table .ant-table-thead > tr > th,
+.exchange-rate-table .ant-table-tbody > tr > td {
+  padding: 9px 10px !important;
+}
+
+.exchange-rate-table .ant-table-cell {
+  overflow-wrap: anywhere;
 }
 
 .branch-monitor-toolbar {
@@ -1329,6 +1529,18 @@
   color: #ffffff !important;
 }
 
+.fx-stock-row--active > td {
+  background: #fffbea !important;
+}
+
+.fx-stock-row--active:hover > td {
+  background: #fff6cc !important;
+}
+
+.fx-stock-row--empty > td {
+  color: #8c8c8c;
+}
+
 @media (max-width: 960px) {
   .central-fund-overview__header {
     flex-direction: column;
@@ -1388,8 +1600,18 @@
     padding: 20px;
   }
 
-  .central-fund-overview__amount {
-    font-size: 27px !important;
+  .central-fund-overview__amount-usd {
+    font-size: 25px;
+  }
+
+  .central-fund-overview__amount-vnd {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .central-fund-overview__amount-vnd strong {
+    font-size: 17px;
   }
 
   .central-fund-overview__meta,
@@ -1412,6 +1634,14 @@
     border-bottom: 1px solid #262626;
   }
 
+  .central-fund-kpi__value {
+    font-size: 21px;
+  }
+
+  .central-fund-kpi__value--vnd {
+    font-size: 19px;
+  }
+
   .central-fund-row {
     align-items: flex-start;
     flex-direction: column;
@@ -1419,6 +1649,15 @@
   }
 
   .central-fund-row__value {
+    text-align: left;
+  }
+
+  .fund-conversion-total {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fund-conversion-total > div {
     text-align: left;
   }
 

@@ -1,11 +1,12 @@
 // Flow 1 — Duyệt tỷ giá (nối API thật)
-import { Alert, App, Button, Card, Form, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, App, Button, Card, Col, Form, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd';
 import { CheckOutlined, CloseOutlined, DeleteOutlined, HistoryOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { CURRENCIES, currencyOptions, getCurrencyMetadata } from '@/shared/constants/currencies';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -15,18 +16,47 @@ import {
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
-  useActiveRates, useApproveRate, useCreateRate, useCreateRateBatch, useExchangeRates, useParseRateImage, useRejectRate,
+  useActiveRates, useApproveRate, useCreateRateBatch, useExchangeRates, useParseRateImage, useRejectRate,
 } from '../hooks/useExchangeRates';
 import type { CreateRatePayload, ExchangeRateDto, ExchangeRateType, ParsedRateCandidate, RateStatus, ServiceProvider } from '../api/exchangeRate.api';
 
 const RATE_TYPES: Array<{ value: ExchangeRateType; label: string }> = [
-  { value: 'PAID_BUY', label: 'Paid mua' },
-  { value: 'PAID_SELL', label: 'Paid bán' },
+  { value: 'PAID_BUY', label: 'Tỷ giá Paid - Mua' },
+  { value: 'PAID_SELL', label: 'Tỷ giá Paid - Bán' },
   { value: 'BANK_RATE', label: 'Tỷ giá ngân hàng' },
-  { value: 'FX_BUY', label: 'Mua ngoại tệ' },
-  { value: 'FX_SELL', label: 'Bán ngoại tệ' },
+  { value: 'FX_BUY', label: 'Tỷ giá mua/bán - Mua' },
+  { value: 'FX_SELL', label: 'Tỷ giá mua/bán - Bán' },
 ];
-const CURRENCIES = ['USD', 'EUR', 'JPY', 'GBP', 'SGD', 'AUD', 'CNY', 'KRW', 'THB', 'HKD', 'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR'];
+const RATE_CATEGORIES = [
+  { value: 'PAID', label: 'Tỷ giá Paid' },
+  { value: 'FX', label: 'Tỷ giá mua/bán' },
+  { value: 'BANK', label: 'Tỷ giá Ngân hàng' },
+] as const;
+const RATE_CURRENCY_OPTIONS = currencyOptions.filter((currency) => currency.value !== 'VND');
+
+type RateCategory = typeof RATE_CATEGORIES[number]['value'];
+type CreateRateEntry = {
+  category: RateCategory;
+  fromCurrency: string;
+  buyRate?: number;
+  sellRate?: number;
+};
+type CreateRatesForm = { rates: CreateRateEntry[] };
+const EMPTY_RATE: CreateRateEntry = {
+  category: 'FX',
+  fromCurrency: 'USD',
+  buyRate: 0,
+  sellRate: 0,
+};
+
+type PairedRateRow = {
+  key: string;
+  category: RateCategory;
+  fromCurrency: string;
+  buy?: ExchangeRateDto;
+  sell?: ExchangeRateDto;
+  bank?: ExchangeRateDto;
+};
 
 const STATUS_COLOR: Record<RateStatus, string> = {
   DRAFT: 'gold',
@@ -44,7 +74,6 @@ export function ExchangeRateApprovalPage() {
 
   const { data: activeRates = [], isLoading: isLoadingActive } = useActiveRates();
   const { data: pendingRates = [], isLoading: isLoadingPending } = useExchangeRates({ status: 'DRAFT' });
-  const createRate = useCreateRate();
   const approveRate = useApproveRate();
   const rejectRate = useRejectRate();
   const parseRateImage = useParseRateImage();
@@ -52,22 +81,43 @@ export function ExchangeRateApprovalPage() {
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageFiles, setImageFiles] = useState<UploadFile[]>([]);
   const [parsedRates, setParsedRates] = useState<ParsedRateCandidate[]>([]);
-  const [form] = Form.useForm<CreateRatePayload>();
-  const selectedRateType = Form.useWatch('rateType', form);
-  const selectedProvider = selectedRateType ? normalizeRateProvider(selectedRateType) : undefined;
+  const [form] = Form.useForm<CreateRatesForm>();
+  const watchedRates = Form.useWatch('rates', form) ?? [];
 
-  const onCreate = async (values: CreateRatePayload) => {
+  const onCreate = async (values: CreateRatesForm) => {
+    const identities = values.rates.map((rate) => `${rate.category}:${normalizeCurrencyCode(rate.fromCurrency)}`);
+    if (new Set(identities).size !== identities.length) {
+      message.error('Mỗi loại tỷ giá và ngoại tệ chỉ được thêm một lần trong danh sách');
+      return;
+    }
+
+    const payloads = values.rates.flatMap<CreateRatePayload>((entry) => {
+      const fromCurrency = entry.category === 'FX' ? normalizeCurrencyCode(entry.fromCurrency) : 'USD';
+      if (entry.category === 'PAID') {
+        return [
+          buildRatePayload('PAID_BUY', fromCurrency, Number(entry.buyRate)),
+          buildRatePayload('PAID_SELL', fromCurrency, Number(entry.sellRate)),
+        ];
+      }
+      if (entry.category === 'FX') {
+        return [
+          buildRatePayload('FX_BUY', fromCurrency, Number(entry.buyRate)),
+          buildRatePayload('FX_SELL', fromCurrency, Number(entry.sellRate)),
+        ];
+      }
+      return [{
+        ...buildRatePayload('BANK_RATE', fromCurrency, Number(entry.buyRate)),
+        buyRate: Number(entry.buyRate),
+        sellRate: Number(entry.sellRate),
+      }];
+    });
+
     try {
-      await createRate.mutateAsync({
-        ...values,
-        provider: normalizeRateProvider(values.rateType, values.provider),
-        fromCurrency: normalizeFormCurrency(values.fromCurrency),
-        toCurrency: 'VND',
-      });
-      message.success('Đã tạo tỷ giá thay thế (chờ duyệt)');
-      form.resetFields();
+      await createRateBatch.mutateAsync(payloads);
+      message.success(`Đã tạo ${values.rates.length} dòng tỷ giá chờ duyệt`);
+      form.setFieldsValue({ rates: [{ ...EMPTY_RATE }] });
     } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Tạo tỷ giá thất bại');
+      message.error(e?.response?.data?.message ?? 'Tạo danh sách tỷ giá thất bại');
     }
   };
 
@@ -103,6 +153,10 @@ export function ExchangeRateApprovalPage() {
 
   const saveImageDrafts = async () => {
     if (parsedRates.length === 0) return;
+    if (parsedRates.some((rate) => rate.rateType === 'BANK_RATE' && (!(rate.buyRate ?? rate.rate) || !rate.sellRate))) {
+      message.error('Tỷ giá Ngân hàng phải có đủ giá mua và giá bán');
+      return;
+    }
     try {
       await createRateBatch.mutateAsync(parsedRates.map((rate) => ({
         rateType: rate.rateType,
@@ -110,6 +164,8 @@ export function ExchangeRateApprovalPage() {
         fromCurrency: rate.fromCurrency,
         toCurrency: 'VND',
         rate: Number(rate.rate),
+        buyRate: rate.buyRate,
+        sellRate: rate.sellRate,
       })));
       message.success(`Đã tạo ${parsedRates.length} tỷ giá DRAFT chờ duyệt`);
       closeImageModal();
@@ -128,55 +184,87 @@ export function ExchangeRateApprovalPage() {
     setParsedRates((current) => current.map((rate, rateIndex) => rateIndex === index ? { ...rate, ...patch } : rate));
   };
 
-  const activeColumns: ColumnsType<ExchangeRateDto> = [
-    { title: 'Loại tỷ giá', dataIndex: 'rateType', render: (v, r) => (
-      <Space direction="vertical" size={0}>
-        <Typography.Text strong>{rateTypeLabel(v)}</Typography.Text>
-        <Typography.Text type="secondary">{rateUsageLabel(v, r.provider)}</Typography.Text>
-      </Space>
-    ) },
-    { title: 'Cặp tiền', render: (_, r) => `${r.fromCurrency}/${r.toCurrency}` },
-    { title: 'Tỷ giá', dataIndex: 'rate', align: 'right',
-      render: (v: number) => <Typography.Text strong>{formatExchangeRate(v)}</Typography.Text> },
-    { title: 'Trạng thái', dataIndex: 'status', render: () => <Tag color="green">ACTIVE</Tag> },
-    { title: 'Hiệu lực từ', dataIndex: 'effectiveFrom', render: (v: string) => formatTime(v) },
+  const activeRows = pairRates(activeRates);
+  const pendingRows = pairRates(pendingRates);
+
+  const pairedColumns: ColumnsType<PairedRateRow> = [
+    {
+      title: 'Loại tỷ giá',
+      dataIndex: 'category',
+      width: 150,
+      render: (value: RateCategory) => <Typography.Text strong>{rateCategoryLabel(value)}</Typography.Text>,
+    },
+    {
+      title: 'Ngoại tệ',
+      dataIndex: 'fromCurrency',
+      width: 120,
+      render: (value: string) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text className="exchange-rate-code">{value}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">{getCurrencyMetadata(value).name}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Quốc gia',
+      dataIndex: 'fromCurrency',
+      width: 145,
+      responsive: ['lg'],
+      render: (value: string) => getCurrencyMetadata(value).country,
+    },
+    { title: 'Giá mua', key: 'buyRate', align: 'right', width: 145, render: (_, row) => renderRowRate(row, 'buy') },
+    { title: 'Giá bán', key: 'sellRate', align: 'right', width: 145, render: (_, row) => renderRowRate(row, 'sell') },
+    {
+      title: 'Hiệu lực',
+      key: 'effectiveFrom',
+      align: 'right',
+      width: 90,
+      responsive: ['xl'],
+      render: (_, row) => formatTime(latestRate(row)?.effectiveFrom),
+    },
   ];
 
-  const pendingColumns: ColumnsType<ExchangeRateDto> = [
-    { title: 'Loại tỷ giá', dataIndex: 'rateType', render: (v, r) => (
-      <Space direction="vertical" size={0}>
-        <Typography.Text strong>{rateTypeLabel(v)}</Typography.Text>
-        <Typography.Text type="secondary">{rateUsageLabel(v, r.provider)}</Typography.Text>
-      </Space>
-    ) },
-    { title: 'Cặp tiền', render: (_, r) => `${r.fromCurrency}/${r.toCurrency}` },
-    { title: 'Tỷ giá mới', dataIndex: 'rate', align: 'right',
-      render: (v: number) => <Typography.Text strong>{formatExchangeRate(v)}</Typography.Text> },
-    { title: 'Trạng thái', dataIndex: 'status',
-      render: (s: RateStatus) => <Tag color={STATUS_COLOR[s]}>{s}</Tag> },
-    { title: 'Tạo lúc', dataIndex: 'createdAt', render: (v: string) => formatTime(v) },
-    {
-      title: 'Thao tác', key: 'action', fixed: 'right',
-      render: (_, r) =>
-        r.status === 'DRAFT' && canApprove ? (
-          <Space>
-            <Popconfirm title="Duyệt tỷ giá này?" onConfirm={() => onApprove(r.id)}>
-              <Button type="primary" size="small" icon={<CheckOutlined />}>Duyệt</Button>
+  const renderPendingActions = (row: PairedRateRow) => {
+    const rates = [
+      row.buy && { label: 'Mua', rate: row.buy },
+      row.sell && { label: 'Bán', rate: row.sell },
+      row.bank && { label: 'Ngân hàng', rate: row.bank },
+    ].filter(Boolean) as Array<{ label: string; rate: ExchangeRateDto }>;
+    if (!canApprove || rates.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+
+    return (
+      <Space direction="vertical" size={4}>
+        {rates.map(({ label, rate }) => (
+          <Space key={rate.id} size={2}>
+            <Typography.Text className="w-11 text-xs!" type="secondary">{label}</Typography.Text>
+            <Popconfirm title={`Duyệt giá ${label.toLowerCase()}?`} onConfirm={() => onApprove(rate.id)}>
+              <Tooltip title={`Duyệt giá ${label.toLowerCase()}`}><Button type="primary" size="small" aria-label={`Duyệt giá ${label}`} icon={<CheckOutlined />} /></Tooltip>
             </Popconfirm>
-            <Popconfirm title="Từ chối tỷ giá này?" onConfirm={() => onReject(r.id)}>
-              <Button danger size="small" icon={<CloseOutlined />}>Từ chối</Button>
+            <Popconfirm title={`Từ chối giá ${label.toLowerCase()}?`} onConfirm={() => onReject(rate.id)}>
+              <Tooltip title={`Từ chối giá ${label.toLowerCase()}`}><Button danger size="small" aria-label={`Từ chối giá ${label}`} icon={<CloseOutlined />} /></Tooltip>
             </Popconfirm>
           </Space>
-        ) : (
-          <Typography.Text type="secondary">—</Typography.Text>
-        ),
+        ))}
+      </Space>
+    );
+  };
+
+  const pendingColumns: ColumnsType<PairedRateRow> = [
+    ...pairedColumns.slice(0, 5),
+    {
+      title: 'Trạng thái',
+      key: 'status',
+      width: 92,
+      responsive: ['lg'],
+      render: () => <Tag color={STATUS_COLOR.DRAFT}>DRAFT</Tag>,
     },
+    { title: 'Thao tác', key: 'action', fixed: 'right', width: 125, render: (_, row) => renderPendingActions(row) },
   ];
 
   return (
     <PageScaffold
       title="Duyệt tỷ giá"
-      description="Chọn loại tỷ giá và ngoại tệ. Nhóm áp dụng được hệ thống tự xác định, không cần chọn provider thủ công."
+      description="Quản lý theo ba nhóm: tỷ giá Paid, tỷ giá mua/bán ngoại tệ và tỷ giá Ngân hàng. Giá mua và bán được tạo, đối chiếu theo cặp."
       moduleName="exchange-rate"
       extra={<Space wrap>
         {canManage && (
@@ -188,66 +276,93 @@ export function ExchangeRateApprovalPage() {
       </Space>}
     >
       {canManage && (
-        <Card title="Tạo tỷ giá mới" size="small" className="mb-4">
-          <Form form={form} layout="inline" onFinish={onCreate}>
-            <Form.Item name="rateType" rules={[{ required: true }]}>
-              <Select placeholder="Loại tỷ giá" style={{ width: 180 }}
-                options={RATE_TYPES} />
-            </Form.Item>
-            <Tag className="mt-1! h-8 px-3! leading-8!">
-              {selectedProvider ? `Nhóm: ${providerLabel(selectedProvider)}` : 'Nhóm tự động'}
-            </Tag>
-            <Form.Item name="fromCurrency" rules={[{ required: true }]}>
-              <Select
-                mode="tags"
-                maxCount={1}
-                placeholder="Ngoại tệ"
-                style={{ width: 130 }}
-                tokenSeparators={[',', ' ']}
-                onChange={(values) => {
-                  const value = normalizeCurrencyCode(values[values.length - 1]);
-                  form.setFieldValue('fromCurrency', value ? [value] : []);
-                }}
-                options={CURRENCIES.map((v) => ({ value: v, label: v }))} />
-            </Form.Item>
-            <Form.Item name="rate" rules={[{ required: true }]}>
-              <InputNumber placeholder="Tỷ giá (VND)" min={0} style={{ width: 150 }}
-                formatter={exchangeRateInputFormatter}
-                parser={exchangeRateInputParser} />
-            </Form.Item>
-            <Form.Item>
-              <Button type="primary" htmlType="submit" icon={<PlusOutlined />}
-                loading={createRate.isPending}>Tạo (chờ duyệt)</Button>
-            </Form.Item>
+        <Card title="Tạo danh sách tỷ giá" size="small" className="mb-4" extra={<Tag color="gold">Tạo hàng loạt</Tag>}>
+          <Form form={form} layout="vertical" initialValues={{ rates: [{ ...EMPTY_RATE }] }} onFinish={onCreate}>
+            <Form.List name="rates">
+              {(fields, { add, remove }) => (
+                <Space direction="vertical" size={12} className="w-full">
+                  {fields.map((field, index) => (
+                    <div key={field.key} className="fund-transfer-line exchange-rate-entry w-full">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <Space size={10}>
+                          <span className="exchange-rate-entry__number">{String(index + 1).padStart(2, '0')}</span>
+                          <div>
+                            <Typography.Text strong>Tỷ giá {index + 1}</Typography.Text>
+                            <Typography.Text type="secondary" className="block text-xs!">
+                              {watchedRates[index]?.category ? rateCategoryDescription(watchedRates[index].category) : 'Chọn nghiệp vụ áp dụng'}
+                            </Typography.Text>
+                          </div>
+                        </Space>
+                        <Button type="text" danger icon={<DeleteOutlined />} title="Xóa tỷ giá"
+                          disabled={fields.length === 1} onClick={() => remove(field.name)} />
+                      </div>
+                      <Row gutter={[12, 12]}>
+                        <Col xs={24} md={6}>
+                          <Form.Item {...field} name={[field.name, 'category']} label="Loại tỷ giá" className="mb-0"
+                            rules={[{ required: true, message: 'Chọn loại tỷ giá' }]}>
+                            <Select
+                              size="large"
+                              options={[...RATE_CATEGORIES]}
+                              onChange={(category: RateCategory) => {
+                                if (category !== 'FX') form.setFieldValue(['rates', field.name, 'fromCurrency'], 'USD');
+                              }}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={6}>
+                          <Form.Item {...field} name={[field.name, 'fromCurrency']} label="Ngoại tệ" className="mb-0"
+                            rules={[{ required: true, message: 'Chọn ngoại tệ' }]}>
+                            <CurrencyCodeSelect disabled={watchedRates[index]?.category !== 'FX'} />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={6}>
+                          <RateInput fieldName={field.name} name="buyRate" label="Giá mua" />
+                        </Col>
+                        <Col xs={24} md={6}>
+                          <RateInput fieldName={field.name} name="sellRate" label="Giá bán" />
+                        </Col>
+                      </Row>
+                    </div>
+                  ))}
+                  <Button type="dashed" block className="h-11!" icon={<PlusOutlined />}
+                    disabled={fields.length >= 50} onClick={() => add({ ...EMPTY_RATE })}>
+                    Thêm tỷ giá
+                  </Button>
+                </Space>
+              )}
+            </Form.List>
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <Typography.Text type="secondary">{watchedRates.length} tỷ giá trong danh sách</Typography.Text>
+              <Button type="primary" htmlType="submit" icon={<PlusOutlined />} size="large"
+                loading={createRateBatch.isPending}>Tạo danh sách chờ duyệt</Button>
+            </div>
           </Form>
         </Card>
       )}
 
-      <Card title="Tỷ giá đang ACTIVE" size="small" className="mb-4">
-        <Table<ExchangeRateDto>
-          rowKey="id"
-          loading={isLoadingActive}
-          columns={activeColumns}
-          dataSource={activeRates}
-          scroll={{ x: 900 }}
-          pagination={{ pageSize: 10 }}
-        />
+      <Card title="Bảng tỷ giá đang áp dụng" size="small" className="mb-4"
+        extra={<Tag color="green">ACTIVE</Tag>}>
+        <Table<PairedRateRow> className="exchange-rate-table" rowKey="key" loading={isLoadingActive} columns={pairedColumns}
+          dataSource={activeRows} scroll={{ x: 720 }} pagination={false} size="small" tableLayout="fixed" />
       </Card>
 
       <Card title="Tỷ giá thay thế chờ duyệt" size="small">
-        <Table<ExchangeRateDto>
-          rowKey="id"
+        <Table<PairedRateRow>
+          className="exchange-rate-table"
+          rowKey="key"
           loading={isLoadingPending}
           columns={pendingColumns}
-          dataSource={pendingRates}
-          scroll={{ x: 900 }}
+          dataSource={pendingRows}
+          scroll={{ x: 860 }}
+          size="small"
+          tableLayout="fixed"
           pagination={{ pageSize: 5 }}
         />
       </Card>
 
       <Modal
         title="Nhập bảng tỷ giá từ ảnh"
-        width={980}
+        width={900}
         open={imageModalOpen}
         onCancel={closeImageModal}
         destroyOnClose
@@ -294,10 +409,11 @@ export function ExchangeRateApprovalPage() {
 
         {parsedRates.length > 0 && (
           <Table
-            className="mt-4"
+            className="exchange-rate-table mt-4"
             rowKey={(_, index) => String(index)}
             pagination={false}
-            scroll={{ x: 850 }}
+            scroll={{ x: 760 }}
+            size="small"
             dataSource={parsedRates}
             columns={[
               { title: 'Loại', width: 165, render: (_, rate, index) => (
@@ -305,11 +421,21 @@ export function ExchangeRateApprovalPage() {
                   onChange={(rateType) => updateParsedRate(index, { rateType, provider: providerForRateType(rateType) })} />
               ) },
               { title: 'Ngoại tệ', width: 105, render: (_, rate, index) => (
-                <Select className="w-full" value={rate.fromCurrency} showSearch options={CURRENCIES.map((value) => ({ value }))}
+                <Select className="w-full" value={rate.fromCurrency} showSearch optionFilterProp="label"
+                  options={CURRENCIES.filter((currency) => currency.code !== 'VND').map((currency) => ({ value: currency.code, label: `${currency.code} - ${currency.country}` }))}
                   onChange={(fromCurrency) => updateParsedRate(index, { fromCurrency })} />
               ) },
-              { title: 'Tỷ giá', width: 170, render: (_, rate, index) => (
-                <InputNumber className="w-full" min={0.000001} value={rate.rate}
+              { title: 'Tỷ giá', width: 230, render: (_, rate, index) => rate.rateType === 'BANK_RATE' ? (
+                <Space direction="vertical" size={6} className="w-full">
+                  <InputNumber className="w-full" min={0.000001} value={rate.buyRate ?? rate.rate ?? 0}
+                    addonBefore="Mua" formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
+                    onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0), buyRate: Number(value ?? 0) })} />
+                  <InputNumber className="w-full" min={0.000001} value={rate.sellRate ?? 0}
+                    addonBefore="Bán" formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
+                    onChange={(value) => updateParsedRate(index, { sellRate: Number(value ?? 0) })} />
+                </Space>
+              ) : (
+                <InputNumber className="w-full" min={0.000001} value={rate.rate ?? 0}
                   formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
                   onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0) })} />
               ) },
@@ -344,48 +470,128 @@ function normalizeCurrencyCode(value?: string) {
   return String(value ?? '').replace(/[^a-z]/gi, '').toUpperCase().slice(0, 3);
 }
 
-function normalizeFormCurrency(value: string | string[]) {
-  return normalizeCurrencyCode(Array.isArray(value) ? value[value.length - 1] : value);
+function CurrencyCodeSelect({ value, onChange, disabled }: { value?: string; onChange?: (value: string) => void; disabled?: boolean }) {
+  return (
+    <Select
+      mode="tags"
+      maxCount={1}
+      size="large"
+      showSearch
+      optionFilterProp="label"
+      tokenSeparators={[',', ' ']}
+      value={value ? [value] : []}
+      options={RATE_CURRENCY_OPTIONS}
+      placeholder="Chọn hoặc nhập mã"
+      disabled={disabled}
+      onChange={(values) => onChange?.(normalizeCurrencyCode(values[values.length - 1]))}
+    />
+  );
 }
 
-function normalizeRateProvider(rateType: ExchangeRateType, provider?: ServiceProvider): ServiceProvider | undefined {
-  if (
-    rateType === 'PAID_BUY' ||
-    rateType === 'PAID_SELL' ||
-    rateType === 'WU_SYSTEM' ||
-    rateType === 'WU_PROVIDER' ||
-    rateType === 'MG_SYSTEM'
-  ) {
-    return 'WU_MG';
-  }
-
-  if (rateType === 'BANK_RATE') {
-    return 'BANK';
-  }
-
-  if (rateType === 'FX_BUY' || rateType === 'FX_SELL') {
-    return provider ?? 'INTERNAL';
-  }
-
-  return provider;
+function RateInput({ fieldName, name, label }: { fieldName: number; name: 'buyRate' | 'sellRate'; label: string }) {
+  return (
+    <Form.Item
+      name={[fieldName, name]}
+      label={label}
+      className="mb-0"
+      rules={[
+        { required: true, message: `Nhập ${label.toLowerCase()}` },
+        { type: 'number', min: 0.000001, message: `${label} phải lớn hơn 0` },
+      ]}
+    >
+      <InputNumber
+        className="w-full"
+        size="large"
+        min={0.000001}
+        precision={6}
+        step={0.01}
+        controls={false}
+        addonAfter="VND"
+        formatter={exchangeRateInputFormatter}
+        parser={exchangeRateInputParser}
+      />
+    </Form.Item>
+  );
 }
 
-function providerLabel(provider: ServiceProvider) {
-  if (provider === 'WU_MG') return 'WU/MG';
-  if (provider === 'BANK') return 'Ngân hàng';
-  if (provider === 'INTERNAL') return 'Nội bộ';
-  return provider;
+function buildRatePayload(rateType: ExchangeRateType, fromCurrency: string, rate: number): CreateRatePayload {
+  return {
+    rateType,
+    provider: providerForRateType(rateType),
+    fromCurrency,
+    toCurrency: 'VND',
+    rate,
+  };
 }
 
-function rateTypeLabel(rateType: ExchangeRateType) {
-  return RATE_TYPES.find((option) => option.value === rateType)?.label ?? rateType;
+function rateCategoryLabel(category: RateCategory) {
+  return RATE_CATEGORIES.find((option) => option.value === category)?.label ?? category;
 }
 
-function rateUsageLabel(rateType: ExchangeRateType, provider?: ServiceProvider | null) {
-  if (rateType === 'PAID_BUY') return 'WU/MG - khách nhận VND';
-  if (rateType === 'PAID_SELL') return 'WU/MG - khách nhận USD';
-  if (rateType === 'BANK_RATE') return 'Công nợ USD lẻ';
-  if (rateType === 'FX_BUY') return 'Mua ngoại tệ từ khách';
-  if (rateType === 'FX_SELL') return 'Bán ngoại tệ cho khách';
-  return provider ? providerLabel(provider) : 'Nhóm tự động';
+function rateCategoryDescription(category: RateCategory) {
+  if (category === 'PAID') return 'Cặp Paid mua và Paid bán dùng cho WU/MG';
+  if (category === 'FX') return 'Cặp giá công ty mua và bán ngoại tệ';
+  return 'Cặp giá mua/bán ngân hàng; giá mua dùng giải quyết công nợ USD lẻ';
+}
+
+function categoryForRate(rateType: ExchangeRateType): RateCategory | null {
+  if (rateType === 'PAID_BUY' || rateType === 'PAID_SELL') return 'PAID';
+  if (rateType === 'FX_BUY' || rateType === 'FX_SELL') return 'FX';
+  if (rateType === 'BANK_RATE') return 'BANK';
+  return null;
+}
+
+function pairRates(rates: ExchangeRateDto[]): PairedRateRow[] {
+  const groups = new Map<string, { category: RateCategory; fromCurrency: string; buy: ExchangeRateDto[]; sell: ExchangeRateDto[]; bank: ExchangeRateDto[] }>();
+
+  rates.forEach((rate) => {
+    const category = categoryForRate(rate.rateType);
+    if (!category) return;
+    const baseKey = `${category}:${rate.fromCurrency}`;
+    const group = groups.get(baseKey) ?? { category, fromCurrency: rate.fromCurrency, buy: [], sell: [], bank: [] };
+    if (rate.rateType === 'PAID_BUY' || rate.rateType === 'FX_BUY') group.buy.push(rate);
+    else if (rate.rateType === 'PAID_SELL' || rate.rateType === 'FX_SELL') group.sell.push(rate);
+    else group.bank.push(rate);
+    groups.set(baseKey, group);
+  });
+
+  const rows = [...groups.entries()].flatMap(([baseKey, group]) => {
+    const newestFirst = (a: ExchangeRateDto, b: ExchangeRateDto) => Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    group.buy.sort(newestFirst);
+    group.sell.sort(newestFirst);
+    group.bank.sort(newestFirst);
+    const rowCount = Math.max(group.buy.length, group.sell.length, group.bank.length);
+    return Array.from({ length: rowCount }, (_, index) => ({
+      key: `${baseKey}:${index}`,
+      category: group.category,
+      fromCurrency: group.fromCurrency,
+      buy: group.buy[index],
+      sell: group.sell[index],
+      bank: group.bank[index],
+    }));
+  });
+
+  const categoryOrder: Record<RateCategory, number> = { PAID: 0, FX: 1, BANK: 2 };
+  return rows.sort((a, b) => categoryOrder[a.category] - categoryOrder[b.category]
+    || a.fromCurrency.localeCompare(b.fromCurrency));
+}
+
+function latestRate(row: PairedRateRow) {
+  return [row.buy, row.sell, row.bank]
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b!.effectiveFrom) - Date.parse(a!.effectiveFrom))[0];
+}
+
+function renderRowRate(row: PairedRateRow, side: 'buy' | 'sell') {
+  const rate = row.category === 'BANK' ? row.bank : side === 'buy' ? row.buy : row.sell;
+  const value = row.category === 'BANK'
+    ? (side === 'buy' ? rate?.buyRate ?? rate?.rate : rate?.sellRate)
+    : rate?.rate;
+  if (!rate || value === null || value === undefined) return <Typography.Text type="secondary">—</Typography.Text>;
+  return (
+    <div className="exchange-rate-value">
+      <strong>{formatExchangeRate(value, 6)}</strong>
+      <span>VND/{rate.fromCurrency}</span>
+    </div>
+  );
 }

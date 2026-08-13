@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { RoleGuard } from '@/app/guards/RoleGuard';
 import { BranchFundsPage, CentralFundPage } from './pages/FundManagementPage';
 import { CentralFundMovementPage } from './pages/CentralFundMovementPage';
+import { CentralFundConversionPage } from './pages/CentralFundConversionPage';
 
 export const fundManagementRoutes = [
   {
@@ -21,6 +22,14 @@ export const fundManagementRoutes = [
     element: (
       <RoleGuard allowedRoles={['director', 'accountant', 'auditor']} requiredPermission="fund.view">
         <CentralFundPage />
+      </RoleGuard>
+    ),
+  },
+  {
+    path: 'fund-management/central-fund/convert-fund-a',
+    element: (
+      <RoleGuard allowedRoles={['director', 'accountant']} requiredPermission="fund.view">
+        <CentralFundConversionPage />
       </RoleGuard>
     ),
   },

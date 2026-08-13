@@ -24,7 +24,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   [UserRole.MANAGER]: [
     'transaction:read', 'transaction:create', 'transaction:update', 'transaction:void', 'transaction:approve',
     'shift:read',
-    'exchange-rate:read',
+    'exchange-rate:read', 'exchange-rate:manage', 'exchange-rate:approve',
     'report:read', 'report:export',
     'capital-transfer:create', 'capital-transfer:read',
     'debt:settle',

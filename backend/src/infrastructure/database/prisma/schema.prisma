@@ -726,7 +726,7 @@ model fund_accounts {
   fund_transfer_items_fund_transfer_items_source_account_idTofund_accounts      fund_transfer_items[]    @relation("fund_transfer_items_source_account_idTofund_accounts")
   ledger_lines                                                                  ledger_lines[]
 
-  // Partial UNIQUE cho CASH/FUND_A ACTIVE theo (branch_id, account_type, currency_code)
+  // Partial UNIQUE cho CASH/FUND_A ACTIVE theo (branch_id, currency_code)
   // được quản bằng raw SQL trong migration để vẫn giữ được account INACTIVE phục vụ audit.
   @@unique([branch_id, code], map: "uq_fund_accounts_branch_code")
   @@index([branch_id], map: "idx_fund_accounts_branch")

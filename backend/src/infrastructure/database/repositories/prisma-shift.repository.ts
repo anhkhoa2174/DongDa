@@ -9,6 +9,7 @@ import {
 import { Shift, CashCount, CurrencyCode, CountInput } from '../../../domain/entities/shift.entity';
 import { NotificationService } from '../../notifications/notification.service';
 import { toVietnamBusinessDate } from '../business-date';
+import { canonicalFundAccount } from '../../../domain/entities/fund-account';
 
 @Injectable()
 export class PrismaShiftRepository implements IShiftRepository {
@@ -121,10 +122,10 @@ export class PrismaShiftRepository implements IShiftRepository {
 
       const accounts = await this.fundAccounts(tx, branchId, c.currency);
       if (accounts.length === 0) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ để kiểm ${c.currency}`);
-      const canonicalCode = c.currency === 'VND' || c.currency === 'USD'
-        ? `CASH_${c.currency}`
-        : `FUND_A_${c.currency}`;
-      const canonicalAccount = accounts.find((account) => account.code === canonicalCode) ?? accounts[0];
+      const identity = canonicalFundAccount(c.currency);
+      const canonicalAccount = accounts.find((account) => account.code === identity.code)
+        ?? accounts.find((account) => account.account_type === identity.accountType)
+        ?? accounts[0];
       let system = 0;
       for (const account of accounts) {
         await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${account.id}::uuid FOR UPDATE`;
@@ -164,22 +165,19 @@ export class PrismaShiftRepository implements IShiftRepository {
     };
   }
 
-  // VND/USD → CASH ; ngoại tệ khác → FUND_A
   private async fundAccounts(
     tx: any,
     branchId: string,
     currency: CurrencyCode,
-  ): Promise<Array<{ id: string; code: string }>> {
-    if (currency === 'VND' || currency === 'USD') {
-      return tx.fund_accounts.findMany({
-        where: { branch_id: branchId, account_type: 'CASH', currency_code: currency, status: 'ACTIVE' },
-        select: { id: true, code: true },
-        orderBy: { code: 'asc' },
-      });
-    }
+  ): Promise<Array<{ id: string; code: string; account_type: 'CASH' | 'FUND_A' }>> {
     return tx.fund_accounts.findMany({
-      where: { branch_id: branchId, account_type: 'FUND_A', currency_code: currency, status: 'ACTIVE' },
-      select: { id: true, code: true },
+      where: {
+        branch_id: branchId,
+        account_type: { in: ['CASH', 'FUND_A'] },
+        currency_code: currency,
+        status: 'ACTIVE',
+      },
+      select: { id: true, code: true, account_type: true },
       orderBy: { code: 'asc' },
     });
   }

@@ -30,6 +30,7 @@ import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -98,6 +99,8 @@ type TransactionWorkspacePageProps = {
   createOnly?: boolean;
   showHistory?: boolean;
   showBackButton?: boolean;
+  showShiftHeader?: boolean;
+  canCreateOverride?: boolean;
   onCreated?: () => void;
 };
 
@@ -129,6 +132,8 @@ export function TransactionWorkspacePage({
   createOnly = false,
   showHistory = true,
   showBackButton = false,
+  showShiftHeader = true,
+  canCreateOverride,
   onCreated,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
@@ -138,7 +143,7 @@ export function TransactionWorkspacePage({
   const user = useAuthStore((state) => state.user);
   const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(user?.role, currentShift);
-  const canCreate = access.canCreate || isUiTestMode;
+  const canCreate = canCreateOverride ?? (access.canCreate || isUiTestMode);
   const canUpdate = access.canUpdate || isUiTestMode;
   const canVoid = access.canVoid || isUiTestMode;
   const canAdjustClosed = access.canAdjustClosed || isUiTestMode;
@@ -323,11 +328,12 @@ export function TransactionWorkspacePage({
           }
     >
           {!createOnly && formNotice}
-          <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />
+          {showShiftHeader && <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />}
           <Form<TransactionFormValues>
             form={createForm}
             layout="vertical"
             onFinish={submitCreateTransaction}
+            onKeyDownCapture={preventNumberInputEnter}
             disabled={!canCreate}
             initialValues={initialFormValues}
             onValuesChange={(changedValues, allValues) =>
@@ -644,6 +650,7 @@ function renderField(
         min={field.min ?? 0}
         precision={field.precision}
         controls={false}
+        keyboard={false}
         prefix={field.prefix}
         formatter={inputFormatter}
         parser={inputParser}
@@ -659,7 +666,7 @@ function renderField(
 function formatNumberInputTooltip(value: number | undefined, maximumFractionDigits: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
 
-  return new Intl.NumberFormat('vi-VN', {
+  return new Intl.NumberFormat('en-US', {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(value);

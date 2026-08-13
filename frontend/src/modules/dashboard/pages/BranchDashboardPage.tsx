@@ -6,68 +6,28 @@ import {
   SwapOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Card, Col, Descriptions, Empty, Row, Space, Table, Tag, Typography } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Button, Card, Col, Descriptions, Empty, Row, Space, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import {
   useBranchActivity,
   useBranchFunds,
 } from '@/modules/branch-management/hooks/useBranchMonitoring';
-import type { FundCurrencyBalanceDto } from '@/modules/branch-management/api/branchMonitoring.api';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useTransactionShift } from '@/modules/transactions/hooks/useTransactionShift';
 import { getTransactionAccess } from '@/modules/transactions/model/transactionAccess';
 import {
   formatDateTime,
   formatExchangeRate,
-  formatForeignCurrency,
   formatUsd,
   formatVnd,
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { BalanceOverviewCard } from '../components/BalanceOverviewCard';
 import { dashboardActionIcons } from '../constants/actionIcons';
 import { KpiGrid } from '../components/KpiGrid';
 import { RateCard } from '../components/RateCard';
-
-const fundAColumns: ColumnsType<FundCurrencyBalanceDto> = [
-  {
-    title: 'Ngoại tệ',
-    dataIndex: 'currency',
-    render: (value: string, record) => (
-      <Space direction="vertical" size={0}>
-        <Typography.Text strong>{value}</Typography.Text>
-        <Typography.Text type="secondary">{record.name}</Typography.Text>
-      </Space>
-    ),
-  },
-  {
-    title: 'Số lượng',
-    dataIndex: 'amount',
-    align: 'right',
-    render: (value: number, record) => formatForeignCurrency(value, record.currency),
-  },
-  {
-    title: 'Tỷ giá mua',
-    dataIndex: 'buyRate',
-    align: 'right',
-    render: (value: number) => value > 0 ? formatExchangeRate(value) : 'Chưa có',
-  },
-  {
-    title: 'Quy đổi VND',
-    dataIndex: 'vndValue',
-    align: 'right',
-    render: (value: number) => formatVnd(value),
-  },
-  {
-    title: 'Trạng thái',
-    dataIndex: 'amount',
-    render: (value: number) => value < 0
-      ? <Tag color="red">Âm quỹ</Tag>
-      : value === 0 ? <Tag>Hết quỹ</Tag> : <Tag color="green">Có sẵn</Tag>,
-  },
-];
 
 function sparkline(values: number[]) {
   const normalized = values.length > 0 ? values.slice(-7) : [0];
@@ -93,6 +53,14 @@ export function BranchDashboardPage() {
   const sourceCount = (source: 'WU' | 'MG' | 'FX' | 'DOMESTIC') =>
     activity?.sourceMix.find((item) => item.source === source)?.count ?? 0;
   const pendingCount = funds?.pendingTransferCount ?? 0;
+  const fundABalanceRows = (funds?.fundA ?? []).map((item) => ({
+    key: `FUND_A:${item.currency}`,
+    currencyCode: item.currency,
+    accountType: 'FUND_A',
+    accountName: item.name,
+    accountCode: `FUND_A_${item.currency}`,
+    balance: item.amount,
+  }));
   const alerts = [
     ...(!hasOpenShift ? [{ type: 'warning' as const, message: 'Chi nhánh chưa mở ca làm việc.' }] : []),
     ...(funds?.status === 'NEEDS_RECONCILIATION'
@@ -149,7 +117,7 @@ export function BranchDashboardPage() {
       <BalanceOverviewCard
         loading={isFundsLoading}
         eyebrow={`Chi nhánh ${user?.branchName ?? branchId}`}
-        amount={(funds?.currentFundValueVnd ?? 0).toLocaleString('vi-VN')}
+        amount={formatExchangeRate(funds?.currentFundValueVnd ?? 0, 0)}
         statusTag={{
           label: funds?.status === 'NEEDS_RECONCILIATION' ? 'Cần đối chiếu' : funds?.status === 'LOW_CASH' ? 'Âm quỹ' : 'Bình thường',
           color: funds?.status === 'NEEDS_RECONCILIATION' ? 'gold' : funds?.status === 'LOW_CASH' ? 'red' : 'green',
@@ -238,7 +206,7 @@ export function BranchDashboardPage() {
       <Row gutter={[16, 16]} align="stretch">
         <Col xs={24} xl={16} className="flex">
           <Card title="Danh sách Quỹ A" extra={<Tag>{funds?.fundA.length ?? 0} ngoại tệ</Tag>} loading={isFundsLoading} className="w-full">
-            <Table columns={fundAColumns} dataSource={funds?.fundA ?? []} rowKey="currency" pagination={false} size="middle" locale={{ emptyText: 'Chưa có tồn Quỹ A' }} />
+            <FundBalanceTable items={fundABalanceRows} emptyText="Chưa có tồn Quỹ A" />
           </Card>
         </Col>
         <Col xs={24} xl={8} className="flex">

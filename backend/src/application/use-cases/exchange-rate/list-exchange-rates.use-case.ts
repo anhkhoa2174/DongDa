@@ -29,6 +29,7 @@ export class ListExchangeRatesUseCase {
     return this.rateRepo.findHistory({
       status: query.status,
       rateType: query.rateType,
+      rateGroup: query.rateGroup,
       keyword: query.keyword,
       createdFrom: query.from ? vietnamDayStart(query.from) : undefined,
       createdToExclusive: query.to ? vietnamNextDayStart(query.to) : undefined,

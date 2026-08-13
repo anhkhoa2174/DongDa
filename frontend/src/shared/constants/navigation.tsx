@@ -49,7 +49,7 @@ export const navigationItems: AppMenuItem[] = [
   {
     key: '/fund-management/central-fund',
     icon: <WalletOutlined />,
-    label: 'Quỹ',
+    label: 'Quỹ Chung',
     path: '/fund-management/central-fund',
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'fund.view',
@@ -57,7 +57,7 @@ export const navigationItems: AppMenuItem[] = [
   {
     key: '/fund-management/branch-funds',
     icon: <WalletOutlined />,
-    label: 'Quỹ',
+    label: 'Quỹ chi nhánh',
     path: '/fund-management/branch-funds',
     allowedRoles: ['branch'],
   },

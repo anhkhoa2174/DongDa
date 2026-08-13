@@ -93,9 +93,12 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
 
   async findHistory(filter: ExchangeRateHistoryFilter): Promise<ExchangeRateHistoryResult> {
     const keyword = filter.keyword?.trim();
+    const groupedRateTypes = filter.rateGroup ? rateTypesForGroup(filter.rateGroup) : undefined;
     const where: Prisma.exchange_ratesWhereInput = {
       ...(filter.status && { status: filter.status }),
-      ...(filter.rateType && { rate_type: filter.rateType }),
+      ...(filter.rateType
+        ? { rate_type: filter.rateType }
+        : groupedRateTypes && { rate_type: { in: groupedRateTypes } }),
       ...((filter.createdFrom || filter.createdToExclusive) && {
         created_at: {
           ...(filter.createdFrom && { gte: filter.createdFrom }),
@@ -111,31 +114,51 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
       }),
     };
 
-    const [total, rows] = await this.prisma.$transaction([
-      this.prisma.exchange_rates.count({ where }),
-      this.prisma.exchange_rates.findMany({
-        where,
-        include: {
-          users_exchange_rates_created_by_user_idTousers: {
-            select: { employees: { select: { full_name: true } } },
-          },
-          users_exchange_rates_approved_by_user_idTousers: {
-            select: { employees: { select: { full_name: true } } },
-          },
+    const rows = await this.prisma.exchange_rates.findMany({
+      where,
+      include: {
+        users_exchange_rates_created_by_user_idTousers: {
+          select: { employees: { select: { full_name: true } } },
         },
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        skip: (filter.page - 1) * filter.pageSize,
-        take: filter.pageSize,
-      }),
-    ]);
+        users_exchange_rates_approved_by_user_idTousers: {
+          select: { employees: { select: { full_name: true } } },
+        },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
 
-    return {
-      items: rows.map((row) => ({
+    const groups = new Map<string, ExchangeRateHistoryResult['items'][number]>();
+    for (const row of rows) {
+      const rate = {
         ...toDomain(row),
         createdByName: row.users_exchange_rates_created_by_user_idTousers.employees.full_name,
         approvedByName: row.users_exchange_rates_approved_by_user_idTousers?.employees.full_name ?? null,
-      })),
-      total,
+      };
+      const category = historyCategory(rate.rateType);
+      if (!category) continue;
+      const key = `${row.created_by_user_id}:${row.created_at.toISOString()}:${category}:${row.from_currency}:${row.to_currency}`;
+      const group = groups.get(key) ?? {
+        id: key,
+        category,
+        fromCurrency: rate.fromCurrency,
+        toCurrency: rate.toCurrency,
+        createdByName: rate.createdByName,
+        createdByUserId: rate.createdByUserId,
+        createdAt: rate.createdAt,
+      };
+
+      if (rate.rateType === ExchangeRateType.PAID_BUY || rate.rateType === ExchangeRateType.FX_BUY) group.buy = rate;
+      else if (rate.rateType === ExchangeRateType.PAID_SELL || rate.rateType === ExchangeRateType.FX_SELL) group.sell = rate;
+      else group.bank = rate;
+      groups.set(key, group);
+    }
+
+    const groupedItems = [...groups.values()];
+    const start = (filter.page - 1) * filter.pageSize;
+
+    return {
+      items: groupedItems.slice(start, start + filter.pageSize),
+      total: groupedItems.length,
       page: filter.page,
       pageSize: filter.pageSize,
     };
@@ -186,6 +209,19 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
     });
     return toDomain(row);
   }
+}
+
+function rateTypesForGroup(group: 'PAID' | 'FX' | 'BANK') {
+  if (group === 'PAID') return [ExchangeRateType.PAID_BUY, ExchangeRateType.PAID_SELL];
+  if (group === 'FX') return [ExchangeRateType.FX_BUY, ExchangeRateType.FX_SELL];
+  return [ExchangeRateType.BANK_RATE];
+}
+
+function historyCategory(rateType: ExchangeRateType): 'PAID' | 'FX' | 'BANK' | null {
+  if (rateType === ExchangeRateType.PAID_BUY || rateType === ExchangeRateType.PAID_SELL) return 'PAID';
+  if (rateType === ExchangeRateType.FX_BUY || rateType === ExchangeRateType.FX_SELL) return 'FX';
+  if (rateType === ExchangeRateType.BANK_RATE) return 'BANK';
+  return null;
 }
 
 function toDomain(row: any): ExchangeRate {

@@ -9,6 +9,7 @@ export type ListRatesParams = { status?: RateStatus; rateType?: ExchangeRateType
 export interface ExchangeRateHistoryParams {
   status?: RateStatus;
   rateType?: ExchangeRateType;
+  rateGroup?: ExchangeRateGroup;
   from?: string;
   to?: string;
   keyword?: string;
@@ -39,8 +40,23 @@ export interface ExchangeRateHistoryDto extends ExchangeRateDto {
   approvedByName?: string | null;
 }
 
+export type ExchangeRateGroup = 'PAID' | 'FX' | 'BANK';
+
+export interface ExchangeRateHistoryGroupDto {
+  id: string;
+  category: ExchangeRateGroup;
+  fromCurrency: string;
+  toCurrency: string;
+  createdByName: string;
+  createdByUserId: string;
+  createdAt: string;
+  buy?: ExchangeRateHistoryDto;
+  sell?: ExchangeRateHistoryDto;
+  bank?: ExchangeRateHistoryDto;
+}
+
 export interface ExchangeRateHistoryResponse {
-  items: ExchangeRateHistoryDto[];
+  items: ExchangeRateHistoryGroupDto[];
   total: number;
   page: number;
   pageSize: number;
@@ -49,7 +65,7 @@ export interface ExchangeRateHistoryResponse {
 export interface CreateRatePayload {
   rateType: ExchangeRateType;
   provider?: ServiceProvider;
-  fromCurrency: string | string[];
+  fromCurrency: string;
   toCurrency?: string;
   buyRate?: number;
   sellRate?: number;
@@ -62,6 +78,8 @@ export interface ParsedRateCandidate {
   fromCurrency: string;
   toCurrency: 'VND';
   rate: number;
+  buyRate?: number;
+  sellRate?: number;
   confidence: number;
   sourceLabel: string;
   warning?: string;

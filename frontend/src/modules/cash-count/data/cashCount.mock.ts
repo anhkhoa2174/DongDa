@@ -38,7 +38,7 @@ export const cashCountsMock: CashCountRecord[] = [
     actual: 276_300_000,
     difference: -180_000,
     denominations: [],
-    note: 'Chênh lệch -180.000 ₫ — chờ giải trình',
+    note: 'Chênh lệch -180,000 ₫ — chờ giải trình',
   },
   {
     id: 'cc-3',
@@ -53,7 +53,7 @@ export const cashCountsMock: CashCountRecord[] = [
     actual: 187_420_000,
     difference: 25_000,
     denominations: [],
-    note: 'Thừa 25.000 ₫ — làm tròn tiền lẻ',
+    note: 'Thừa 25,000 ₫ — làm tròn tiền lẻ',
   },
 ];
 

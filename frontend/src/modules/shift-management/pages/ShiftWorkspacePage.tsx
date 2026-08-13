@@ -81,19 +81,16 @@ function accountTypeLabel(accountType: string) {
 
 function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
   const grouped = balances
-    .filter((item) => {
-      if (item.accountType === 'CASH') return item.currencyCode === 'VND' || item.currencyCode === 'USD';
-      if (item.accountType === 'FUND_A') return item.currencyCode !== 'VND' && item.currencyCode !== 'USD';
-      return false;
-    })
+    .filter((item) => item.accountType === 'CASH' || item.accountType === 'FUND_A')
     .reduce<Map<string, CountItem>>((result, item) => {
-      const key = `${item.accountType}-${item.currencyCode}`;
+      const key = item.currencyCode;
       const current = result.get(key);
+      const isBaseCash = item.currencyCode === 'VND' || item.currencyCode === 'USD';
       result.set(key, {
         key,
         code: item.currencyCode,
-        name: current?.name ?? item.name,
-        accountType: item.accountType,
+        name: isBaseCash ? `Quỹ tiền mặt ${item.currencyCode}` : `Quỹ A ${item.currencyCode}`,
+        accountType: isBaseCash ? 'CASH' : 'FUND_A',
         balance: (current?.balance ?? 0) + item.balance,
       });
       return result;

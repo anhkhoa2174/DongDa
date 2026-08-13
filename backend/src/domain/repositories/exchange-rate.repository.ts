@@ -31,6 +31,7 @@ export interface ListRatesFilter {
 export interface ExchangeRateHistoryFilter {
   status?: RateStatus;
   rateType?: ExchangeRateType;
+  rateGroup?: 'PAID' | 'FX' | 'BANK';
   page: number;
   pageSize: number;
   keyword?: string;
@@ -44,10 +45,23 @@ export interface ExchangeRateHistoryItem extends ExchangeRate {
 }
 
 export interface ExchangeRateHistoryResult {
-  items: ExchangeRateHistoryItem[];
+  items: ExchangeRateHistoryGroup[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface ExchangeRateHistoryGroup {
+  id: string;
+  category: 'PAID' | 'FX' | 'BANK';
+  fromCurrency: CurrencyCode;
+  toCurrency: CurrencyCode;
+  createdByName: string;
+  createdByUserId: string;
+  createdAt: Date;
+  buy?: ExchangeRateHistoryItem;
+  sell?: ExchangeRateHistoryItem;
+  bank?: ExchangeRateHistoryItem;
 }
 
 export interface IExchangeRateRepository {

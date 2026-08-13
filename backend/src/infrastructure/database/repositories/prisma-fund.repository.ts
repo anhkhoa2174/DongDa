@@ -6,13 +6,15 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { toVietnamBusinessDate } from '../business-date';
 import {
-  IFundRepository, CreateTransferInput, ListFundMovementHistoryFilter, ListTransfersFilter,
+  IFundRepository, ConvertCentralFundInput, CreateTransferInput, ListFundMovementHistoryFilter, ListTransfersFilter,
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundTransferStatus, FundAccountBalance, CurrencyCode, CentralFundSummary,
-  CentralFundMovement, FundMovementHistoryItem,
+  CentralFundMovement, FundMovementHistoryItem, CentralFundConversion,
 } from '../../../domain/entities/fund.entity';
 import type { CreateFundMovementInput } from '../../../domain/repositories/fund.repository';
+import { canonicalFundAccount } from '../../../domain/entities/fund-account';
+import { canonicalActiveFundAccount } from '../canonical-fund-account';
 import { NotificationService } from '../../notifications/notification.service';
 
 const CURRENCY_NAMES: Partial<Record<CurrencyCode, string>> = {
@@ -37,15 +39,28 @@ export class PrismaFundRepository implements IFundRepository {
     });
     const ids = accounts.map((a) => a.id);
     const balByAcc = await this.balancesFor(ids);
-    return accounts.map((a) => ({
-      id: a.id,
-      branchId: a.branch_id,
-      code: a.code,
-      name: a.name,
-      accountType: a.account_type,
-      currencyCode: a.currency_code as CurrencyCode,
-      balance: balByAcc.get(a.id) ?? 0,
-    }));
+    const balances = new Map<string, FundAccountBalance>();
+    for (const account of accounts) {
+      const currency = account.currency_code as CurrencyCode;
+      const isPhysicalFund = account.account_type === 'CASH' || account.account_type === 'FUND_A';
+      const key = isPhysicalFund
+        ? `${account.branch_id}:PHYSICAL:${currency}`
+        : `${account.branch_id}:${account.account_type}:${account.id}`;
+      const identity = isPhysicalFund ? canonicalFundAccount(currency) : null;
+      const current = balances.get(key);
+      balances.set(key, {
+        id: current?.id ?? account.id,
+        branchId: account.branch_id,
+        code: identity?.code ?? account.code,
+        name: identity?.name ?? account.name,
+        accountType: identity?.accountType ?? account.account_type,
+        currencyCode: currency,
+        balance: (current?.balance ?? 0) + (balByAcc.get(account.id) ?? 0),
+      });
+    }
+    return [...balances.values()].sort((left, right) => left.branchId.localeCompare(right.branchId)
+      || left.currencyCode.localeCompare(right.currencyCode)
+      || left.code.localeCompare(right.code));
   }
 
   async getBalance(fundAccountId: string): Promise<number> {
@@ -55,7 +70,11 @@ export class PrismaFundRepository implements IFundRepository {
 
   async getCentralSummary(): Promise<CentralFundSummary> {
     const now = new Date();
-    const [accounts, bankAccounts, debtAccounts, rates, lastReconciliation] = await Promise.all([
+    const businessDate = toVietnamBusinessDate(now);
+    const weekday = businessDate.getUTCDay();
+    const weekStartedAt = new Date(businessDate);
+    weekStartedAt.setUTCDate(weekStartedAt.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
+    const [accounts, bankAccounts, debtAccounts, rates, lastReconciliation, openingFundLines, weeklyBankMovements] = await Promise.all([
       this.prisma.fund_accounts.findMany({
         where: { status: 'ACTIVE', account_type: { in: ['CASH', 'FUND_A'] } },
         include: { branches: { select: { type: true } } },
@@ -69,7 +88,7 @@ export class PrismaFundRepository implements IFundRepository {
         include: {
           debt_movements: {
             where: { status: 'POSTED' },
-            select: { movement_type: true, amount: true },
+            select: { movement_type: true, amount: true, effective_at: true },
           },
         },
       }),
@@ -87,6 +106,26 @@ export class PrismaFundRepository implements IFundRepository {
         where: { status: { in: ['MATCHED', 'APPROVED', 'POSTED'] } },
         orderBy: { updated_at: 'desc' },
         select: { updated_at: true },
+      }),
+      this.prisma.ledger_lines.findMany({
+        where: {
+          ledger_entries: { status: 'POSTED', business_date: { lt: weekStartedAt } },
+          fund_accounts: { status: 'ACTIVE', account_type: { in: ['CASH', 'FUND_A'] } },
+        },
+        select: {
+          fund_account_id: true,
+          direction: true,
+          amount: true,
+          currency_code: true,
+        },
+      }),
+      this.prisma.bank_balance_movements.findMany({
+        where: {
+          status: 'POSTED',
+          business_date: { gte: weekStartedAt },
+          bank_accounts: { status: 'ACTIVE' },
+        },
+        select: { balance_before: true, balance_after: true, currency_code: true },
       }),
     ]);
 
@@ -111,6 +150,8 @@ export class PrismaFundRepository implements IFundRepository {
 
     let vndCash = 0;
     let usdCash = 0;
+    let branchFundVnd = 0;
+    let branchFundUsd = 0;
     let branchFundValueVnd = 0;
     const fundAByCurrency = new Map<CurrencyCode, number>();
     for (const account of accounts) {
@@ -118,6 +159,8 @@ export class PrismaFundRepository implements IFundRepository {
       const balance = balances.get(account.id) ?? 0;
       const valueVnd = balance === 0 ? 0 : balance * conversionRate(currency);
       if (account.branches.type === 'BRANCH') {
+        if (currency === 'VND') branchFundVnd += balance;
+        if (currency === 'USD') branchFundUsd += balance;
         branchFundValueVnd += valueVnd;
         continue;
       }
@@ -145,15 +188,20 @@ export class PrismaFundRepository implements IFundRepository {
     const paidBuyRate = conversionRate('USD');
     const usdCashValueVnd = usdCash * paidBuyRate;
     const centralCashValueVnd = vndCash + usdCashValueVnd + fundAValueVnd;
+    let bankVnd = 0;
+    let bankUsd = 0;
     const bankValueVnd = bankAccounts.reduce((sum, account) => {
       const currency = account.currency_code as CurrencyCode;
       const balance = Number(account.current_balance);
+      if (currency === 'VND') bankVnd += balance;
+      if (currency === 'USD') bankUsd += balance;
       return sum + (balance === 0 ? 0 : balance * conversionRate(currency));
     }, 0);
 
     let debtVnd = 0;
     let debtUsd = 0;
     let debtValueVnd = 0;
+    let openingDebtValueVnd = 0;
     for (const account of debtAccounts) {
       const currency = account.currency_code as CurrencyCode;
       const outstanding = account.debt_movements.reduce((sum, movement) => {
@@ -165,7 +213,38 @@ export class PrismaFundRepository implements IFundRepository {
       if (currency === 'VND') debtVnd += outstanding;
       if (currency === 'USD') debtUsd += outstanding;
       if (outstanding !== 0) debtValueVnd += outstanding * conversionRate(currency);
+      const openingOutstanding = account.debt_movements.reduce((sum, movement) => {
+        if (movement.effective_at >= weekStartedAt) return sum;
+        const amount = Number(movement.amount);
+        if (movement.movement_type === 'EXPECTED_DEBT' || movement.movement_type === 'ACTUAL_DEBT') return sum + amount;
+        if (movement.movement_type === 'SETTLEMENT' || movement.movement_type === 'REVERSAL') return sum - amount;
+        return sum;
+      }, 0);
+      openingDebtValueVnd += openingOutstanding * conversionRate(currency);
     }
+
+    const openingFundBalances = new Map<string, { currency: CurrencyCode; balance: number }>();
+    for (const line of openingFundLines) {
+      const current = openingFundBalances.get(line.fund_account_id) ?? {
+        currency: line.currency_code as CurrencyCode,
+        balance: 0,
+      };
+      const amount = Number(line.amount);
+      current.balance += line.direction === 'DEBIT' ? amount : -amount;
+      openingFundBalances.set(line.fund_account_id, current);
+    }
+    const openingFundValueVnd = Array.from(openingFundBalances.values()).reduce(
+      (sum, item) => sum + item.balance * conversionRate(item.currency),
+      0,
+    );
+    const weeklyBankChangeVnd = weeklyBankMovements.reduce((sum, movement) => {
+      const change = Number(movement.balance_after) - Number(movement.balance_before);
+      return sum + change * conversionRate(movement.currency_code as CurrencyCode);
+    }, 0);
+    const openingBankValueVnd = bankValueVnd - weeklyBankChangeVnd;
+    const totalCompanyFundVnd = centralCashValueVnd + bankValueVnd + branchFundValueVnd + debtValueVnd;
+    const openingTotalCompanyFundVnd = openingFundValueVnd + openingBankValueVnd + openingDebtValueVnd;
+    const weeklyCapitalChangeVnd = totalCompanyFundVnd - openingTotalCompanyFundVnd;
 
     return {
       calculatedAt: now,
@@ -177,12 +256,21 @@ export class PrismaFundRepository implements IFundRepository {
       fundA,
       fundAValueVnd,
       centralCashValueVnd,
+      bankVnd,
+      bankUsd,
       bankValueVnd,
       debtVnd,
       debtUsd,
       debtValueVnd,
+      branchFundVnd,
+      branchFundUsd,
       branchFundValueVnd,
-      totalCompanyFundVnd: centralCashValueVnd + bankValueVnd + branchFundValueVnd + debtValueVnd,
+      totalCompanyFundVnd,
+      weekStartedAt,
+      weeklyCapitalChangeVnd,
+      weeklyCapitalChangePercent: openingTotalCompanyFundVnd !== 0
+        ? (weeklyCapitalChangeVnd / Math.abs(openingTotalCompanyFundVnd)) * 100
+        : null,
       missingRateCurrencies: Array.from(missingRates).sort(),
     };
   }
@@ -271,33 +359,13 @@ export class PrismaFundRepository implements IFundRepository {
           continue;
         }
 
-        const accounts = await tx.fund_accounts.findMany({
-          where: {
-            branch_id: targetBranch.id,
-            currency_code: item.currencyCode,
-            account_type: { in: ['CASH', 'FUND_A'] },
-            status: 'ACTIVE',
-          },
-          select: { id: true, account_type: true },
-        });
-        let account = accounts.find((candidate) => candidate.account_type === 'CASH') ?? accounts[0];
-
-        if (!account) {
-          if (input.direction === 'OUT') {
-            throw new BadRequestException(`${fundLabel} chưa có sổ ${item.currencyCode} để thực hiện chi`);
-          }
-          const isCash = item.currencyCode === 'VND' || item.currencyCode === 'USD';
-          account = await tx.fund_accounts.create({
-            data: {
-              branch_id: targetBranch.id,
-              code: isCash ? `CASH_${item.currencyCode}` : `FUND_A_${item.currencyCode}`,
-              name: isCash ? `Quỹ tiền mặt ${item.currencyCode}` : `Quỹ A ${item.currencyCode}`,
-              account_type: isCash ? 'CASH' : 'FUND_A',
-              currency_code: item.currencyCode,
-            },
-            select: { id: true, account_type: true },
-          });
-        }
+        const account = await canonicalActiveFundAccount(
+          tx,
+          targetBranch.id,
+          item.currencyCode,
+          input.direction === 'IN',
+        );
+        if (!account) throw new BadRequestException(`${fundLabel} chưa có sổ ${item.currencyCode} để thực hiện chi`);
 
         await this.lockFundAccount(tx, account.id);
         if (input.direction === 'OUT') {
@@ -381,6 +449,108 @@ export class PrismaFundRepository implements IFundRepository {
         items: resultItems,
         note: input.note ?? null,
         postedAt: now,
+      };
+    });
+  }
+
+  async convertCentralFund(input: ConvertCentralFundInput): Promise<CentralFundConversion> {
+    const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
+    const voucherNo = `QDA-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    const currencies = input.items.map((item) => item.currencyCode);
+    if (new Set(currencies).size !== currencies.length) {
+      throw new BadRequestException('Mỗi loại ngoại tệ chỉ được thêm một lần trong phiếu quy đổi');
+    }
+    const conversionItems = [...input.items].sort((a, b) => a.currencyCode.localeCompare(b.currencyCode));
+
+    return this.prisma.$transaction(async (tx) => {
+      const headOffice = await tx.branch.findFirst({
+        where: { type: 'HEAD_OFFICE', status: 'ACTIVE' },
+        orderBy: { created_at: 'asc' },
+        select: { id: true },
+      });
+      if (!headOffice) throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO)');
+
+      const vndAccount = await canonicalActiveFundAccount(tx, headOffice.id, 'VND');
+      if (!vndAccount) throw new BadRequestException('Quỹ Chung chưa có sổ tiền mặt VND');
+
+      await this.lockFundAccount(tx, vndAccount.id);
+      const resultItems: CentralFundConversion['items'] = [];
+      let firstMovementId: string | null = null;
+
+      for (const [index, item] of conversionItems.entries()) {
+        const foreignAccount = await canonicalActiveFundAccount(tx, headOffice.id, item.currencyCode);
+        if (!foreignAccount) throw new BadRequestException(`Quỹ A Hội sở chưa có sổ ${item.currencyCode}`);
+        await this.lockFundAccount(tx, foreignAccount.id);
+        const available = await this.balance(tx, foreignAccount.id);
+        if (item.amount > available) {
+          throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
+        }
+
+        const rate = await this.activeConversionRate(tx, item.currencyCode);
+        const vndAmount = Math.round(item.amount * rate);
+        const description = input.note
+          ? `Quy đổi Quỹ A ${item.currencyCode} sang VND - ${input.note}`
+          : `Quy đổi Quỹ A ${item.currencyCode} sang VND`;
+        const foreignMovement = await tx.cash_movements.create({
+          data: {
+            movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}-OUT`,
+            branch_id: headOffice.id, fund_account_id: foreignAccount.id,
+            movement_type: 'CASH_OUT', business_date: businessDate, amount: item.amount,
+            currency_code: item.currencyCode, source_name: 'Quy đổi Quỹ A', description,
+            status: 'POSTED', created_by_user_id: input.createdByUserId,
+            approved_by_user_id: input.createdByUserId, posted_at: now,
+          },
+        });
+        firstMovementId ??= foreignMovement.id;
+        await tx.ledger_entries.create({
+          data: {
+            entry_no: `LE-${voucherNo}-${String(index + 1).padStart(2, '0')}-OUT`,
+            business_date: businessDate, branch_id: headOffice.id,
+            source_type: 'CASH_MOVEMENT', source_id: foreignMovement.id, status: 'POSTED', posted_at: now,
+            description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
+            ledger_lines: { create: [{
+              fund_account_id: foreignAccount.id, direction: 'CREDIT', amount: item.amount,
+              currency_code: item.currencyCode, exchange_rate: rate, base_amount_vnd: vndAmount,
+            }] },
+          },
+        });
+        resultItems.push({ currencyCode: item.currencyCode, amount: item.amount, rate, vndAmount });
+      }
+
+      const totalVndAmount = resultItems.reduce((sum, item) => sum + item.vndAmount, 0);
+      const description = input.note ? `Thu VND từ quy đổi Quỹ A - ${input.note}` : 'Thu VND từ quy đổi Quỹ A';
+      const vndMovement = await tx.cash_movements.create({
+        data: {
+          movement_no: `${voucherNo}-IN`, branch_id: headOffice.id, fund_account_id: vndAccount.id,
+          movement_type: 'CASH_IN', business_date: businessDate, amount: totalVndAmount,
+          currency_code: 'VND', source_name: 'Quy đổi Quỹ A', description,
+          status: 'POSTED', created_by_user_id: input.createdByUserId,
+          approved_by_user_id: input.createdByUserId, posted_at: now,
+        },
+      });
+      await tx.ledger_entries.create({
+        data: {
+          entry_no: `LE-${voucherNo}-IN`, business_date: businessDate, branch_id: headOffice.id,
+          source_type: 'CASH_MOVEMENT', source_id: vndMovement.id, status: 'POSTED', posted_at: now,
+          description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
+          ledger_lines: { create: [{
+            fund_account_id: vndAccount.id, direction: 'DEBIT', amount: totalVndAmount,
+            currency_code: 'VND', exchange_rate: 1, base_amount_vnd: totalVndAmount,
+          }] },
+        },
+      });
+      await this.notifications.notifyUsers({
+        title: `Phiếu quy đổi Quỹ A ${voucherNo} đã ghi sổ`,
+        body: `${resultItems.map((item) => `${item.amount} ${item.currencyCode}`).join(', ')} = ${totalVndAmount} VND`,
+        sourceType: 'CENTRAL_FUND_CONVERSION',
+        sourceId: firstMovementId,
+      }, { userIds: [input.createdByUserId], roles: ['ADMIN', 'MANAGER'] }, tx);
+
+      return {
+        voucherNo, items: resultItems, totalVndAmount,
+        note: input.note ?? null, postedAt: now,
       };
     });
   }
@@ -487,23 +657,7 @@ export class PrismaFundRepository implements IFundRepository {
   }
 
   async findTransferAccount(branchId: string, currency: CurrencyCode) {
-    const accounts = await this.prisma.fund_accounts.findMany({
-      where: {
-        branch_id: branchId,
-        currency_code: currency,
-        account_type: { in: ['CASH', 'FUND_A'] },
-        status: 'ACTIVE',
-      },
-      select: { id: true, code: true, account_type: true },
-      orderBy: { code: 'asc' },
-    });
-    const canonicalCode = currency === 'VND' || currency === 'USD'
-      ? `CASH_${currency}`
-      : `FUND_A_${currency}`;
-    return accounts.find((account) => account.code === canonicalCode)
-      ?? accounts.find((account) => account.account_type === 'CASH')
-      ?? accounts[0]
-      ?? null;
+    return canonicalActiveFundAccount(this.prisma, branchId, currency);
   }
 
   async createTransfer(input: CreateTransferInput): Promise<FundTransfer> {
@@ -515,31 +669,29 @@ export class PrismaFundRepository implements IFundRepository {
       throw new BadRequestException('Mỗi loại tiền chỉ được xuất hiện một lần trong phiếu tiếp quỹ');
     }
 
-    const resolvedItems: Array<{
-      source_account_id: string;
-      destination_account_id: string;
-      currency_code: CurrencyCode;
-      amount: number;
-    }> = [];
-    for (const item of input.items) {
-      const source = await this.findTransferAccount(input.sourceBranchId, item.currencyCode);
-      const destination = await this.findTransferAccount(input.destinationBranchId, item.currencyCode);
-      if (!source || !destination) {
-        throw new BadRequestException(`Thiếu sổ quỹ ${item.currencyCode} ở đơn vị gửi hoặc nhận`);
-      }
-      const sourceBalance = await this.getBalance(source.id);
-      if (item.amount > sourceBalance) {
-        throw new BadRequestException(`Số dư ${item.currencyCode} không đủ (còn ${sourceBalance})`);
-      }
-      resolvedItems.push({
-        source_account_id: source.id,
-        destination_account_id: destination.id,
-        currency_code: item.currencyCode,
-        amount: item.amount,
-      });
-    }
-
     const row = await this.prisma.$transaction(async (tx) => {
+      const resolvedItems: Array<{
+        source_account_id: string;
+        destination_account_id: string;
+        currency_code: CurrencyCode;
+        amount: number;
+      }> = [];
+      for (const item of input.items) {
+        const source = await canonicalActiveFundAccount(tx, input.sourceBranchId, item.currencyCode);
+        const destination = await canonicalActiveFundAccount(tx, input.destinationBranchId, item.currencyCode, true);
+        if (!source) throw new BadRequestException(`Đơn vị gửi chưa có sổ quỹ ${item.currencyCode}`);
+        const sourceBalance = await this.balance(tx, source.id);
+        if (item.amount > sourceBalance) {
+          throw new BadRequestException(`Số dư ${item.currencyCode} không đủ (còn ${sourceBalance})`);
+        }
+        resolvedItems.push({
+          source_account_id: source.id,
+          destination_account_id: destination.id,
+          currency_code: item.currencyCode,
+          amount: item.amount,
+        });
+      }
+
       const created = await tx.fund_transfers.create({
         data: {
           transfer_no: `FT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -741,8 +893,11 @@ export class PrismaFundRepository implements IFundRepository {
       where: {
         status: 'ACTIVE',
         rate_type: 'FX_BUY',
+        provider: 'INTERNAL',
         from_currency: currency,
         to_currency: 'VND',
+        effective_from: { lte: new Date() },
+        OR: [{ effective_to: null }, { effective_to: { gt: new Date() } }],
       },
       orderBy: { effective_from: 'desc' },
       select: { rate: true },

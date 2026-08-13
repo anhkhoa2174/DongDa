@@ -2,8 +2,9 @@
 // Layer: Application
 
 import { IsUUID, IsBoolean, IsEnum, IsNumber, IsPositive, IsOptional, IsString } from 'class-validator';
+import { FOREIGN_CURRENCIES } from '../../../domain/entities/currency';
 
-const CURRENCIES = ['USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW'];
+const CURRENCIES = [...FOREIGN_CURRENCIES];
 
 export class CreateFxDto {
   @IsUUID()

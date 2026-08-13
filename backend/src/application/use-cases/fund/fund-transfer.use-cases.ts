@@ -9,9 +9,9 @@ import {
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundAccountBalance, CurrencyCode, CentralFundSummary, CentralFundMovement,
-  FundMovementHistoryItem,
+  FundMovementHistoryItem, CentralFundConversion,
 } from '../../../domain/entities/fund.entity';
-import type { CreateCentralFundMovementDto, CreateTransferDto } from '../../dtos/fund/fund.dto';
+import type { ConvertCentralFundDto, CreateCentralFundMovementDto, CreateTransferDto } from '../../dtos/fund/fund.dto';
 import { UserRole } from '../../../domain/entities/user.entity';
 
 @Injectable()
@@ -112,6 +112,22 @@ export class CreateFundMovementUseCase {
       note: dto.note?.trim() || undefined,
       createdByUserId: userId,
       targetBranchId,
+    });
+  }
+}
+
+@Injectable()
+export class ConvertCentralFundUseCase {
+  constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
+
+  execute(dto: ConvertCentralFundDto, userId: string): Promise<CentralFundConversion> {
+    return this.fundRepo.convertCentralFund({
+      items: dto.items.map((item) => ({
+        currencyCode: item.currencyCode as CurrencyCode,
+        amount: item.amount,
+      })),
+      note: dto.note?.trim() || undefined,
+      createdByUserId: userId,
     });
   }
 }

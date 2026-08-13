@@ -4,9 +4,8 @@
 // bank_accounts lưu current_balance trực tiếp (khác fund_accounts tính từ ledger).
 // Flow F7.3: tiền WU/MG về → số dư NH TĂNG + công nợ WU/MG GIẢM (settle).
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 export interface BankAccount {
   id: string;

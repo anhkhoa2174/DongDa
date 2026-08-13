@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma.service';
 import { toVietnamBusinessDate } from '../business-date';
 import { IFxRepository, CreateFxInput, ListFxFilter } from '../../../domain/repositories/fx.repository';
 import { FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
+import { canonicalActiveFundAccount } from '../canonical-fund-account';
 
 @Injectable()
 export class PrismaFxRepository implements IFxRepository {
@@ -122,16 +123,29 @@ export class PrismaFxRepository implements IFxRepository {
         OR: [{ account_type: 'FUND_A' }, { account_type: 'CASH', currency_code: 'USD' }],
       },
     });
+    const ledgerLines = accounts.length === 0
+      ? []
+      : await this.prisma.ledger_lines.findMany({
+        where: {
+          fund_account_id: { in: accounts.map((account) => account.id) },
+          ledger_entries: { status: 'POSTED' },
+        },
+        select: { fund_account_id: true, direction: true, amount: true },
+      });
+    const balanceByAccount = new Map<string, number>();
+    for (const line of ledgerLines) {
+      const signedAmount = line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount);
+      balanceByAccount.set(line.fund_account_id, (balanceByAccount.get(line.fund_account_id) ?? 0) + signedAmount);
+    }
     const stockByBranchCurrency = new Map<string, { branchId: string; currency: CurrencyCode; balance: number }>();
     for (const a of accounts) {
-      const bal = await this.balance(this.prisma, a.id);
       const currency = a.currency_code as CurrencyCode;
       const key = `${a.branch_id}:${currency}`;
       const current = stockByBranchCurrency.get(key);
       stockByBranchCurrency.set(key, {
         branchId: a.branch_id,
         currency,
-        balance: (current?.balance ?? 0) + bal,
+        balance: (current?.balance ?? 0) + (balanceByAccount.get(a.id) ?? 0),
       });
     }
     return [...stockByBranchCurrency.values()];
@@ -146,10 +160,7 @@ export class PrismaFxRepository implements IFxRepository {
   }
 
   private async cashAccount(tx: any, branchId: string, currency: string): Promise<string> {
-    const acc = await tx.fund_accounts.findFirst({
-      where: { branch_id: branchId, account_type: 'CASH', currency_code: currency, status: 'ACTIVE' },
-      select: { id: true },
-    });
+    const acc = await canonicalActiveFundAccount(tx, branchId, currency as CurrencyCode);
     if (!acc) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ tiền mặt ${currency}`);
     return acc.id;
   }
@@ -160,32 +171,8 @@ export class PrismaFxRepository implements IFxRepository {
 
   // Sổ ngoại tệ: USD dùng CASH_USD (đã seed), còn lại tạo Quỹ A (FUND_A) khi cần
   private async currencyAccount(tx: any, branchId: string, currency: CurrencyCode): Promise<string> {
-    if (currency === 'USD') return this.cashAccount(tx, branchId, 'USD');
-    const code = `FUND_A_${currency}`;
-    const canonical = await tx.fund_accounts.findUnique({
-      where: { branch_id_code: { branch_id: branchId, code } },
-    });
-    if (canonical) {
-      if (canonical.status === 'ACTIVE') return canonical.id;
-      throw new BadRequestException(`Sổ Quỹ A ${currency} đang ngừng hoạt động`);
-    }
-
-    const existing = await tx.fund_accounts.findFirst({
-      where: {
-        branch_id: branchId,
-        account_type: 'FUND_A',
-        currency_code: currency,
-        status: 'ACTIVE',
-      },
-    });
-    if (existing) return existing.id;
-    const created = await tx.fund_accounts.create({
-      data: {
-        branch_id: branchId, code, name: `Quỹ A ${currency}`,
-        account_type: 'FUND_A', currency_code: currency,
-      },
-    });
-    return created.id;
+    const account = await canonicalActiveFundAccount(tx, branchId, currency, true);
+    return account.id;
   }
 
   private async balance(db: any, fundAccountId: string): Promise<number> {

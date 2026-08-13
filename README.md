@@ -459,6 +459,7 @@ GET   /api/v1/branch-monitoring/:branchId/activity?period=day|month|year&date=YY
 - `central-summary` cộng tiền mặt HO, Quỹ A, ngân hàng, công nợ phải thu và quỹ các chi nhánh; USD dùng `PAID_BUY`, ngoại tệ dùng tỷ giá mua active.
 - `central-movements` cho ADMIN/MANAGER tạo phiếu thu hoặc chi gồm nhiều loại tiền. Nguồn `CASH` ghi `cash_movements` và ledger; nguồn `BANK` ghi biến động và cập nhật số dư tài khoản ngân hàng. Backend kiểm tra số dư từng khoản khi chi và rollback toàn phiếu nếu có một khoản không hợp lệ; nghiệp vụ này không yêu cầu mở ca.
 - `branch-movements` cho STAFF tạo phiếu tiền mặt tại chi nhánh đang làm việc. Backend lấy branch từ JWT, không nhận branch từ form và từ chối nguồn `BANK`. Sau khi post, page Quỹ Chi nhánh tự tải lại số dư ledger.
+- Mỗi chi nhánh chỉ có một sổ quỹ vật lý `ACTIVE` cho mỗi đơn vị tiền: VND/USD thuộc `CASH`, các ngoại tệ còn lại thuộc `FUND_A`. Thu/chi, FX, tiếp quỹ, kiểm quỹ và giải quyết công nợ đều dùng chung sổ này; số dư được cộng dồn từ ledger, không tạo thêm sổ cùng loại. Sổ `INACTIVE` vẫn được giữ để bảo toàn audit.
 - Một phiếu tiếp quỹ chứa nhiều loại tiền. ADMIN/MANAGER gửi từ HO; Staff gửi từ branch được gán.
 - Phiếu mới ở trạng thái chờ. Chỉ khi confirm backend mới khóa sổ nguồn, kiểm tra đủ số dư và post một ledger entry gồm các dòng giảm nguồn/tăng đích.
 - Người lập không được tự xác nhận hoặc từ chối. Staff tại đúng chi nhánh nhận hoặc một ADMIN/MANAGER khác mới được xử lý phiếu chờ.
@@ -701,7 +702,7 @@ GET /api/v1/reports/company-dashboard?date=YYYY-MM-DD
 
 API quỹ tính số dư từ ledger `POSTED`, quy đổi USD tiền mặt theo `PAID_BUY` và Quỹ A theo `FX_BUY` đang active. API hoạt động chỉ tính giá trị của giao dịch `COMPLETED`; giao dịch `VOIDED` vẫn nằm trong tổng số phát sinh nhưng không được cộng vào giá trị giao dịch.
 
-API `dashboard-operations` cấp bốn KPI đầu trang Dashboard Công Ty: số giao dịch, giá trị giao dịch hoàn tất, sai lệch đối soát chưa xử lý và số chi nhánh đang mở ca. Sai lệch từ 1.000.000 VND trở lên được phân loại là sai lệch lớn.
+API `dashboard-operations` cấp bốn KPI đầu trang Dashboard Công Ty: số giao dịch, giá trị giao dịch hoàn tất, sai lệch đối soát chưa xử lý và số chi nhánh đang mở ca. Sai lệch từ 1,000,000 VND trở lên được phân loại là sai lệch lớn.
 
 API `company-dashboard` cấp toàn bộ snapshot Dashboard Công Ty trong một response: tổng vốn và thành phần quỹ, bốn KPI vận hành, giá trị giao dịch/lợi nhuận WU-MG trong 7 ngày, cơ cấu giao dịch, hiệu quả chi nhánh và tỷ giá active. Tổng vốn quy đổi gồm tiền mặt, Quỹ A, ngân hàng và công nợ; tỷ giá quy đổi lấy `PAID_BUY` cho USD và `FX_BUY` cho các ngoại tệ khác.
 

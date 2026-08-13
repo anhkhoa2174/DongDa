@@ -19,8 +19,8 @@ function parseDate(value: NullableDate) {
 
 function formatInputNumber(
   value: InputValue,
-  groupSeparator = '.',
-  decimalSeparator = ',',
+  groupSeparator = ',',
+  decimalSeparator = '.',
 ) {
   if (value === null || value === undefined || value === '') return '';
 
@@ -45,8 +45,8 @@ function formatInputNumber(
 
 function parseInputNumber(
   value: string | undefined,
-  groupSeparator = '.',
-  decimalSeparator = ',',
+  groupSeparator = ',',
+  decimalSeparator = '.',
 ) {
   if (!value) return 0;
 
@@ -68,8 +68,8 @@ function parseInputNumber(
 
 export const numberInputFormatter = (value: InputValue) => formatInputNumber(value);
 export const numberInputParser = (value: string | undefined) => parseInputNumber(value);
-export const usdInputFormatter = (value: InputValue) => formatInputNumber(value, ',', '.');
-export const usdInputParser = (value: string | undefined) => parseInputNumber(value, ',', '.');
+export const usdInputFormatter = numberInputFormatter;
+export const usdInputParser = numberInputParser;
 export const exchangeRateInputFormatter = numberInputFormatter;
 export const exchangeRateInputParser = numberInputParser;
 
@@ -86,16 +86,15 @@ export function formatWuMtcn(value: string | number | null | undefined) {
 
 /**
  * Format tiền Việt
- * Example: 1250000 -> 1.250.000 ₫
+ * Example: 1250000 -> 1,250,000 ₫
  */
 export function formatVnd(value: NullableNumber) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
+  return `${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value)} ₫`;
 }
 
 /**
@@ -134,8 +133,8 @@ export function formatUsd(value: NullableNumber, maximumFractionDigits = 2) {
 /**
  * Format tỷ giá
  * Example:
- * 26235 -> 26.235
- * 26235.5 -> 26.235,5
+ * 26235 -> 26,235
+ * 26235.5 -> 26,235.5
  */
 export function formatExchangeRate(
   value: NullableNumber,
@@ -143,7 +142,7 @@ export function formatExchangeRate(
 ) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return new Intl.NumberFormat('vi-VN', {
+  return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
   }).format(value);
@@ -151,7 +150,7 @@ export function formatExchangeRate(
 
 /**
  * Format tỷ giá có đơn vị
- * Example: 26235 -> 26.235 VND/USD
+ * Example: 26235 -> 26,235 VND/USD
  */
 export function formatExchangeRatePair(
   value: NullableNumber,

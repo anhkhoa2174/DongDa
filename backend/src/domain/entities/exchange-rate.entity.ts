@@ -32,10 +32,8 @@ export enum ServiceProvider {
   INTERNAL = 'INTERNAL',
 }
 
-export type CurrencyCode =
-  | 'VND' | 'USD' | 'EUR' | 'AUD' | 'JPY'
-  | 'GBP' | 'SGD' | 'THB' | 'CNY' | 'HKD' | 'KRW'
-  | 'CAD' | 'CHF' | 'NZD' | 'TWD' | 'MYR' | 'IDR' | 'PHP' | 'LAK' | 'KHR';
+import type { CurrencyCode } from './currency';
+export type { CurrencyCode } from './currency';
 
 export interface ExchangeRate {
   id: string;

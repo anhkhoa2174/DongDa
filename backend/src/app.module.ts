@@ -25,7 +25,7 @@ import { FundController } from './interfaces/http/controllers/fund.controller';
 import { PrismaFundRepository } from './infrastructure/database/repositories/prisma-fund.repository';
 import {
   CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
-  CreateFundMovementUseCase,
+  CreateFundMovementUseCase, ConvertCentralFundUseCase,
 } from './application/use-cases/fund/fund-transfer.use-cases';
 import { WuController } from './interfaces/http/controllers/wu.controller';
 import { PrismaWuRepository } from './infrastructure/database/repositories/prisma-wu.repository';
@@ -165,6 +165,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     RejectTransferUseCase,
     ListFundUseCase,
     CreateFundMovementUseCase,
+    ConvertCentralFundUseCase,
 
     CreateWuUseCase,
     ListWuUseCase,

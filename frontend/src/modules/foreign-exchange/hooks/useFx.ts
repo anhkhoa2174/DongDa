@@ -6,8 +6,13 @@ const KEY = ['fx-trading'] as const;
 export function useFxTransactions(branchId?: string) {
   return useQuery({ queryKey: [...KEY, 'list', branchId], queryFn: () => fxApi.list(branchId) });
 }
-export function useFxStock() {
-  return useQuery({ queryKey: [...KEY, 'stock'], queryFn: () => fxApi.stock() });
+export function useFxStock(branchId?: string) {
+  return useQuery({
+    queryKey: [...KEY, 'stock', branchId],
+    queryFn: () => fxApi.stock(branchId),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+  });
 }
 export function useBranches() {
   return useQuery({ queryKey: ['branches'], queryFn: () => fxApi.branches() });

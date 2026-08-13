@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
@@ -63,6 +64,13 @@ export function WuWorkspacePage() {
       form.setFieldsValue({ branchId: user.branchId });
     }
   }, [form, isBranchUser, user?.branchId]);
+
+  const resetTransactionForm = () => {
+    form.resetFields();
+    if (isBranchUser && user?.branchId) {
+      form.setFieldValue('branchId', user.branchId);
+    }
+  };
 
   // Theo dõi để tính WU implied rate, tỷ giá giao dịch và số tiền khách nhận.
   const wuUsd = Form.useWatch('wuUsdAmount', form) ?? 0;
@@ -133,7 +141,7 @@ export function WuWorkspacePage() {
         paidCurrency: v.paidCurrency,
       });
       message.success('Đã tạo GD WU — quỹ giảm, công nợ WU tăng');
-      form.resetFields();
+      resetTransactionForm();
       previousPayoutCurrency.current = undefined;
       previousRateSelectionKey.current = undefined;
       previousWuUsd.current = undefined;
@@ -153,12 +161,20 @@ export function WuWorkspacePage() {
         <Col xs={24} xl={18}>
           <Card title="Tạo giao dịch WU" size="small">
             <Form form={form} layout="vertical" onFinish={onCreate}
+              onKeyDownCapture={preventNumberInputEnter}
               disabled={!canCreateTransaction}
-              initialValues={{ paidCurrency: 'USD', payoutCurrency: 'USD', receivedUsd: 0, receivedVnd: 0 }}>
+              initialValues={{
+                branchId: isBranchUser ? user?.branchId : undefined,
+                paidCurrency: 'USD',
+                payoutCurrency: 'USD',
+                wuUsdAmount: 0,
+                wuVndAmount: 0,
+                receivedUsd: 0,
+                receivedVnd: 0,
+                appliedRate: 0,
+              }}>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
-                <Select placeholder="Chọn chi nhánh"
-                  disabled={isBranchUser}
-                  options={branchOptions} />
+                <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
               </Form.Item>
               <Row gutter={8}>
                 <Col span={12}><Form.Item
@@ -173,15 +189,16 @@ export function WuWorkspacePage() {
               </Row>
               <Row gutter={8}>
                 <Col span={12}><Form.Item name="wuUsdAmount" label="Amount USD (WU)" rules={[positiveNumberRule('Amount USD (WU)')]}>
-                  <InputNumber min={0} precision={2} addonBefore="$" style={{ width: '100%' }} formatter={usdInputFormatter} parser={usdInputParser} /></Form.Item></Col>
+                  <InputNumber min={0} precision={2} keyboard={false} addonBefore="$" style={{ width: '100%' }} formatter={usdInputFormatter} parser={usdInputParser} /></Form.Item></Col>
                 <Col span={12}><Form.Item name="wuVndAmount" label="Amount VND (WU)" rules={[positiveNumberRule('Amount VND (WU)')]}>
-                  <InputNumber min={0} precision={0} addonAfter="VND" style={{ width: '100%' }} formatter={numberInputFormatter} parser={numberInputParser} /></Form.Item></Col>
+                  <InputNumber min={0} precision={0} keyboard={false} addonAfter="VND" style={{ width: '100%' }} formatter={numberInputFormatter} parser={numberInputParser} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
                 <Col span={12}><Form.Item name="receivedVnd" label="Trả khách VND">
                   <InputNumber
                     min={0}
                     precision={0}
+                    keyboard={false}
                     addonAfter="VND"
                     readOnly
                     controls={false}
@@ -194,6 +211,7 @@ export function WuWorkspacePage() {
                     min={0}
                     max={Math.trunc(Math.max(Number(wuUsd), 0))}
                     precision={0}
+                    keyboard={false}
                     addonBefore="$"
                     readOnly={payoutCurrency === 'VND'}
                     controls={payoutCurrency === 'USD'}
@@ -209,7 +227,7 @@ export function WuWorkspacePage() {
                   <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
               </Row>
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
-                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={RATE_STEP} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
+                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
               <Slider
                 min={rateBounds.min}

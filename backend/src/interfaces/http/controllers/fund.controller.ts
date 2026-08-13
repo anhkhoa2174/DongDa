@@ -15,10 +15,10 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import {
   CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
-  CreateFundMovementUseCase,
+  CreateFundMovementUseCase, ConvertCentralFundUseCase,
 } from '../../../application/use-cases/fund/fund-transfer.use-cases';
 import {
-  CreateCentralFundMovementDto, CreateTransferDto, ListFundMovementHistoryQueryDto, ListTransfersQueryDto,
+  ConvertCentralFundDto, CreateCentralFundMovementDto, CreateTransferDto, ListFundMovementHistoryQueryDto, ListTransfersQueryDto,
 } from '../../../application/dtos/fund/fund.dto';
 
 @Controller('fund')
@@ -30,6 +30,7 @@ export class FundController {
     private readonly rejectTransfer: RejectTransferUseCase,
     private readonly listFund: ListFundUseCase,
     private readonly createFundMovement: CreateFundMovementUseCase,
+    private readonly convertCentralFund: ConvertCentralFundUseCase,
   ) {}
 
   @Get('balances')
@@ -60,6 +61,13 @@ export class FundController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   centralFundMovement(@Request() req: any, @Body() dto: CreateCentralFundMovementDto) {
     return this.createFundMovement.execute(dto, req.user.id);
+  }
+
+  @Post('central-conversions')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  centralFundConversion(@Request() req: any, @Body() dto: ConvertCentralFundDto) {
+    return this.convertCentralFund.execute(dto, req.user.id);
   }
 
   @Post('branch-movements')
