@@ -63,15 +63,29 @@ export function ReconciliationWorkspacePage() {
   const onRun = async (v: any) => {
     const rows = (v.rows ?? []).filter((r: any) => r?.code && r?.amount != null);
     if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
+    // Journal WU/MG có thể lẫn USD và VND, nhưng mỗi lần đối chiếu chỉ 1 loại tiền
+    // -> tự gom theo loại tiền và chạy lần lượt từng loại.
+    const byCurrency = new Map<string, any[]>();
+    for (const r of rows) {
+      const cur = r.currencyCode ?? 'USD';
+      if (!byCurrency.has(cur)) byCurrency.set(cur, []);
+      byCurrency.get(cur)!.push(r);
+    }
     try {
-      const res = await run.mutateAsync({
-        provider: v.provider,
-        businessDate: v.businessDate.format('YYYY-MM-DD'),
-        branchId: v.branchId,
-        rows,
-      });
-      setSelectedRun(res.id);
-      message.success(`Đối chiếu xong: khớp ${(res.matchRate * 100).toFixed(0)}%`);
+      let lastRunId: string | null = null;
+      const summaries: string[] = [];
+      for (const [cur, curRows] of byCurrency) {
+        const res = await run.mutateAsync({
+          provider: v.provider,
+          businessDate: v.businessDate.format('YYYY-MM-DD'),
+          branchId: v.branchId,
+          rows: curRows,
+        });
+        lastRunId = res.id;
+        summaries.push(`${cur}: khớp ${(res.matchRate * 100).toFixed(0)}% (${curRows.length} dòng)`);
+      }
+      if (lastRunId) setSelectedRun(lastRunId);
+      message.success(`Đối chiếu xong — ${summaries.join(' · ')}`);
     } catch (e: any) {
       message.error(e?.response?.data?.message ?? 'Đối chiếu thất bại');
     }
