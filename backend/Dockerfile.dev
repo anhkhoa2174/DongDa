@@ -1,8 +1,10 @@
 # ── Build stage (dev) ──────────────────────────────────────
 FROM node:20-alpine
 
-# Prisma cần OpenSSL trên alpine
-RUN apk add --no-cache openssl libc6-compat
+# Prisma cần OpenSSL trên alpine.
+# tesseract-ocr + vie/eng + poppler-utils: đọc file Journal WU/MG dạng PDF scan (OCR).
+RUN apk add --no-cache openssl libc6-compat \
+    tesseract-ocr tesseract-ocr-data-vie tesseract-ocr-data-eng poppler-utils
 
 WORKDIR /app
 

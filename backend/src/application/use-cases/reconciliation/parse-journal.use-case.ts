@@ -7,6 +7,8 @@
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
+import { ocrPdfToText } from '../../../infrastructure/ocr/journal-ocr';
+import { parseOcrJournalText } from './ocr-journal-parse';
 
 export interface ParsedJournalRow {
   rowNo: number; // số dòng trong file (1-based, tính cả header)
@@ -66,6 +68,21 @@ function parseAmount(value: unknown): number | null {
 
 @Injectable()
 export class ParseJournalUseCase {
+  // File PDF scan (WU/MG) -> OCR -> trích dòng. KTTH rà lại/sửa trên UI trước khi đối chiếu.
+  async executePdf(fileBuffer: Buffer, fileName: string, provider: 'WU' | 'MG'): Promise<ParseJournalResult> {
+    if (!fileBuffer?.length) throw new BadRequestException('File rỗng hoặc không đọc được');
+    let text: string;
+    try {
+      text = await ocrPdfToText(fileBuffer);
+    } catch {
+      throw new BadRequestException('Không OCR được file PDF. Kiểm tra file scan có rõ không.');
+    }
+    if (!text.trim()) {
+      throw new BadRequestException('OCR không đọc được nội dung nào từ file PDF.');
+    }
+    return parseOcrJournalText(text, fileName, provider);
+  }
+
   execute(fileBuffer: Buffer, fileName: string, provider: 'WU' | 'MG'): ParseJournalResult {
     if (!fileBuffer?.length) throw new BadRequestException('File rỗng hoặc không đọc được');
     if (provider !== 'WU' && provider !== 'MG') {

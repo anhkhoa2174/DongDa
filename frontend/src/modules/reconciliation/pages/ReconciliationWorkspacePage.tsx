@@ -39,10 +39,14 @@ export function ReconciliationWorkspacePage() {
       form.setFieldsValue({
         rows: res.rows.map((r) => ({ code: r.code, amount: r.amount, currencyCode: r.currencyCode })),
       });
+      const isPdf = /\.pdf$/i.test(file.name);
       if (res.rows.length === 0) {
         message.warning('File không có dòng hợp lệ nào');
       } else {
         message.success(`Đọc ${res.rows.length} dòng từ "${res.fileName}"${res.errors.length ? `, ${res.errors.length} dòng lỗi` : ''}`);
+      }
+      if (isPdf) {
+        message.warning('File PDF được đọc bằng OCR — vui lòng đối chiếu lại với file gốc và sửa các dòng sai/thiếu trước khi chạy đối chiếu.', 8);
       }
       if (res.errors.length) {
         message.warning(`Dòng lỗi: ${res.errors.slice(0, 5).map((e) => `#${e.rowNo} ${e.message}`).join('; ')}${res.errors.length > 5 ? '…' : ''}`, 6);
@@ -119,13 +123,13 @@ export function ReconciliationWorkspacePage() {
               <div className="flex items-center justify-between mb-1">
                 <Typography.Text type="secondary">Dòng Journal (mã + số USD):</Typography.Text>
                 <Upload
-                  accept=".csv,.xlsx,.xls"
+                  accept=".pdf,.csv,.xlsx,.xls"
                   maxCount={1}
                   showUploadList={false}
                   beforeUpload={(file) => onUploadJournal(file as unknown as File)}
                 >
                   <Button size="small" icon={<UploadOutlined />} loading={parse.isPending}>
-                    Upload file Journal
+                    Upload Journal (PDF/Excel/CSV)
                   </Button>
                 </Upload>
               </div>

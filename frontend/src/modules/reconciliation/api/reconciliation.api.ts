@@ -84,6 +84,7 @@ export const reconApi = {
       .post<ParseJournalResult>('/reconciliation/parse-journal', form, {
         params: { provider },
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120_000, // OCR file PDF scan có thể mất vài chục giây
       })
       .then((r) => r.data);
   },

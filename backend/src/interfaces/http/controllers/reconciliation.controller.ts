@@ -60,14 +60,19 @@ export class ReconciliationController {
   @Post('parse-journal')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   parse(
     @UploadedFile() file: any,
     @Query('provider') provider: string,
   ) {
-    if (!file) throw new BadRequestException('Vui lòng chọn file Journal (.csv/.xlsx/.xls)');
+    if (!file) throw new BadRequestException('Vui lòng chọn file Journal (.pdf/.csv/.xlsx/.xls)');
     if (provider !== 'WU' && provider !== 'MG') {
       throw new BadRequestException('provider phải là WU hoặc MG');
+    }
+    const isPdf = /\.pdf$/i.test(file.originalname ?? '') || file.mimetype === 'application/pdf';
+    if (isPdf) {
+      // PDF scan -> OCR (bất đồng bộ)
+      return this.parseJournal.executePdf(file.buffer, file.originalname, provider);
     }
     return this.parseJournal.execute(file.buffer, file.originalname, provider);
   }
