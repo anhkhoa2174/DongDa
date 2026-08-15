@@ -50,19 +50,18 @@ const RESPONSE_SCHEMA = {
           fromCurrency: { type: 'string' },
           toCurrency: { type: 'string', enum: ['VND'] },
           rate: { type: 'number', minimum: 0.000001 },
-          buyRate: { type: ['number', 'null'], minimum: 0.000001 },
-          sellRate: { type: ['number', 'null'], minimum: 0.000001 },
+          // Gemini responseSchema không nhận type dạng mảng ['number','null'] -> dùng nullable
+          buyRate: { type: 'number', nullable: true, minimum: 0.000001 },
+          sellRate: { type: 'number', nullable: true, minimum: 0.000001 },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           sourceLabel: { type: 'string' },
-          warning: { type: ['string', 'null'] },
+          warning: { type: 'string', nullable: true },
         },
         required: ['rateType', 'provider', 'fromCurrency', 'toCurrency', 'rate', 'confidence', 'sourceLabel'],
-        additionalProperties: false,
       },
     },
   },
   required: ['rates'],
-  additionalProperties: false,
 };
 
 @Injectable()
