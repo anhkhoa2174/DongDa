@@ -68,4 +68,5 @@ export interface IFundRepository {
   // Xác nhận: post ledger (CREDIT nguồn + DEBIT đích) trong 1 transaction
   confirmTransfer(id: string, confirmedByUserId: string): Promise<FundTransfer>;
   rejectTransfer(id: string, userId: string): Promise<FundTransfer>;
+  cancelTransfer(id: string, createdByUserId: string): Promise<FundTransfer>;
 }

@@ -11,6 +11,7 @@ const SOURCE_META: Record<string, { category: string; path: string }> = {
   FUND_TRANSFER_CREATED: { category: 'FUND_TRANSFER', path: '/fund-transfer' },
   FUND_TRANSFER_CONFIRMED: { category: 'FUND_TRANSFER', path: '/fund-transfer' },
   FUND_TRANSFER_REJECTED: { category: 'FUND_TRANSFER', path: '/fund-transfer' },
+  FUND_TRANSFER_CANCELLED: { category: 'FUND_TRANSFER', path: '/fund-transfer' },
   CENTRAL_FUND_MOVEMENT: { category: 'FUND_MOVEMENT', path: '/fund-management/central-fund' },
   CENTRAL_FUND_CONVERSION: { category: 'FUND_MOVEMENT', path: '/fund-management/central-fund' },
   BRANCH_FUND_MOVEMENT: { category: 'FUND_MOVEMENT', path: '/fund-management/branch-funds' },

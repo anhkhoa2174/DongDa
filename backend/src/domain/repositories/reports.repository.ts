@@ -5,7 +5,9 @@ export interface ProviderStat {
   count: number;
   totalUsd: number;
   totalVnd: number;
-  profit: number;
+  transactionValueVnd: number;
+  debtGeneratedUsd: number;
+  debtGeneratedVnd: number;
 }
 
 export interface FxStat {
@@ -55,7 +57,7 @@ export interface CompanyDashboard {
     capitalTrend: Array<{ date: string; valueVnd: number }>;
   };
   operations: DashboardOperations;
-  revenueTrend: Array<{ date: string; label: string; revenueVnd: number; profitVnd: number }>;
+  transactionValueTrend: Array<{ date: string; label: string; valueVnd: number }>;
   transactionMix: Array<{ source: 'WU' | 'MG' | 'FX' | 'DOMESTIC'; count: number }>;
   branches: Array<{
     id: string;
@@ -66,8 +68,7 @@ export interface CompanyDashboard {
     vndBalance: number;
     usdBalance: number;
     todayTransactions: number;
-    revenueToday: number;
-    profitToday: number;
+    transactionValueTodayVnd: number;
     discrepancy: 'matched' | 'warning' | 'danger' | 'none';
     discrepancyValueVnd: number;
     riskLevel: 'normal' | 'watch' | 'risk';
@@ -79,6 +80,9 @@ export interface CompanyDashboard {
     fromCurrency: string;
     toCurrency: string;
     rate: number;
+    buyRate: number | null;
+    sellRate: number | null;
+    margin: number;
     effectiveFrom: Date;
     approvedAt: Date | null;
   }>;

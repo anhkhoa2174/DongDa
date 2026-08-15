@@ -4,7 +4,7 @@
 // Tạo 1 GD WU kéo theo:
 //   - Trả khách (Pay Currency) → quỹ tiền mặt chi nhánh GIẢM (ledger CREDIT)
 //   - WU nợ lại công ty (Paid Currency) → công nợ TĂNG
-//   - Lợi nhuận = (WU Implied Rate − Applied Rate) × USD  (tính khi đọc)
+//   - Giá trị giao dịch quy đổi VND = receivedUsd × appliedRate + receivedVnd
 
 export type Currency2 = 'USD' | 'VND';
 
@@ -28,15 +28,11 @@ export interface WuTransaction {
   appliedRate: number;
   paidCurrency: Currency2; // loại tiền WU hoàn lại → công nợ
   payoutCurrency: Currency2; // loại tiền khách chọn nhận
-  profit: number; // (wuRate − appliedRate) × wuUsd
+  transactionValueVnd: number;
   createdByUserId: string;
   createdAt: Date;
 }
 
 export function wuImpliedRate(wuVnd: number, wuUsd: number): number {
   return wuUsd > 0 ? wuVnd / wuUsd : 0;
-}
-
-export function wuProfit(wuRate: number, appliedRate: number, wuUsd: number): number {
-  return (wuRate - appliedRate) * wuUsd;
 }

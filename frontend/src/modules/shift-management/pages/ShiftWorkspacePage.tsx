@@ -30,6 +30,7 @@ import {
   WalletOutlined,
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
@@ -50,6 +51,7 @@ import type { CashCountLineDto, CountInput } from '../api/shift.api';
 
 type CountFormValues = {
   counts?: Record<string, number>;
+  denominations?: Record<string, Record<string, number>>;
   note?: string;
 };
 
@@ -62,6 +64,10 @@ type CountItem = {
 };
 
 const currencyPriority = ['VND', 'USD'];
+const cashDenominations: Record<string, number[]> = {
+  VND: [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000, 500],
+  USD: [100, 50, 20, 10, 5, 2, 1],
+};
 
 function money(n: number, currencyCode: string) {
   return formatCurrency(n, currencyCode, currencyCode === 'VND' ? 0 : 2);
@@ -102,25 +108,48 @@ function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
     }, new Map());
 
   return [...grouped.values()]
+    .filter((item) => Math.abs(item.balance) >= 0.005)
     .sort((a, b) => {
-      const balanceOrder = Number(Math.abs(b.balance) >= 0.005) - Number(Math.abs(a.balance) >= 0.005);
       const ap = currencyPriority.includes(a.code) ? currencyPriority.indexOf(a.code) : 99;
       const bp = currencyPriority.includes(b.code) ? currencyPriority.indexOf(b.code) : 99;
-      return balanceOrder || ap - bp || a.code.localeCompare(b.code) || a.name.localeCompare(b.name);
+      return ap - bp || a.code.localeCompare(b.code) || a.name.localeCompare(b.name);
     });
 }
 
 function initialCountValues(items: CountItem[]) {
   return {
-    counts: Object.fromEntries(items.map((item) => [item.code, item.balance])),
+    counts: Object.fromEntries(items.map((item) => [item.code, 0])),
+    denominations: Object.fromEntries(items
+      .filter((item) => cashDenominations[item.code])
+      .map((item) => [
+        item.code,
+        Object.fromEntries(cashDenominations[item.code].map((denomination) => [String(denomination), 0])),
+      ])),
   };
 }
 
 function countLines(values: CountFormValues, items: CountItem[]): CountInput[] {
-  return items.map((item) => ({
-    currency: item.code,
-    actualAmount: Number(values.counts?.[item.code] ?? 0),
-  }));
+  return items.map((item) => {
+    const denominations = cashDenominations[item.code]?.map((denomination) => ({
+      denomination,
+      quantity: Number(values.denominations?.[item.code]?.[String(denomination)] ?? 0),
+    }));
+    return {
+      currency: item.code,
+      actualAmount: denominations
+        ? denominations.reduce((total, line) => total + line.denomination * line.quantity, 0)
+        : Number(values.counts?.[item.code] ?? 0),
+      denominations,
+    };
+  });
+}
+
+function actualCount(values: CountFormValues, item: CountItem) {
+  const denominations = cashDenominations[item.code];
+  if (!denominations) return Number(values.counts?.[item.code] ?? 0);
+  return denominations.reduce((total, denomination) => (
+    total + denomination * Number(values.denominations?.[item.code]?.[String(denomination)] ?? 0)
+  ), 0);
 }
 
 function inputProps(currencyCode: string) {
@@ -147,6 +176,20 @@ const countCols: ColumnsType<CashCountLineDto> = [
     dataIndex: 'actualAmount',
     align: 'right',
     render: (value, row) => money(Number(value), row.currencyCode),
+  },
+  {
+    title: 'Chi tiết kiểm',
+    key: 'denominations',
+    width: 260,
+    render: (_, row) => row.denominations?.length ? (
+      <div className="shift-count-history__denominations">
+        {row.denominations.map((line) => (
+          <Tag key={line.denomination}>
+            {formatNumber(line.denomination, 0)} × {line.quantity} tờ
+          </Tag>
+        ))}
+      </div>
+    ) : <Typography.Text type="secondary">Kiểm tổng số lượng</Typography.Text>,
   },
   {
     title: 'Chênh lệch',
@@ -199,8 +242,8 @@ export function ShiftWorkspacePage() {
       message.success('Đã mở ca và ghi nhận kiểm quỹ đầu ca');
       setIsOpenModalOpen(false);
       openForm.resetFields();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Mở ca thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Mở ca thất bại'));
     }
   };
 
@@ -216,8 +259,8 @@ export function ShiftWorkspacePage() {
       message.success('Đã đóng ca và ghi nhận kiểm quỹ cuối ca');
       setIsCloseModalOpen(false);
       closeForm.resetFields();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Đóng ca thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Đóng ca thất bại'));
     }
   };
 
@@ -392,44 +435,85 @@ function CountModal({
   onFinish: (values: CountFormValues) => void;
 }) {
   const watchedCounts = Form.useWatch('counts', form);
+  const watchedDenominations = Form.useWatch('denominations', form);
+  const watchedValues: CountFormValues = {
+    counts: watchedCounts,
+    denominations: watchedDenominations,
+  };
   // Có chênh lệch nếu thực đếm khác tồn hệ thống ở bất kỳ loại tiền -> bắt buộc nhập lý do (BR-F8.4-01).
   const hasVariance = items.some((item) => {
-    const actual = watchedCounts?.[item.code];
-    return actual != null && Number(actual) !== Number(item.balance);
+    const actual = actualCount(watchedValues, item);
+    return Math.abs(actual - Number(item.balance)) >= 0.005;
   });
   return (
-    <Modal className="shift-count-modal" title={title} open={open} onCancel={onCancel} footer={null} width={820} destroyOnClose>
+    <Modal className="shift-count-modal" title={title} open={open} onCancel={onCancel} footer={null} width={920} destroyOnClose>
       <Alert type={alertType} showIcon className="mb-4" message={alertMessage} />
       <Form form={form} layout="vertical" onFinish={onFinish}>
-        <div className="shift-count-header">
-          <span>Loại quỹ</span>
-          <span>Số lượng</span>
-          <span>Thực đếm</span>
-        </div>
         <div className="shift-count-list">
-          {items.map((item) => (
-            <div className="shift-count-row" key={item.key}>
-              <div className="shift-count-row__currency">
-                <strong>{item.code}</strong>
-                <Typography.Text type="secondary">{accountTypeLabel(item.accountType)} · {item.name}</Typography.Text>
-              </div>
-              <Typography.Text className="shift-count-row__system">{quantity(item.balance, item.code)}</Typography.Text>
-              <div>
-                <Form.Item
-                  name={['counts', item.code]}
-                  rules={[{ required: true, message: `Nhập số thực đếm ${item.code}` }]}
-                  className="!mb-0"
-                >
-                  <InputNumber
-                    min={0}
-                    className="w-full"
-                    addonAfter={item.code}
-                    {...inputProps(item.code)}
-                  />
-                </Form.Item>
-              </div>
-            </div>
-          ))}
+          {items.map((item) => {
+            const denominations = cashDenominations[item.code];
+            const counted = actualCount(watchedValues, item);
+            return (
+              <section className="shift-count-card" key={item.key}>
+                <div className="shift-count-card__header">
+                  <div className="shift-count-row__currency">
+                    <strong>{item.code}</strong>
+                    <Typography.Text type="secondary">{accountTypeLabel(item.accountType)} · {item.name}</Typography.Text>
+                  </div>
+                  <div className="shift-count-card__system">
+                    <Typography.Text type="secondary">Số lượng hệ thống</Typography.Text>
+                    <Typography.Text className="shift-count-row__system">{quantity(item.balance, item.code)}</Typography.Text>
+                  </div>
+                </div>
+
+                {denominations ? (
+                  <>
+                    <div className="shift-denomination-grid">
+                      {denominations.map((denomination) => {
+                        const fieldName = String(denomination);
+                        const quantityValue = Number(watchedDenominations?.[item.code]?.[fieldName] ?? 0);
+                        return (
+                          <div className="shift-denomination-row" key={denomination}>
+                            <Typography.Text strong>{formatNumber(denomination, 0)} {item.code}</Typography.Text>
+                            <Form.Item
+                              name={['denominations', item.code, fieldName]}
+                              rules={[{ required: true, message: 'Nhập số tờ' }]}
+                              className="!mb-0"
+                            >
+                              <InputNumber min={0} precision={0} step={1} keyboard={false} addonAfter="tờ" className="w-full" />
+                            </Form.Item>
+                            <Typography.Text type="secondary" className="shift-denomination-row__amount">
+                              = {quantity(denomination * quantityValue, item.code)}
+                            </Typography.Text>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="shift-count-card__total">
+                      <Typography.Text>Tổng thực đếm</Typography.Text>
+                      <Typography.Text strong>{quantity(counted, item.code)}</Typography.Text>
+                    </div>
+                  </>
+                ) : (
+                  <div className="shift-count-card__foreign-input">
+                    <Form.Item
+                      name={['counts', item.code]}
+                      label={`Số lượng thực đếm ${item.code}`}
+                      rules={[{ required: true, message: `Nhập số thực đếm ${item.code}` }]}
+                      className="!mb-0"
+                    >
+                      <InputNumber
+                        min={0}
+                        className="w-full"
+                        addonAfter={item.code}
+                        {...inputProps(item.code)}
+                      />
+                    </Form.Item>
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
         {showNote && (
           <Form.Item
@@ -504,7 +588,7 @@ function CountHistorySection({
         pagination={false}
         columns={countCols}
         dataSource={count.lines}
-        scroll={{ x: 640 }}
+        scroll={{ x: 820 }}
       />
     </section>
   );

@@ -1,12 +1,10 @@
 // Flow MG — Tạo giao dịch MoneyGram (nối API thật)
-import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Typography } from 'antd';
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { useEffect, useMemo } from 'react';
+import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
+import { SendOutlined } from '@ant-design/icons';
+import { useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PageScaffold } from '@/shared/components/PageScaffold';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
-import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
@@ -19,51 +17,26 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useBranches, useCreateMg } from '../hooks/useMg';
+import { useCreateMg } from '../hooks/useMg';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
+import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/transactions/utils/paidRateSlider';
 
-const positiveNumberRule = (label: string) => ({
-  validator: (_: unknown, value: unknown) => {
-    const numberValue = Number(value);
-    if (value === undefined || value === null || value === '' || !Number.isFinite(numberValue)) {
-      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()} hợp lệ`));
-    }
-    if (numberValue <= 0) return Promise.reject(new Error(`${label} phải lớn hơn 0`));
-    return Promise.resolve();
-  },
-});
+import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
+import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
+import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 
 export function MgWorkspacePage() {
   const { message } = App.useApp();
-  const navigate = useNavigate();
-  const { data: branches = [] } = useBranches();
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateMg();
   const [form] = Form.useForm();
-  const user = useAuthStore((state) => state.user);
-  const isBranchUser = user?.role === 'branch';
-  const isControlUser = user?.role === 'director' || user?.role === 'accountant';
-  const canCreateTransaction = (isBranchUser && Boolean(user?.branchId)) || isControlUser;
-  const branchOptions = useMemo(
-    () =>
-      branches
-        .filter((branch) => branch.type !== 'HEAD_OFFICE')
-        .filter((branch) => !isBranchUser || branch.id === user?.branchId)
-        .map((branch) => ({ value: branch.id, label: `${branch.code} — ${branch.name}` })),
-    [branches, isBranchUser, user?.branchId],
-  );
-
-  useEffect(() => {
-    if (isBranchUser && user?.branchId) {
-      form.setFieldsValue({ branchId: user.branchId });
-    }
-  }, [form, isBranchUser, user?.branchId]);
+  const previousPayoutAmount = useRef<number>();
+  const previousPayoutCurrency = useRef<string>();
+  const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
 
   const resetTransactionForm = () => {
     form.resetFields();
-    if (isBranchUser && user?.branchId) {
-      form.setFieldValue('branchId', user.branchId);
-    }
+    resetBranchField();
   };
 
   const paidCurrency = Form.useWatch('paidCurrency', form) ?? 'USD';
@@ -72,32 +45,53 @@ export function MgWorkspacePage() {
   const payoutAmount = Number(Form.useWatch('payoutAmount', form) ?? 0);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
+  const transactionRate = Number(Form.useWatch('appliedRate', form) ?? 0);
   const rateType: ExchangeRateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
-  const splitPayout = splitMgPayout(payoutCurrency, payoutAmount, Number(systemRate ?? 0));
+  const fxRateType: ExchangeRateType = payoutCurrency === 'VND' ? 'FX_BUY' : 'FX_SELL';
+  const fxUsdRate = findActiveRate(activeRates, fxRateType, 'USD', 'INTERNAL')?.rate;
+  const rateBounds = getPaidRateBounds(systemRate, fxUsdRate);
+  const sliderRate = clampPaidRate(transactionRate, systemRate, fxUsdRate);
+  const canAdjustRate = Boolean(systemRate && fxUsdRate && rateBounds.min < rateBounds.max);
+  const resetReceivedUsd = previousPayoutAmount.current !== payoutAmount
+    || previousPayoutCurrency.current !== payoutCurrency;
+  const splitPayout = splitMgPayout(
+    payoutCurrency,
+    payoutAmount,
+    transactionRate,
+    receivedUsd,
+    resetReceivedUsd,
+  );
 
   useEffect(() => {
     if (systemRate) {
-      form.setFieldsValue({ appliedRate: systemRate });
+      form.setFieldsValue({
+        appliedRate: clampPaidRate(systemRate, systemRate, fxUsdRate),
+      });
     }
-  }, [form, systemRate]);
+  }, [form, fxUsdRate, systemRate]);
 
   useEffect(() => {
-    if (!systemRate || paidAmount <= 0) return;
+    if (!transactionRate || paidAmount <= 0) {
+      form.setFieldsValue({ payoutAmount: 0 });
+      return;
+    }
 
     form.setFieldsValue({
-      payoutAmount: getSuggestedPayoutAmount(paidCurrency, paidAmount, payoutCurrency, systemRate),
+      payoutAmount: getSuggestedPayoutAmount(paidCurrency, paidAmount, payoutCurrency, transactionRate),
     });
-  }, [form, paidAmount, paidCurrency, payoutCurrency, systemRate]);
+  }, [form, paidAmount, paidCurrency, payoutCurrency, transactionRate]);
 
   useEffect(() => {
     form.setFieldsValue({
       receivedUsd: splitPayout.receivedUsd,
       receivedVnd: splitPayout.receivedVnd,
     });
-  }, [form, splitPayout.receivedUsd, splitPayout.receivedVnd]);
+    previousPayoutAmount.current = payoutAmount;
+    previousPayoutCurrency.current = payoutCurrency;
+  }, [form, payoutAmount, payoutCurrency, splitPayout.receivedUsd, splitPayout.receivedVnd]);
 
-  const onCreate = async (v: any) => {
+  const onCreate = async (v: MgFormValues) => {
     if (!canCreateTransaction) {
       await message.error('Cần có quyền chi nhánh hoặc quyền GĐ/KTTH để tạo giao dịch MG');
       return;
@@ -120,17 +114,18 @@ export function MgWorkspacePage() {
       });
       message.success('Đã tạo GD MG — quỹ giảm, công nợ MG tăng');
       resetTransactionForm();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Tạo GD thất bại');
+      previousPayoutAmount.current = undefined;
+      previousPayoutCurrency.current = undefined;
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo GD thất bại'));
     }
   };
 
   return (
-    <PageScaffold
+    <TransactionCreatePage
       title="Giao dịch MoneyGram"
       description="Giống Western Union, khóa = Reference Number (mỗi Ref chỉ xử lý 1 lần)."
       moduleName="moneygram"
-      extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>Quay lại Giao Dịch</Button>}
     >
       <Row justify="center">
         <Col xs={24} xl={18}>
@@ -162,53 +157,21 @@ export function MgWorkspacePage() {
                 <Col span={12}><Form.Item name="customerName" label="Tên khách"><Input /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col span={12}><Form.Item name="paidCurrency" label="MG hiện tiền">
-                  <Segmented options={['USD', 'VND']} /></Form.Item></Col>
-                <Col span={12}><Form.Item name="paidAmount" label="Số tiền MG" rules={[positiveNumberRule('Số tiền MG')]}>
+                <Col span={24}><Form.Item name="paidAmount" label="Số tiền MG" rules={[positiveNumberRule('Số tiền MG')]}>
                   <InputNumber
                     min={0}
                     keyboard={false}
                     precision={paidCurrency === 'USD' ? 2 : 0}
-                    addonBefore={paidCurrency === 'USD' ? '$' : undefined}
-                    addonAfter={paidCurrency === 'VND' ? 'VND' : undefined}
+                    addonAfter={paidCurrency}
                     style={{ width: '100%' }}
                     formatter={paidCurrency === 'USD' ? usdInputFormatter : numberInputFormatter}
                     parser={paidCurrency === 'USD' ? usdInputParser : numberInputParser}
                   />
                 </Form.Item></Col>
               </Row>
+              <Form.Item name="payoutAmount" hidden><InputNumber /></Form.Item>
               <Row gutter={8}>
-                <Col span={12}><Form.Item name="payoutCurrency" label="Khách nhận">
-                  <Segmented options={['VND', 'USD']} /></Form.Item></Col>
-                <Col span={12}><Form.Item name="payoutAmount" label="Số tiền khách nhận theo MG" rules={[positiveNumberRule('Số tiền khách nhận')]}>
-                  <InputNumber
-                    min={0}
-                    keyboard={false}
-                    precision={payoutCurrency === 'USD' ? 2 : 0}
-                    addonBefore={payoutCurrency === 'USD' ? '$' : undefined}
-                    addonAfter={payoutCurrency === 'VND' ? 'VND' : undefined}
-                    style={{ width: '100%' }}
-                    formatter={payoutCurrency === 'USD' ? usdInputFormatter : numberInputFormatter}
-                    parser={payoutCurrency === 'USD' ? usdInputParser : numberInputParser}
-                  />
-                </Form.Item></Col>
-              </Row>
-              <Row gutter={8}>
-                {payoutCurrency === 'USD' && (
-                  <Col span={12}><Form.Item name="receivedUsd" label="Trả khách USD chẵn">
-                    <InputNumber
-                      min={0}
-                      precision={0}
-                      addonBefore="$"
-                      readOnly
-                      controls={false}
-                      style={{ width: '100%' }}
-                      formatter={usdInputFormatter}
-                      parser={usdInputParser}
-                    />
-                  </Form.Item></Col>
-                )}
-                <Col span={payoutCurrency === 'USD' ? 12 : 24}><Form.Item name="receivedVnd" label={payoutCurrency === 'USD' ? 'Trả khách VND phần lẻ' : 'Trả khách VND'}>
+                <Col span={12}><Form.Item name="receivedVnd" label={payoutCurrency === 'USD' ? 'Trả khách VND phần lẻ' : 'Trả khách VND'}>
                   <InputNumber
                     min={0}
                     precision={0}
@@ -220,10 +183,55 @@ export function MgWorkspacePage() {
                     parser={numberInputParser}
                   />
                 </Form.Item></Col>
+                <Col span={12}><Form.Item name="receivedUsd" label="Trả khách USD (số nguyên)">
+                    <InputNumber
+                      min={0}
+                      max={Math.trunc(Math.max(payoutAmount, 0))}
+                      precision={0}
+                      keyboard={false}
+                      addonAfter="USD"
+                      readOnly={payoutCurrency === 'VND'}
+                      controls={payoutCurrency === 'USD'}
+                      style={{ width: '100%' }}
+                      formatter={usdInputFormatter}
+                      parser={usdInputParser}
+                    />
+                </Form.Item></Col>
               </Row>
-              <Form.Item name="appliedRate" label="Tỷ giá áp dụng" rules={[positiveNumberRule('Tỷ giá áp dụng')]}>
-                <InputNumber min={0} precision={2} addonAfter="VND/USD" readOnly controls={false} style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
+              <Row gutter={8}>
+                <Col span={12}><Form.Item name="payoutCurrency" label="Tiền khách nhận">
+                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} />
+                </Form.Item></Col>
+                <Col span={12}><Form.Item name="paidCurrency" label="Paid Currency (MG hoàn)">
+                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} />
+                </Form.Item></Col>
+              </Row>
+              <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
+                <InputNumber
+                  min={rateBounds.min}
+                  max={rateBounds.max}
+                  precision={2}
+                  step={PAID_RATE_STEP}
+                  keyboard={false}
+                  addonAfter="VND/USD"
+                  style={{ width: '100%' }}
+                  formatter={exchangeRateInputFormatter}
+                  parser={exchangeRateInputParser}
+                />
               </Form.Item>
+              <Slider
+                min={rateBounds.min}
+                max={rateBounds.max}
+                step={PAID_RATE_STEP}
+                value={sliderRate}
+                disabled={!systemRate || !canAdjustRate}
+                tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
+                marks={{
+                  [rateBounds.min]: formatExchangeRate(rateBounds.min),
+                  [rateBounds.max]: formatExchangeRate(rateBounds.max),
+                }}
+                onChange={(value) => form.setFieldsValue({ appliedRate: value })}
+              />
 
               <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-4">
                 <Typography.Text strong>Tóm tắt giao dịch</Typography.Text>
@@ -242,14 +250,17 @@ export function MgWorkspacePage() {
                     </div>
                     <Typography.Text type="secondary">
                       {payoutCurrency === 'USD'
-                        ? `USD lẻ ${formatUsd(splitPayout.fractionalUsd)} quy đổi VND`
+                        ? `${formatUsd(splitPayout.convertedUsd)} còn lại được quy đổi sang VND`
                         : 'VND'}
                     </Typography.Text>
                   </Col>
                   <Col xs={24} md={8}>
                     <Typography.Text type="secondary">Tỷ giá áp dụng</Typography.Text>
-                    <div className="text-lg font-semibold">{formatExchangeRate(systemRate ?? 0)}</div>
-                    <Typography.Text type="secondary">{rateType === 'PAID_BUY' ? 'Paid mua' : 'Paid bán'} active</Typography.Text>
+                    <div className="text-lg font-semibold">{formatExchangeRate(transactionRate)}</div>
+                    <Typography.Text type="secondary">
+                      {rateType === 'PAID_BUY' ? 'Paid mua' : 'Paid bán'} {formatExchangeRate(systemRate ?? 0)} ·{' '}
+                      {fxRateType === 'FX_BUY' ? 'Mua USD' : 'Bán USD'} {formatExchangeRate(fxUsdRate ?? 0)}
+                    </Typography.Text>
                   </Col>
                 </Row>
               </div>
@@ -265,8 +276,21 @@ export function MgWorkspacePage() {
           </Card>
         </Col>
       </Row>
-    </PageScaffold>
+    </TransactionCreatePage>
   );
+}
+
+interface MgFormValues {
+  branchId: string;
+  referenceNo: string;
+  customerName?: string;
+  paidCurrency: 'USD' | 'VND';
+  paidAmount: number;
+  payoutCurrency: 'USD' | 'VND';
+  payoutAmount?: number;
+  receivedUsd?: number;
+  receivedVnd?: number;
+  appliedRate: number;
 }
 
 function findActiveRate(
@@ -306,21 +330,31 @@ function getSuggestedPayoutAmount(
   return 0;
 }
 
-function splitMgPayout(payoutCurrency: string, payoutAmount: number, appliedRate: number) {
+function splitMgPayout(
+  payoutCurrency: string,
+  payoutAmount: number,
+  appliedRate: number,
+  currentReceivedUsd: number,
+  resetReceivedUsd: boolean,
+) {
   if (payoutCurrency === 'VND') {
     return {
       receivedUsd: 0,
       receivedVnd: Math.round(Math.max(payoutAmount, 0)),
-      fractionalUsd: 0,
+      convertedUsd: 0,
     };
   }
 
-  const receivedUsd = Math.trunc(Math.max(payoutAmount, 0));
-  const fractionalUsd = Math.max(payoutAmount - receivedUsd, 0);
+  const safePayout = Math.max(payoutAmount, 0);
+  const maxReceivedUsd = Math.trunc(safePayout);
+  const receivedUsd = resetReceivedUsd
+    ? maxReceivedUsd
+    : Math.min(Math.max(Math.trunc(currentReceivedUsd), 0), maxReceivedUsd);
+  const convertedUsd = Math.max(safePayout - receivedUsd, 0);
 
   return {
     receivedUsd,
-    receivedVnd: Math.round(fractionalUsd * Math.max(appliedRate, 0)),
-    fractionalUsd,
+    receivedVnd: Math.round(convertedUsd * Math.max(appliedRate, 0)),
+    convertedUsd,
   };
 }

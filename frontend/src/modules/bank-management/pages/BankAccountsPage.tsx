@@ -163,31 +163,31 @@ function BankAccountCard({ account }: { account: BankAccount }) {
 }
 
 export function BankAccountsPage() {
-  const { data: bankAccountsMock } = useBankAccountsView();
+  const { data: accounts } = useBankAccountsView();
   const [keyword, setKeyword] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const filteredAccounts = useMemo(
     () =>
-      bankAccountsMock.filter((account) => {
+      accounts.filter((account) => {
         const text = `${account.bankCode} ${account.bankName} ${account.accountName} ${account.accountNumber} ${account.ownerScope}`.toLowerCase();
         const matchesKeyword = text.includes(keyword.toLowerCase());
         const matchesBank = bankFilter === 'ALL' || account.bankCode === bankFilter;
         const matchesStatus = statusFilter === 'ALL' || account.status === statusFilter;
         return matchesKeyword && matchesBank && matchesStatus;
       }),
-    [bankFilter, keyword, statusFilter],
+    [accounts, bankFilter, keyword, statusFilter],
   );
 
-  const totalVnd = bankAccountsMock
+  const totalVnd = accounts
     .filter((account) => account.currency === 'VND')
     .reduce((sum, account) => sum + account.balance, 0);
-  const totalUsd = bankAccountsMock
+  const totalUsd = accounts
     .filter((account) => account.currency === 'USD')
     .reduce((sum, account) => sum + account.balance, 0);
-  const pendingReconciliation = bankAccountsMock.filter((account) => account.reconciliationStatus !== 'MATCHED').length;
-  const todayTransactionCount = bankAccountsMock.reduce((sum, account) => sum + account.transactionCountToday, 0);
+  const pendingReconciliation = accounts.filter((account) => account.reconciliationStatus !== 'MATCHED').length;
+  const todayTransactionCount = accounts.reduce((sum, account) => sum + account.transactionCountToday, 0);
 
   return (
     <PageScaffold

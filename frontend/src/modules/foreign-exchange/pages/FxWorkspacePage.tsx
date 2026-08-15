@@ -1,13 +1,11 @@
 // Flow FX — Mua/Bán ngoại tệ (nối API thật)
-import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Table, Typography } from 'antd';
+import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Slider, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ArrowLeftOutlined, SwapOutlined } from '@ant-design/icons';
+import { SwapOutlined } from '@ant-design/icons';
 import { useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PageScaffold } from '@/shared/components/PageScaffold';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { currencyOptions, getCurrencyMetadata } from '@/shared/constants/currencies';
-import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
@@ -16,8 +14,11 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useBranches, useCreateFx, useFxStock } from '../hooks/useFx';
+import { useCreateFx, useFxStock } from '../hooks/useFx';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
+import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
+import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
+import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 
 const FX_CURRENCY_OPTIONS = currencyOptions.filter((currency) => currency.value !== 'VND');
 const money = (n: number) => formatNumber(n, 2);
@@ -27,56 +28,28 @@ type FxStockRow = {
   hasBalance: boolean;
   balanceByBranch: Record<string, number>;
 };
-const positiveNumberRule = (label: string) => ({
-  validator: (_: unknown, value: unknown) => {
-    const numberValue = Number(value);
-    if (value === undefined || value === null || value === '' || !Number.isFinite(numberValue)) {
-      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()} hợp lệ`));
-    }
-    if (numberValue <= 0) return Promise.reject(new Error(`${label} phải lớn hơn 0`));
-    return Promise.resolve();
-  },
-});
-
 export function FxWorkspacePage() {
   const { message } = App.useApp();
-  const navigate = useNavigate();
-  const { data: stock = [] } = useFxStock();
-  const { data: branches = [] } = useBranches();
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateFx();
   const [form] = Form.useForm();
-  const user = useAuthStore((state) => state.user);
-  const isBranchUser = user?.role === 'branch';
-  const isControlUser = user?.role === 'director' || user?.role === 'accountant';
-  const canCreateTransaction = (isBranchUser && Boolean(user?.branchId)) || isControlUser;
-  const branchOptions = useMemo(
-    () =>
-      branches
-        .filter((branch) => branch.type !== 'HEAD_OFFICE')
-        .filter((branch) => !isBranchUser || branch.id === user?.branchId)
-        .map((branch) => ({ value: branch.id, label: `${branch.code} — ${branch.name}` })),
-    [branches, isBranchUser, user?.branchId],
-  );
-
-  useEffect(() => {
-    if (isBranchUser && user?.branchId) {
-      form.setFieldsValue({ branchId: user.branchId });
-    }
-  }, [form, isBranchUser, user?.branchId]);
+  const { user, branches, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
+  const { data: stock = [] } = useFxStock(isBranchUser ? user?.branchId : undefined);
 
   const resetTransactionForm = () => {
     form.resetFields();
-    if (isBranchUser && user?.branchId) {
-      form.setFieldValue('branchId', user.branchId);
-    }
+    resetBranchField();
   };
 
   const amount = Form.useWatch('fxAmount', form) ?? 0;
   const rate = Form.useWatch('rate', form) ?? 0;
   const side = Form.useWatch('side', form) ?? 'buy';
   const fxCurrency = Form.useWatch('fxCurrency', form) ?? 'USD';
-  const systemRate = findActiveRate(activeRates, side === 'buy' ? 'FX_BUY' : 'FX_SELL', fxCurrency, 'INTERNAL')?.rate;
+  const activeRate = findActiveRate(activeRates, side === 'buy' ? 'FX_BUY' : 'FX_SELL', fxCurrency, 'INTERNAL');
+  const systemRate = activeRate?.rate;
+  const margin = Number(activeRate?.margin ?? 0);
+  const rateBounds = getFxRateBounds(Number(systemRate ?? 0), margin, side === 'buy');
+  const sliderRate = clampFxRate(Number(rate), rateBounds);
 
   useEffect(() => {
     if (systemRate) {
@@ -84,7 +57,7 @@ export function FxWorkspacePage() {
     }
   }, [form, systemRate]);
 
-  const onCreate = async (v: any) => {
+  const onCreate = async (v: FxFormValues) => {
     if (!canCreateTransaction) {
       await message.error('Cần có quyền chi nhánh hoặc quyền GĐ/KTTH để tạo giao dịch ngoại tệ');
       return;
@@ -99,8 +72,8 @@ export function FxWorkspacePage() {
       });
       message.success(v.side === 'buy' ? 'Đã mua ngoại tệ — tồn tăng, quỹ VND giảm' : 'Đã bán ngoại tệ — tồn giảm, quỹ VND tăng');
       resetTransactionForm();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Giao dịch thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Giao dịch thất bại'));
     }
   };
 
@@ -122,7 +95,8 @@ export function FxWorkspacePage() {
       balances.set(key, (balances.get(key) ?? 0) + Number(item.balance));
     });
     const currencies = new Set([
-      ...FX_CURRENCY_OPTIONS.map((option) => option.value),
+      'VND',
+      'USD',
       ...stock.map((item) => item.currency.toUpperCase()),
     ]);
 
@@ -143,10 +117,12 @@ export function FxWorkspacePage() {
       .sort((first, second) => Number(second.hasBalance) - Number(first.hasBalance)
         || (second.hasBalance ? second.total - first.total : first.currency.localeCompare(second.currency)));
   }, [stock, stockBranches]);
+  const baseFundRows = stockRows.filter((row) => row.currency === 'VND' || row.currency === 'USD');
+  const fundARows = stockRows.filter((row) => row.currency !== 'VND' && row.currency !== 'USD' && row.hasBalance);
 
   const stockCols: ColumnsType<FxStockRow> = [
     {
-      title: 'Ngoại tệ',
+      title: 'Loại tiền',
       dataIndex: 'currency',
       fixed: 'left',
       width: 125,
@@ -161,7 +137,7 @@ export function FxWorkspacePage() {
     ...stockBranches.map<ColumnsType<FxStockRow>[number]>((branch) => ({
       title: (
         <div>
-          <Typography.Text strong>{branch.type === 'HEAD_OFFICE' ? 'Quỹ A Hội sở' : branch.code}</Typography.Text>
+          <Typography.Text strong>{branch.type === 'HEAD_OFFICE' ? 'Hội sở' : branch.code}</Typography.Text>
           <Typography.Text type="secondary" className="block max-w-32 truncate text-xs!" title={branch.name}>
             {branch.name}
           </Typography.Text>
@@ -190,11 +166,10 @@ export function FxWorkspacePage() {
   ];
 
   return (
-    <PageScaffold
+    <TransactionCreatePage
       title="Mua / Bán ngoại tệ"
       description="Mua (khách bán cho công ty): quỹ VND giảm, tồn ngoại tệ tăng. Bán: ngược lại. Không bán vượt tồn."
       moduleName="foreign-exchange"
-      extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>Quay lại Giao Dịch</Button>}
     >
       <Row gutter={[16, 16]} align="stretch">
         <Col xs={24} lg={10} xl={9}>
@@ -221,9 +196,33 @@ export function FxWorkspacePage() {
               </Row>
               <Row gutter={8}>
                 <Col xs={24} sm={12}><Form.Item name="rate" label={side === 'buy' ? 'Giá mua' : 'Giá bán'} rules={[positiveNumberRule(side === 'buy' ? 'Giá mua' : 'Giá bán')]}>
-                  <InputNumber min={0} precision={6} addonAfter="VND" readOnly controls={false} style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} /></Form.Item></Col>
+                  <InputNumber
+                    min={rateBounds.min}
+                    max={rateBounds.max}
+                    precision={6}
+                    step={0.01}
+                    keyboard={false}
+                    addonAfter="VND"
+                    controls={false}
+                    style={{ width: '100%' }}
+                    formatter={exchangeRateInputFormatter}
+                    parser={exchangeRateInputParser}
+                  /></Form.Item></Col>
                 <Col xs={24} sm={12}><Form.Item name="customerName" label="Khách"><Input /></Form.Item></Col>
               </Row>
+              <Slider
+                min={rateBounds.min}
+                max={rateBounds.max}
+                step={0.01}
+                value={sliderRate}
+                disabled={!systemRate || margin <= 0}
+                tooltip={{ formatter: (value) => formatNumber(Number(value ?? 0), 6) }}
+                marks={{
+                  [rateBounds.min]: formatNumber(rateBounds.min, 6),
+                  [rateBounds.max]: formatNumber(rateBounds.max, 6),
+                }}
+                onChange={(value) => form.setFieldValue('rate', value)}
+              />
               <div className="mb-4 border-y border-slate-200 bg-slate-50 px-4 py-3">
                 <Typography.Text strong>Tóm tắt giao dịch</Typography.Text>
                 <Row gutter={[16, 12]} className="mt-3">
@@ -238,6 +237,7 @@ export function FxWorkspacePage() {
                   <Col xs={24} sm={8}>
                     <Typography.Text type="secondary">Thành tiền</Typography.Text>
                     <div className="mt-1 text-lg font-semibold text-brand-700">{formatNumber(Math.round(Number(amount) * Number(rate)), 0)} VND</div>
+                    <Typography.Text type="secondary">Biên độ {formatNumber(margin, 6)} VND</Typography.Text>
                   </Col>
                 </Row>
               </div>
@@ -252,25 +252,58 @@ export function FxWorkspacePage() {
         </Col>
         <Col xs={24} lg={14} xl={15}>
           <Card
-            title="Tồn ngoại tệ theo chi nhánh"
+            title="Tồn quỹ theo chi nhánh"
             size="small"
             className="h-full"
             extra={<Typography.Text type="secondary" className="text-xs!">Tự cập nhật mỗi 10 giây</Typography.Text>}
           >
-            <Table<FxStockRow>
-              rowKey="currency"
-              size="small"
-              columns={stockCols}
-              dataSource={stockRows}
-              pagination={false}
-              scroll={{ x: Math.max(560, 270 + stockBranches.length * 145) }}
-              rowClassName={(row) => row.hasBalance ? 'fx-stock-row--active' : 'fx-stock-row--empty'}
-            />
+            <Space direction="vertical" size={18} className="w-full">
+              <section className="w-full">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Typography.Text strong>Quỹ gốc</Typography.Text>
+                  <Tag color="gold">VND · USD</Tag>
+                </div>
+                <Table<FxStockRow>
+                  rowKey="currency"
+                  size="small"
+                  columns={stockCols}
+                  dataSource={baseFundRows}
+                  pagination={false}
+                  scroll={{ x: Math.max(560, 270 + stockBranches.length * 145) }}
+                  rowClassName={(row) => row.hasBalance ? 'fx-stock-row--active' : 'fx-stock-row--empty'}
+                />
+              </section>
+              <section className="w-full border-t border-slate-200 pt-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Typography.Text strong>Quỹ A</Typography.Text>
+                  <Tag>{fundARows.length} ngoại tệ có tồn</Tag>
+                </div>
+                <Table<FxStockRow>
+                  rowKey="currency"
+                  size="small"
+                  columns={stockCols}
+                  dataSource={fundARows}
+                  pagination={false}
+                  scroll={{ x: Math.max(560, 270 + stockBranches.length * 145) }}
+                  locale={{ emptyText: 'Chưa có ngoại tệ tồn Quỹ A' }}
+                  rowClassName={() => 'fx-stock-row--active'}
+                />
+              </section>
+            </Space>
           </Card>
         </Col>
       </Row>
-    </PageScaffold>
+    </TransactionCreatePage>
   );
+}
+
+interface FxFormValues {
+  branchId: string;
+  side: 'buy' | 'sell';
+  fxCurrency: string;
+  fxAmount: number;
+  rate: number;
+  customerName?: string;
 }
 
 function findActiveRate(
@@ -285,4 +318,17 @@ function findActiveRate(
     rate.toCurrency === 'VND' &&
     (!provider || rate.provider === provider),
   );
+}
+
+function getFxRateBounds(systemRate: number, margin: number, isBuy: boolean) {
+  const safeRate = Number.isFinite(systemRate) && systemRate > 0 ? systemRate : 0;
+  const safeMargin = Number.isFinite(margin) && margin > 0 ? margin : 0;
+  return isBuy
+    ? { min: Math.max(safeRate - safeMargin, 0.000001), max: safeRate }
+    : { min: safeRate, max: safeRate + safeMargin };
+}
+
+function clampFxRate(value: number, bounds: { min: number; max: number }) {
+  if (!Number.isFinite(value) || value <= 0) return bounds.min;
+  return Math.min(Math.max(value, bounds.min), bounds.max);
 }

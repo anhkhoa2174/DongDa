@@ -17,16 +17,17 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { formatVnd } from '@/shared/utils/formatters';
 import { summaryApi } from '../api/summary.api';
 import { useNotify } from '@/app/providers/notifications/useNotify';
-import { useBranches } from '@/modules/western-union/hooks/useWu';
+import { useBranches } from '@/shared/hooks/useBranches';
 
 const reportCards = [
   { key: 'fund',     title: 'Báo cáo Vốn & Quỹ',    desc: 'Tổng vốn, biến động, tồn quỹ',     icon: <WalletOutlined />,        color: '#2563eb' },
-  { key: 'wu',       title: 'Báo cáo WU',           desc: 'GD, công nợ, lợi nhuận',           icon: <SwapOutlined />,          color: '#2563eb' },
-  { key: 'mg',       title: 'Báo cáo MoneyGram',    desc: 'GD, công nợ, lợi nhuận',           icon: <SwapOutlined />,          color: '#7c3aed' },
-  { key: 'fx',       title: 'Báo cáo Ngoại tệ',     desc: 'Mua bán, tồn kho, lợi nhuận',      icon: <DollarOutlined />,        color: '#16a34a' },
+  { key: 'wu',       title: 'Báo cáo WU',           desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#2563eb' },
+  { key: 'mg',       title: 'Báo cáo MoneyGram',    desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#7c3aed' },
+  { key: 'fx',       title: 'Báo cáo Ngoại tệ',     desc: 'Giá trị mua bán và tồn kho',        icon: <DollarOutlined />,       color: '#16a34a' },
   { key: 'transfer', title: 'Báo cáo Điều động',    desc: 'Lịch sử luân chuyển vốn',          icon: <UsergroupAddOutlined />,  color: '#0891b2' },
   { key: 'gap',      title: 'Báo cáo Sai lệch',     desc: 'Chênh lệch quỹ, đối chiếu',        icon: <WarningOutlined />,       color: '#d97706' },
   { key: 'debt',     title: 'Báo cáo Công nợ',      desc: 'WU/MG chờ thanh toán',             icon: <FileSearchOutlined />,    color: '#dc2626' },
@@ -54,9 +55,7 @@ export function ReportsPage() {
         : format === 'EXCEL' ? 'Đã tải file Excel báo cáo'
         : `Đã chuẩn bị báo cáo ${format}`,
     ),
-    onError: (e: any) => notify.error(
-      typeof e?.response?.data?.message === 'string' ? e.response.data.message : 'Không thể tạo báo cáo',
-    ),
+    onError: (error: unknown) => notify.error(getApiErrorMessage(error, 'Không thể tạo báo cáo')),
   });
 
   return (
@@ -138,15 +137,14 @@ export function ReportsPage() {
 
       <Row gutter={16}>
         <Col xs={24} lg={14}>
-          <Card title="Giá trị giao dịch và lợi nhuận — 7 ngày gần nhất">
+          <Card title="Giá trị giao dịch — 7 ngày gần nhất">
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dashboard?.revenueTrend ?? []}>
+              <BarChart data={dashboard?.transactionValueTrend ?? []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="label" />
                 <YAxis tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
                 <Tooltip formatter={(v: number) => formatVnd(v)} />
-                <Bar dataKey="revenueVnd" fill="#111111" name="Giá trị giao dịch" />
-                <Bar dataKey="profitVnd" fill="#f5b301" name="Lợi nhuận" />
+                <Bar dataKey="valueVnd" fill="#f5b301" name="Giá trị giao dịch" />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -162,8 +160,8 @@ export function ReportsPage() {
                 { title: 'Chi nhánh', dataIndex: 'name' },
                 { title: 'GD', dataIndex: 'todayTransactions', align: 'center' },
                 {
-                  title: 'Lợi nhuận',
-                  dataIndex: 'profitToday',
+                  title: 'Giá trị giao dịch',
+                  dataIndex: 'transactionValueTodayVnd',
                   align: 'right',
                   render: (v: number) => (
                     <Typography.Text strong style={{ color: v > 0 ? '#16a34a' : '#64748b' }}>
@@ -190,7 +188,7 @@ export function ReportsPage() {
         </Col>
         <Col xs={12} md={6}>
           <Card>
-            <Statistic title="Lợi nhuận tạm tính" value={(dashboard?.branches ?? []).reduce((sum, branch) => sum + branch.profitToday, 0)} valueStyle={{ color: '#16a34a' }} formatter={(v) => formatVnd(Number(v))} />
+            <Statistic title="Chi nhánh đang mở" value={`${dashboard?.operations.openBranchCount ?? 0} / ${dashboard?.operations.totalBranchCount ?? 0}`} />
           </Card>
         </Col>
         <Col xs={12} md={6}>

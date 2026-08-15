@@ -7,10 +7,12 @@ import type { ColumnsType } from 'antd/es/table';
 import { MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { useReconItems, useReconRuns, useRunReconciliation, useParseJournal } from '../hooks/useReconciliation';
-import type { ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
-import { useBranches } from '@/modules/western-union/hooks/useWu';
+import type { JournalRowInput, ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
+import { useBranches } from '@/shared/hooks/useBranches';
 import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import { formatNumber } from '@/shared/utils/formatters';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 
 const money = (n: number) => formatNumber(n, 2);
 
@@ -21,13 +23,20 @@ const ITEM_STATUS: Record<string, { color: string; label: string }> = {
   MISSING_IN_JOURNAL: { color: 'volcano', label: 'Thiếu ở Journal' },
 };
 
+interface ReconciliationFormValues {
+  provider: 'WU' | 'MG';
+  businessDate: Dayjs;
+  branchId?: string;
+  rows: JournalRowInput[];
+}
+
 export function ReconciliationWorkspacePage() {
   const { message } = App.useApp();
   const { data: runs = [] } = useReconRuns();
   const run = useRunReconciliation();
   const parse = useParseJournal();
   const { data: branches = [] } = useBranches();
-  const [form] = Form.useForm();
+  const [form] = Form.useForm<ReconciliationFormValues>();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const { data: items = [] } = useReconItems(selectedRun);
 
@@ -54,18 +63,18 @@ export function ReconciliationWorkspacePage() {
       if (provider === 'MG' && res.rows.length) {
         message.info('Journal MG: vui lòng chọn chi nhánh cho từng dòng trước khi chạy đối chiếu');
       }
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Đọc file thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Đọc file thất bại'));
     }
     return false; // chặn antd tự upload
   };
 
-  const onRun = async (v: any) => {
-    const rows = (v.rows ?? []).filter((r: any) => r?.code && r?.amount != null);
+  const onRun = async (v: ReconciliationFormValues) => {
+    const rows = (v.rows ?? []).filter((row) => row?.code && row?.amount != null);
     if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
     // Journal WU/MG có thể lẫn USD và VND, nhưng mỗi lần đối chiếu chỉ 1 loại tiền
     // -> tự gom theo loại tiền và chạy lần lượt từng loại.
-    const byCurrency = new Map<string, any[]>();
+    const byCurrency = new Map<string, JournalRowInput[]>();
     for (const r of rows) {
       const cur = r.currencyCode ?? 'USD';
       if (!byCurrency.has(cur)) byCurrency.set(cur, []);
@@ -86,8 +95,8 @@ export function ReconciliationWorkspacePage() {
       }
       if (lastRunId) setSelectedRun(lastRunId);
       message.success(`Đối chiếu xong — ${summaries.join(' · ')}`);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Đối chiếu thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Đối chiếu thất bại'));
     }
   };
 

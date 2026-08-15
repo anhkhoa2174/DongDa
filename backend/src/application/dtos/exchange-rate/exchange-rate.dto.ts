@@ -45,6 +45,11 @@ export class CreateExchangeRateDto {
   rate: number;
 
   @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(0)
+  margin?: number;
+
+  @IsOptional()
   @IsISO8601()
   effectiveFrom?: string; // ISO; mặc định now nếu bỏ trống
 }
@@ -121,6 +126,7 @@ export interface RateResponseDto {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: Date;
   effectiveTo?: Date | null;
   status: RateStatus;

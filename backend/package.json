@@ -14,11 +14,11 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:prod": "prisma migrate deploy",
+    "db:generate": "prisma generate --schema src/infrastructure/database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema src/infrastructure/database/prisma/schema.prisma",
+    "db:migrate:prod": "prisma migrate deploy --schema src/infrastructure/database/prisma/schema.prisma",
     "db:seed": "ts-node src/infrastructure/database/prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio --schema src/infrastructure/database/prisma/schema.prisma"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

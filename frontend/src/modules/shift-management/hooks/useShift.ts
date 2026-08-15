@@ -1,9 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { shiftApi, type CountInput } from '../api/shift.api';
 
-export function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => shiftApi.branches() });
-}
 export function useCurrentShift(branchId?: string) {
   return useQuery({
     queryKey: ['shift', 'current', branchId],

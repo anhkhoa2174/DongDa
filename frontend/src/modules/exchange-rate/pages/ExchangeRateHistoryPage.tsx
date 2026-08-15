@@ -122,6 +122,13 @@ export function ExchangeRateHistoryPage() {
       render: (_, row) => renderHistoryGroupRate(row, 'sell'),
     },
     {
+      title: 'Biên độ',
+      key: 'margin',
+      align: 'right',
+      width: 120,
+      render: (_, row) => `${formatExchangeRate(historyGroupMargin(row), 6)} VND`,
+    },
+    {
       title: 'Người tạo / thời gian',
       width: 180,
       responsive: ['xl'],
@@ -249,6 +256,7 @@ export function ExchangeRateHistoryPage() {
               <Descriptions.Item label="Ngoại tệ">{selectedGroup.fromCurrency}/{selectedGroup.toCurrency}</Descriptions.Item>
               <Descriptions.Item label="Quốc gia">{getCurrencyMetadata(selectedGroup.fromCurrency).country}</Descriptions.Item>
               <Descriptions.Item label="Người tạo">{selectedGroup.createdByName}</Descriptions.Item>
+              <Descriptions.Item label="Biên độ">{formatExchangeRate(historyGroupMargin(selectedGroup), 6)} VND</Descriptions.Item>
               <Descriptions.Item label="Tạo lúc" span={2}>{formatDateTime(selectedGroup.createdAt)}</Descriptions.Item>
             </Descriptions>
             {selectedGroup.buy && <HistoryRateDetail title="Giá mua" rate={selectedGroup.buy} />}
@@ -263,6 +271,10 @@ export function ExchangeRateHistoryPage() {
 
 function rateGroupLabel(rateGroup: ExchangeRateGroup) {
   return RATE_GROUPS.find((option) => option.value === rateGroup)?.label ?? rateGroup;
+}
+
+function historyGroupMargin(group: ExchangeRateHistoryGroupDto) {
+  return group.buy?.margin ?? group.sell?.margin ?? group.bank?.margin ?? 0;
 }
 
 function renderHistoryGroupRate(group: ExchangeRateHistoryGroupDto, side: 'buy' | 'sell') {
@@ -306,6 +318,7 @@ function HistoryRateDetail({ title, rate }: { title: string; rate: ExchangeRateH
         <Descriptions.Item label="Tỷ giá">
           <Typography.Text strong>{formatExchangeRate(rate.rate, 6)} VND/{rate.fromCurrency}</Typography.Text>
         </Descriptions.Item>
+        <Descriptions.Item label="Biên độ">{formatExchangeRate(rate.margin, 6)} VND</Descriptions.Item>
         <Descriptions.Item label="Người duyệt">{rate.approvedByName ?? 'Chưa duyệt'}</Descriptions.Item>
         <Descriptions.Item label="Duyệt lúc">{rate.approvedAt ? formatDateTime(rate.approvedAt) : 'Chưa duyệt'}</Descriptions.Item>
         <Descriptions.Item label="Hiệu lực">{formatDateTime(rate.effectiveFrom)}</Descriptions.Item>

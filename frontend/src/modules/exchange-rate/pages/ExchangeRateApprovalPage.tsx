@@ -6,6 +6,7 @@ import { CheckOutlined, CloseOutlined, DeleteOutlined, HistoryOutlined, PlusOutl
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { CURRENCIES, currencyOptions, getCurrencyMetadata } from '@/shared/constants/currencies';
 import {
   exchangeRateInputFormatter,
@@ -40,6 +41,7 @@ type CreateRateEntry = {
   fromCurrency: string;
   buyRate?: number;
   sellRate?: number;
+  margin?: number;
 };
 type CreateRatesForm = { rates: CreateRateEntry[] };
 const EMPTY_RATE: CreateRateEntry = {
@@ -47,6 +49,7 @@ const EMPTY_RATE: CreateRateEntry = {
   fromCurrency: 'USD',
   buyRate: 0,
   sellRate: 0,
+  margin: 0,
 };
 
 type PairedRateRow = {
@@ -95,18 +98,19 @@ export function ExchangeRateApprovalPage() {
       const fromCurrency = entry.category === 'FX' ? normalizeCurrencyCode(entry.fromCurrency) : 'USD';
       if (entry.category === 'PAID') {
         return [
-          buildRatePayload('PAID_BUY', fromCurrency, Number(entry.buyRate)),
-          buildRatePayload('PAID_SELL', fromCurrency, Number(entry.sellRate)),
+          buildRatePayload('PAID_BUY', fromCurrency, Number(entry.buyRate), 0),
+          buildRatePayload('PAID_SELL', fromCurrency, Number(entry.sellRate), 0),
         ];
       }
       if (entry.category === 'FX') {
+        const margin = Number(entry.margin ?? 0);
         return [
-          buildRatePayload('FX_BUY', fromCurrency, Number(entry.buyRate)),
-          buildRatePayload('FX_SELL', fromCurrency, Number(entry.sellRate)),
+          buildRatePayload('FX_BUY', fromCurrency, Number(entry.buyRate), margin),
+          buildRatePayload('FX_SELL', fromCurrency, Number(entry.sellRate), margin),
         ];
       }
       return [{
-        ...buildRatePayload('BANK_RATE', fromCurrency, Number(entry.buyRate)),
+        ...buildRatePayload('BANK_RATE', fromCurrency, Number(entry.buyRate), 0),
         buyRate: Number(entry.buyRate),
         sellRate: Number(entry.sellRate),
       }];
@@ -116,8 +120,8 @@ export function ExchangeRateApprovalPage() {
       await createRateBatch.mutateAsync(payloads);
       message.success(`Đã tạo ${values.rates.length} dòng tỷ giá chờ duyệt`);
       form.setFieldsValue({ rates: [{ ...EMPTY_RATE }] });
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Tạo danh sách tỷ giá thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo danh sách tỷ giá thất bại'));
     }
   };
 
@@ -125,8 +129,8 @@ export function ExchangeRateApprovalPage() {
     try {
       await approveRate.mutateAsync(id);
       message.success('Đã duyệt — tỷ giá ACTIVE, bản cũ đã bị thay');
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Duyệt thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Duyệt thất bại'));
     }
   };
 
@@ -134,8 +138,8 @@ export function ExchangeRateApprovalPage() {
     try {
       await rejectRate.mutateAsync(id);
       message.success('Đã từ chối tỷ giá');
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Từ chối thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Từ chối thất bại'));
     }
   };
 
@@ -146,8 +150,8 @@ export function ExchangeRateApprovalPage() {
       const result = await parseRateImage.mutateAsync(file as File);
       setParsedRates(result.rates);
       message.success(`Đã nhận dạng ${result.rates.length} tỷ giá`);
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Không thể phân tích ảnh tỷ giá');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Không thể phân tích ảnh tỷ giá'));
     }
   };
 
@@ -164,13 +168,14 @@ export function ExchangeRateApprovalPage() {
         fromCurrency: rate.fromCurrency,
         toCurrency: 'VND',
         rate: Number(rate.rate),
+        margin: rate.rateType === 'FX_BUY' || rate.rateType === 'FX_SELL' ? Number(rate.margin ?? 0) : 0,
         buyRate: rate.buyRate,
         sellRate: rate.sellRate,
       })));
       message.success(`Đã tạo ${parsedRates.length} tỷ giá DRAFT chờ duyệt`);
       closeImageModal();
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Không thể tạo danh sách tỷ giá chờ duyệt');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Không thể tạo danh sách tỷ giá chờ duyệt'));
     }
   };
 
@@ -215,6 +220,13 @@ export function ExchangeRateApprovalPage() {
     { title: 'Giá mua', key: 'buyRate', align: 'right', width: 145, render: (_, row) => renderRowRate(row, 'buy') },
     { title: 'Giá bán', key: 'sellRate', align: 'right', width: 145, render: (_, row) => renderRowRate(row, 'sell') },
     {
+      title: 'Biên độ',
+      key: 'margin',
+      align: 'right',
+      width: 120,
+      render: (_, row) => formatExchangeRate(rateMargin(row), 6),
+    },
+    {
       title: 'Hiệu lực',
       key: 'effectiveFrom',
       align: 'right',
@@ -250,7 +262,7 @@ export function ExchangeRateApprovalPage() {
   };
 
   const pendingColumns: ColumnsType<PairedRateRow> = [
-    ...pairedColumns.slice(0, 5),
+    ...pairedColumns.slice(0, 6),
     {
       title: 'Trạng thái',
       key: 'status',
@@ -297,29 +309,53 @@ export function ExchangeRateApprovalPage() {
                           disabled={fields.length === 1} onClick={() => remove(field.name)} />
                       </div>
                       <Row gutter={[12, 12]}>
-                        <Col xs={24} md={6}>
+                        <Col xs={24} md={5}>
                           <Form.Item {...field} name={[field.name, 'category']} label="Loại tỷ giá" className="mb-0"
                             rules={[{ required: true, message: 'Chọn loại tỷ giá' }]}>
                             <Select
                               size="large"
                               options={[...RATE_CATEGORIES]}
                               onChange={(category: RateCategory) => {
-                                if (category !== 'FX') form.setFieldValue(['rates', field.name, 'fromCurrency'], 'USD');
+                                if (category !== 'FX') {
+                                  form.setFieldValue(['rates', field.name, 'fromCurrency'], 'USD');
+                                  form.setFieldValue(['rates', field.name, 'margin'], 0);
+                                }
                               }}
                             />
                           </Form.Item>
                         </Col>
-                        <Col xs={24} md={6}>
+                        <Col xs={24} md={5}>
                           <Form.Item {...field} name={[field.name, 'fromCurrency']} label="Ngoại tệ" className="mb-0"
                             rules={[{ required: true, message: 'Chọn ngoại tệ' }]}>
                             <CurrencyCodeSelect disabled={watchedRates[index]?.category !== 'FX'} />
                           </Form.Item>
                         </Col>
-                        <Col xs={24} md={6}>
+                        <Col xs={24} md={5}>
                           <RateInput fieldName={field.name} name="buyRate" label="Giá mua" />
                         </Col>
-                        <Col xs={24} md={6}>
+                        <Col xs={24} md={5}>
                           <RateInput fieldName={field.name} name="sellRate" label="Giá bán" />
+                        </Col>
+                        <Col xs={24} md={4}>
+                          <Form.Item
+                            name={[field.name, 'margin']}
+                            label="Biên độ"
+                            className="mb-0"
+                            rules={[{ type: 'number', min: 0, message: 'Biên độ không được âm' }]}
+                          >
+                            <InputNumber
+                              className="w-full"
+                              size="large"
+                              min={0}
+                              precision={6}
+                              step={1}
+                              controls={false}
+                              addonAfter="VND"
+                              disabled={watchedRates[index]?.category !== 'FX'}
+                              formatter={exchangeRateInputFormatter}
+                              parser={exchangeRateInputParser}
+                            />
+                          </Form.Item>
                         </Col>
                       </Row>
                     </div>
@@ -362,7 +398,7 @@ export function ExchangeRateApprovalPage() {
 
       <Modal
         title="Nhập bảng tỷ giá từ ảnh"
-        width={900}
+        width={1000}
         open={imageModalOpen}
         onCancel={closeImageModal}
         destroyOnClose
@@ -412,7 +448,7 @@ export function ExchangeRateApprovalPage() {
             className="exchange-rate-table mt-4"
             rowKey={(_, index) => String(index)}
             pagination={false}
-            scroll={{ x: 760 }}
+            scroll={{ x: 900 }}
             size="small"
             dataSource={parsedRates}
             columns={[
@@ -438,6 +474,12 @@ export function ExchangeRateApprovalPage() {
                 <InputNumber className="w-full" min={0} value={rate.rate ?? 0}
                   formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
                   onChange={(value) => updateParsedRate(index, { rate: Number(value ?? 0) })} />
+              ) },
+              { title: 'Biên độ', width: 145, render: (_, rate, index) => (
+                <InputNumber className="w-full" min={0} precision={6} value={rate.margin ?? 0}
+                  disabled={rate.rateType !== 'FX_BUY' && rate.rateType !== 'FX_SELL'}
+                  formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser}
+                  onChange={(value) => updateParsedRate(index, { margin: Number(value ?? 0) })} />
               ) },
               { title: 'Nguồn nhận dạng', dataIndex: 'sourceLabel', ellipsis: true,
                 render: (value, rate) => <Space direction="vertical" size={0}>
@@ -514,14 +556,19 @@ function RateInput({ fieldName, name, label }: { fieldName: number; name: 'buyRa
   );
 }
 
-function buildRatePayload(rateType: ExchangeRateType, fromCurrency: string, rate: number): CreateRatePayload {
+function buildRatePayload(rateType: ExchangeRateType, fromCurrency: string, rate: number, margin: number): CreateRatePayload {
   return {
     rateType,
     provider: providerForRateType(rateType),
     fromCurrency,
     toCurrency: 'VND',
     rate,
+    margin,
   };
+}
+
+function rateMargin(row: PairedRateRow) {
+  return row.buy?.margin ?? row.sell?.margin ?? row.bank?.margin ?? 0;
 }
 
 function rateCategoryLabel(category: RateCategory) {

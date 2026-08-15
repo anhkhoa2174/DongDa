@@ -1,7 +1,7 @@
 // Prisma ExchangeRate Repository Implementation
 // Layer: Infrastructure
 
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
   IExchangeRateRepository,
@@ -17,6 +17,7 @@ import {
   RateStatus,
   ServiceProvider,
   CurrencyCode,
+  RateIdentity,
 } from '../../../domain/entities/exchange-rate.entity';
 
 @Injectable()
@@ -24,41 +25,64 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: CreateExchangeRateData): Promise<ExchangeRate> {
-    const row = await this.prisma.exchange_rates.create({
-      data: {
-        rate_type: data.rateType,
-        provider: data.provider ?? null,
-        from_currency: data.fromCurrency,
-        to_currency: data.toCurrency,
-        buy_rate: data.buyRate ?? null,
-        sell_rate: data.sellRate ?? null,
-        rate: data.rate,
-        effective_from: data.effectiveFrom,
-        status: 'DRAFT',
-        created_by_user_id: data.createdByUserId,
-      },
-    });
-    return toDomain(row);
+    try {
+      const row = await this.prisma.exchange_rates.create({
+        data: {
+          rate_type: data.rateType,
+          provider: data.provider ?? null,
+          from_currency: data.fromCurrency,
+          to_currency: data.toCurrency,
+          buy_rate: data.buyRate ?? null,
+          sell_rate: data.sellRate ?? null,
+          rate: data.rate,
+          margin: data.margin,
+          effective_from: data.effectiveFrom,
+          status: 'DRAFT',
+          created_by_user_id: data.createdByUserId,
+        },
+      });
+      return toDomain(row);
+    } catch (error) {
+      rethrowDuplicateDraft(error);
+    }
   }
 
   async createMany(items: CreateExchangeRateData[]): Promise<ExchangeRate[]> {
-    return this.prisma.$transaction(async (tx) => {
-      const created = [];
-      for (const data of items) {
-        created.push(await tx.exchange_rates.create({ data: {
-          rate_type: data.rateType, provider: data.provider ?? null,
-          from_currency: data.fromCurrency, to_currency: data.toCurrency,
-          buy_rate: data.buyRate ?? null, sell_rate: data.sellRate ?? null,
-          rate: data.rate, effective_from: data.effectiveFrom,
-          status: 'DRAFT', created_by_user_id: data.createdByUserId,
-        }}));
-      }
-      return created.map(toDomain);
-    });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const created = [];
+        for (const data of items) {
+          created.push(await tx.exchange_rates.create({ data: {
+            rate_type: data.rateType, provider: data.provider ?? null,
+            from_currency: data.fromCurrency, to_currency: data.toCurrency,
+            buy_rate: data.buyRate ?? null, sell_rate: data.sellRate ?? null,
+            rate: data.rate, margin: data.margin, effective_from: data.effectiveFrom,
+            status: 'DRAFT', created_by_user_id: data.createdByUserId,
+          }}));
+        }
+        return created.map(toDomain);
+      });
+    } catch (error) {
+      rethrowDuplicateDraft(error);
+    }
   }
 
   async findById(id: string): Promise<ExchangeRate | null> {
     const row = await this.prisma.exchange_rates.findUnique({ where: { id } });
+    return row ? toDomain(row) : null;
+  }
+
+  async findDraftByIdentity(identity: RateIdentity): Promise<ExchangeRate | null> {
+    const row = await this.prisma.exchange_rates.findFirst({
+      where: {
+        status: RateStatus.DRAFT,
+        rate_type: identity.rateType,
+        provider: identity.provider ?? null,
+        from_currency: identity.fromCurrency,
+        to_currency: identity.toCurrency,
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
     return row ? toDomain(row) : null;
   }
 
@@ -211,6 +235,13 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
   }
 }
 
+function rethrowDuplicateDraft(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    throw new ConflictException('Loại tỷ giá này đã có bản chờ duyệt hoặc đang hoạt động');
+  }
+  throw error;
+}
+
 function rateTypesForGroup(group: 'PAID' | 'FX' | 'BANK') {
   if (group === 'PAID') return [ExchangeRateType.PAID_BUY, ExchangeRateType.PAID_SELL];
   if (group === 'FX') return [ExchangeRateType.FX_BUY, ExchangeRateType.FX_SELL];
@@ -235,6 +266,7 @@ function toDomain(row: any): ExchangeRate {
     buyRate: num(row.buy_rate),
     sellRate: num(row.sell_rate),
     rate: Number(row.rate),
+    margin: Number(row.margin ?? 0),
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to ?? null,
     status: row.status as RateStatus,

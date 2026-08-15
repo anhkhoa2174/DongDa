@@ -6,8 +6,8 @@ export interface AuditLogDto {
   action: string;
   entityType: string;
   entityId?: string | null;
-  beforeData?: any;
-  afterData?: any;
+  beforeData?: unknown;
+  afterData?: unknown;
   ipAddress?: string | null;
   userAgent?: string | null;
   createdAt: string;

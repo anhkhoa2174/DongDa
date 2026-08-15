@@ -24,6 +24,7 @@ import {
 } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
@@ -134,8 +135,8 @@ export function CentralFundMovementPage({ direction, scope = 'central' }: Props)
       const fundName = isBranchScope ? 'Quỹ Chi Nhánh' : 'Quỹ Chung';
       message.success(isReceipt ? `Đã ghi nhận phiếu thu ${fundName}` : `Đã ghi nhận phiếu chi ${fundName}`);
       navigate(isBranchScope ? '/fund-management/branch-funds' : '/fund-management/central-fund');
-    } catch (error: any) {
-      message.error(error?.response?.data?.message ?? `Không thể tạo phiếu ${isReceipt ? 'thu' : 'chi'}`);
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, `Không thể tạo phiếu ${isReceipt ? 'thu' : 'chi'}`));
     }
   };
 

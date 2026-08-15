@@ -1,12 +1,10 @@
 // Flow WU — Tạo giao dịch Western Union (nối API thật)
 import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { useEffect, useMemo, useRef } from 'react';
+import { SendOutlined } from '@ant-design/icons';
+import { useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PageScaffold } from '@/shared/components/PageScaffold';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
-import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
@@ -21,55 +19,26 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useBranches, useCreateWu } from '../hooks/useWu';
+import { useCreateWu } from '../hooks/useWu';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
-
-const RATE_STEP = 5;
-const positiveNumberRule = (label: string) => ({
-  validator: (_: unknown, value: unknown) => {
-    const numberValue = Number(value);
-    if (value === undefined || value === null || value === '' || !Number.isFinite(numberValue)) {
-      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()} hợp lệ`));
-    }
-    if (numberValue <= 0) return Promise.reject(new Error(`${label} phải lớn hơn 0`));
-    return Promise.resolve();
-  },
-});
+import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/transactions/utils/paidRateSlider';
+import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
+import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
+import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 
 export function WuWorkspacePage() {
   const { message } = App.useApp();
-  const navigate = useNavigate();
-  const { data: branches = [] } = useBranches();
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateWu();
   const [form] = Form.useForm();
   const previousPayoutCurrency = useRef<string | undefined>(undefined);
   const previousRateSelectionKey = useRef<string | undefined>(undefined);
   const previousWuUsd = useRef<number | undefined>(undefined);
-  const user = useAuthStore((state) => state.user);
-  const isBranchUser = user?.role === 'branch';
-  const isControlUser = user?.role === 'director' || user?.role === 'accountant';
-  const canCreateTransaction = (isBranchUser && Boolean(user?.branchId)) || isControlUser;
-  const branchOptions = useMemo(
-    () =>
-      branches
-        .filter((branch) => branch.type !== 'HEAD_OFFICE')
-        .filter((branch) => !isBranchUser || branch.id === user?.branchId)
-        .map((branch) => ({ value: branch.id, label: `${branch.code} — ${branch.name}` })),
-    [branches, isBranchUser, user?.branchId],
-  );
-
-  useEffect(() => {
-    if (isBranchUser && user?.branchId) {
-      form.setFieldsValue({ branchId: user.branchId });
-    }
-  }, [form, isBranchUser, user?.branchId]);
+  const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
 
   const resetTransactionForm = () => {
     form.resetFields();
-    if (isBranchUser && user?.branchId) {
-      form.setFieldValue('branchId', user.branchId);
-    }
+    resetBranchField();
   };
 
   // Theo dõi để tính WU implied rate, tỷ giá giao dịch và số tiền khách nhận.
@@ -81,7 +50,7 @@ export function WuWorkspacePage() {
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
   const rateSelectionKey = `${rateType}:${systemRate ?? 0}`;
   const implied = wuUsd > 0 ? wuVnd / wuUsd : 0;
-  const rateBounds = getRateBounds(implied, systemRate);
+  const rateBounds = getPaidRateBounds(implied, systemRate);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
   const payoutEquivalent = payoutCurrency === 'USD'
@@ -98,7 +67,7 @@ export function WuWorkspacePage() {
     if (!wuUsd || !wuVnd || !transactionRate) return;
 
     const rateSelectionChanged = previousRateSelectionKey.current !== rateSelectionKey;
-    const nextRate = clampRate(
+    const nextRate = clampPaidRate(
       rateSelectionChanged && systemRate ? systemRate : transactionRate,
       implied,
       systemRate,
@@ -121,7 +90,7 @@ export function WuWorkspacePage() {
     previousWuUsd.current = wuUsd;
   }, [form, implied, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
 
-  const onCreate = async (v: any) => {
+  const onCreate = async (v: WuFormValues) => {
     if (!canCreateTransaction) {
       await message.error('Cần có quyền chi nhánh hoặc quyền GĐ/KTTH để tạo giao dịch WU');
       return;
@@ -145,17 +114,16 @@ export function WuWorkspacePage() {
       previousPayoutCurrency.current = undefined;
       previousRateSelectionKey.current = undefined;
       previousWuUsd.current = undefined;
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Tạo GD thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo GD thất bại'));
     }
   };
 
   return (
-    <PageScaffold
+    <TransactionCreatePage
       title="Giao dịch Western Union"
       description="Tạo GD chi trả WU: nhập MSKH, số tiền WU, chọn tiền khách nhận và xác nhận lưu vào hệ thống."
       moduleName="western-union"
-      extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>Quay lại Giao Dịch</Button>}
     >
       <Row justify="center">
         <Col xs={24} xl={18}>
@@ -227,13 +195,13 @@ export function WuWorkspacePage() {
                   <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
               </Row>
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
-                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
+                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={PAID_RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
               <Slider
                 min={rateBounds.min}
                 max={rateBounds.max}
-                step={RATE_STEP}
-                value={clampRate(transactionRate, implied, systemRate)}
+                step={PAID_RATE_STEP}
+                value={clampPaidRate(transactionRate, implied, systemRate)}
                 disabled={!systemRate || !implied}
                 tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
                 marks={{
@@ -280,8 +248,21 @@ export function WuWorkspacePage() {
           </Card>
         </Col>
       </Row>
-    </PageScaffold>
+    </TransactionCreatePage>
   );
+}
+
+interface WuFormValues {
+  branchId: string;
+  mtcn: string;
+  customerName?: string;
+  wuUsdAmount: number;
+  wuVndAmount: number;
+  receivedUsd?: number;
+  receivedVnd?: number;
+  appliedRate: number;
+  payoutCurrency: 'USD' | 'VND';
+  paidCurrency: 'USD' | 'VND';
 }
 
 function findActiveRate(
@@ -296,25 +277,6 @@ function findActiveRate(
     rate.toCurrency === 'VND' &&
     (!provider || rate.provider === provider),
   );
-}
-
-function getRateBounds(firstRate?: number, secondRate?: number) {
-  const rates = [firstRate, secondRate].filter((rate): rate is number =>
-    typeof rate === 'number' && Number.isFinite(rate) && rate > 0,
-  );
-  if (rates.length === 0) return { min: 0, max: 100_000 };
-
-  return {
-    min: Math.ceil(Math.min(...rates) / RATE_STEP) * RATE_STEP,
-    max: Math.floor(Math.max(...rates) / RATE_STEP) * RATE_STEP,
-  };
-}
-
-function clampRate(value: number, firstRate?: number, secondRate?: number) {
-  const bounds = getRateBounds(firstRate, secondRate);
-  if (!Number.isFinite(value) || value <= 0) return bounds.min;
-  const steppedValue = Math.round(value / RATE_STEP) * RATE_STEP;
-  return Math.min(Math.max(steppedValue, bounds.min), bounds.max);
 }
 
 function getWuPayout(

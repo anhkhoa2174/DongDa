@@ -822,7 +822,7 @@ export class PrismaFundRepository implements IFundRepository {
       }
       await this.notifications.notifyUsers({
         title: `Phiếu tiếp quỹ ${t.transfer_no} đã được xác nhận`,
-        body: t.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', '),
+        body: `Số dư quỹ nguồn đã giảm và quỹ nhận đã tăng: ${t.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', ')}`,
         sourceType: 'FUND_TRANSFER_CONFIRMED',
         sourceId: t.id,
       }, {
@@ -867,6 +867,47 @@ export class PrismaFundRepository implements IFundRepository {
         branchIds: [t.source_branch_id, t.destination_branch_id],
       }, tx);
       return tx.fund_transfers.findUniqueOrThrow({ where: { id }, include: { fund_transfer_items: true } });
+    });
+    return toTransfer(row);
+  }
+
+  async cancelTransfer(id: string, createdByUserId: string): Promise<FundTransfer> {
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM fund_transfers WHERE id = ${id}::uuid FOR UPDATE`;
+      const transfer = await tx.fund_transfers.findUniqueOrThrow({
+        where: { id },
+        include: { fund_transfer_items: true },
+      });
+      if (transfer.created_by_user_id !== createdByUserId) {
+        throw new BadRequestException('Chỉ người lập phiếu mới được hủy phiếu tiếp quỹ');
+      }
+      if (transfer.status !== 'PENDING_APPROVAL') {
+        throw new BadRequestException(`Chỉ hủy được phiếu chưa xác nhận (hiện tại: ${transfer.status})`);
+      }
+
+      const claimed = await tx.fund_transfers.updateMany({
+        where: { id, status: 'PENDING_APPROVAL', created_by_user_id: createdByUserId },
+        data: { status: 'CANCELLED' },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Phiếu tiếp quỹ đã được xử lý bởi người khác');
+      }
+
+      await this.notifications.notifyUsers({
+        title: `Phiếu tiếp quỹ ${transfer.transfer_no} đã được hủy`,
+        body: transfer.fund_transfer_items.map((item) => `${Number(item.amount)} ${item.currency_code}`).join(', '),
+        sourceType: 'FUND_TRANSFER_CANCELLED',
+        sourceId: transfer.id,
+      }, {
+        userIds: [createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [transfer.destination_branch_id],
+      }, tx);
+
+      return tx.fund_transfers.findUniqueOrThrow({
+        where: { id },
+        include: { fund_transfer_items: true },
+      });
     });
     return toTransfer(row);
   }

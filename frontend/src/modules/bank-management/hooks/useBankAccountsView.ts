@@ -1,4 +1,4 @@
-// Map API /bank/accounts → shape mock BankAccount (giữ nguyên UI trang cũ)
+// Map API /bank/accounts to the richer view model used by the account cards.
 // Field backend chưa có (pending/today/reconciliation...) tạm để mặc định.
 import { useBankAccounts } from './useBank';
 import type { BankAccount } from '../model/bank.types';

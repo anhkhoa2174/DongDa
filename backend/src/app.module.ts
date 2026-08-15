@@ -24,7 +24,7 @@ import { PrismaBranchRepository } from './infrastructure/database/repositories/p
 import { FundController } from './interfaces/http/controllers/fund.controller';
 import { PrismaFundRepository } from './infrastructure/database/repositories/prisma-fund.repository';
 import {
-  CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
+  CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, CancelTransferUseCase, ListFundUseCase,
   CreateFundMovementUseCase, ConvertCentralFundUseCase,
 } from './application/use-cases/fund/fund-transfer.use-cases';
 import { WuController } from './interfaces/http/controllers/wu.controller';
@@ -62,6 +62,9 @@ import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 import { NotificationController } from './interfaces/http/controllers/notification.controller';
 import { NotificationService } from './infrastructure/notifications/notification.service';
+import { DomesticTransferController } from './interfaces/http/controllers/domestic-transfer.controller';
+import { PrismaDomesticTransferRepository } from './infrastructure/database/repositories/prisma-domestic-transfer.repository';
+import { CreateDomesticTransferUseCase, ListDomesticTransferBankAccountsUseCase, ListDomesticTransferUseCase } from './application/use-cases/domestic-transfer/domestic-transfer.use-cases';
 
 import { PrismaExchangeRateRepository } from './infrastructure/database/repositories/prisma-exchange-rate.repository';
 import { CreateExchangeRateUseCase } from './application/use-cases/exchange-rate/create-exchange-rate.use-case';
@@ -96,7 +99,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController, NotificationController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, DomesticTransferController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController, NotificationController],
   providers: [
     PrismaService,
     NotificationService,
@@ -111,6 +114,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IWuRepository', useClass: PrismaWuRepository },
     { provide: 'IMgRepository', useClass: PrismaMgRepository },
     { provide: 'IFxRepository', useClass: PrismaFxRepository },
+    { provide: 'IDomesticTransferRepository', useClass: PrismaDomesticTransferRepository },
     { provide: 'IBankRepository', useClass: PrismaBankRepository },
     { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
     { provide: 'IAuditRepository', useClass: PrismaAuditRepository },
@@ -164,6 +168,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     CreateTransferUseCase,
     ConfirmTransferUseCase,
     RejectTransferUseCase,
+    CancelTransferUseCase,
     ListFundUseCase,
     CreateFundMovementUseCase,
     ConvertCentralFundUseCase,
@@ -176,6 +181,10 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     CreateFxUseCase,
     ListFxUseCase,
+
+    CreateDomesticTransferUseCase,
+    ListDomesticTransferUseCase,
+    ListDomesticTransferBankAccountsUseCase,
 
     ListBankUseCase,
     ReceiveFromProviderUseCase,

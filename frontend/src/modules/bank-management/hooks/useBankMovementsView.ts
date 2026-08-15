@@ -2,6 +2,7 @@
 import { useBankAccountsView } from './useBankAccountsView';
 import { useBankMovements } from './useBank';
 import type { BankAccount, BankBalanceMovement } from '../model/bank.types';
+import { formatDateTime } from '@/shared/utils/formatters';
 
 export function useBankMovementsView(accountKey?: string): {
   account?: BankAccount;
@@ -13,7 +14,7 @@ export function useBankMovementsView(accountKey?: string): {
   const movements: BankBalanceMovement[] = raw.map((m) => ({
     key: m.id,
     accountKey: m.bankAccountId,
-    occurredAt: new Date(m.businessDate).toLocaleString('vi-VN'),
+    occurredAt: formatDateTime(m.businessDate),
     type: (m.movementType as BankBalanceMovement['type']) ?? 'DEPOSIT',
     description: m.description ?? '',
     counterparty: '',

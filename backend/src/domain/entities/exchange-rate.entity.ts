@@ -44,6 +44,7 @@ export interface ExchangeRate {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: Date;
   effectiveTo?: Date | null;
   status: RateStatus;

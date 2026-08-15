@@ -27,15 +27,11 @@ export interface MgTransaction {
   systemRate: number;
   appliedRate: number;
   paidCurrency: Currency2; // loại tiền MG hoàn → công nợ
-  profit: number;
+  transactionValueVnd: number;
   createdByUserId: string;
   createdAt: Date;
 }
 
 export function mgImpliedRate(mgVnd: number, mgUsd: number): number {
   return mgUsd > 0 ? mgVnd / mgUsd : 0;
-}
-
-export function mgProfit(mgRate: number, appliedRate: number, mgUsd: number): number {
-  return (mgRate - appliedRate) * mgUsd;
 }

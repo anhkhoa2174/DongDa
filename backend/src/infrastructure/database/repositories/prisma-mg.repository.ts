@@ -4,7 +4,7 @@
 import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { IMgRepository, CreateMgInput, ListMgFilter } from '../../../domain/repositories/mg.repository';
-import { MgTransaction, Currency2, mgImpliedRate, mgProfit } from '../../../domain/entities/mg.entity';
+import { MgTransaction, Currency2, mgImpliedRate } from '../../../domain/entities/mg.entity';
 import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
@@ -235,7 +235,7 @@ function toDomain(row: any): MgTransaction {
     systemRate: Number(d.system_rate),
     appliedRate: applied,
     paidCurrency: d.paid_currency,
-    profit: mgProfit(mgRate, applied, mgUsd),
+    transactionValueVnd: Number(d.received_usd ?? 0) * applied + Number(d.received_vnd ?? 0),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
   };

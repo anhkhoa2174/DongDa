@@ -200,6 +200,7 @@ model bank_accounts {
   bank_balance_movements bank_balance_movements[]
   bank_balance_snapshots bank_balance_snapshots[]
   bank_statement_batches bank_statement_batches[]
+  domestic_transfer_details domestic_transfer_details[]
   fund_accounts          fund_accounts[]
 
   @@unique([bank_id, account_no], map: "uq_bank_account_no")
@@ -381,8 +382,22 @@ model cash_count_lines {
   created_at      DateTime      @default(now()) @db.Timestamptz(6)
   cash_counts     cash_counts   @relation(fields: [cash_count_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   fund_accounts   fund_accounts @relation(fields: [fund_account_id], references: [id], onUpdate: NoAction)
+  cash_count_denominations cash_count_denominations[]
 
   @@unique([cash_count_id, fund_account_id], map: "uq_cash_count_account")
+}
+
+model cash_count_denominations {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cash_count_line_id String           @db.Uuid
+  denomination       Decimal          @db.Decimal(20, 2)
+  quantity           Int
+  amount             Decimal          @db.Decimal(20, 2)
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  cash_count_lines   cash_count_lines @relation(fields: [cash_count_line_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([cash_count_line_id, denomination], map: "uq_cash_count_line_denomination")
+  @@index([cash_count_line_id], map: "idx_cash_count_denominations_line")
 }
 
 model cash_counts {
@@ -641,10 +656,18 @@ model debt_settlement_allocations {
 
 model domestic_transfer_details {
   transaction_id        String                @id @db.Uuid
+  transfer_type         String                @default("CASH_TO_BANK") @db.VarChar(30)
+  bank_account_id       String?               @db.Uuid
+  fee                   Decimal               @default(0) @db.Decimal(20, 2)
+  counterparty_bank     String?               @db.VarChar(150)
+  counterparty_account  String?               @db.VarChar(100)
   beneficiary_name      String                @db.VarChar(255)
   beneficiary_phone     String?               @db.VarChar(30)
   transfer_note         String?
+  bank_accounts         bank_accounts?        @relation(fields: [bank_account_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   customer_transactions customer_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([bank_account_id], map: "idx_domestic_transfer_bank_account")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -691,6 +714,7 @@ model exchange_rates {
   buy_rate                                        Decimal?           @db.Decimal(20, 6)
   sell_rate                                       Decimal?           @db.Decimal(20, 6)
   rate                                            Decimal            @db.Decimal(20, 6)
+  margin                                          Decimal            @default(0) @db.Decimal(20, 6)
   effective_from                                  DateTime           @db.Timestamptz(6)
   effective_to                                    DateTime?          @db.Timestamptz(6)
   status                                          rate_status        @default(DRAFT)
@@ -726,8 +750,8 @@ model fund_accounts {
   fund_transfer_items_fund_transfer_items_source_account_idTofund_accounts      fund_transfer_items[]    @relation("fund_transfer_items_source_account_idTofund_accounts")
   ledger_lines                                                                  ledger_lines[]
 
-  // Partial UNIQUE cho CASH/FUND_A ACTIVE theo (branch_id, currency_code)
-  // được quản bằng raw SQL trong migration để vẫn giữ được account INACTIVE phục vụ audit.
+  // Partial UNIQUE cho mọi CASH/FUND_A theo (branch_id, currency_code), không phụ thuộc status.
+  // Lịch sử được giữ trong ledger; một chi nhánh không tạo account vật lý thứ hai cùng loại tiền.
   @@unique([branch_id, code], map: "uq_fund_accounts_branch_code")
   @@index([branch_id], map: "idx_fund_accounts_branch")
   @@index([account_type, currency_code], map: "idx_fund_accounts_type_currency")

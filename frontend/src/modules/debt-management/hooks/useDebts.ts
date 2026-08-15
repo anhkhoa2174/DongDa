@@ -16,9 +16,6 @@ export function useDebtMovements(id: string | null) {
   });
 }
 
-export function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => debtApi.branches() });
-}
 
 function useInvalidate() {
   const qc = useQueryClient();

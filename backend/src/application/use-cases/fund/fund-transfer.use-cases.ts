@@ -64,6 +64,20 @@ export class RejectTransferUseCase {
   }
 }
 
+@Injectable()
+export class CancelTransferUseCase {
+  constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
+
+  async execute(id: string, actor: { id: string }): Promise<FundTransfer> {
+    const transfer = await this.fundRepo.findTransferById(id);
+    if (!transfer) throw new NotFoundException('Không tìm thấy phiếu tiếp quỹ');
+    if (transfer.createdByUserId !== actor.id) {
+      throw new ForbiddenException('Chỉ người lập phiếu mới được hủy phiếu tiếp quỹ');
+    }
+    return this.fundRepo.cancelTransfer(id, actor.id);
+  }
+}
+
 function assertReceiverCanAct(
   transfer: FundTransfer,
   actor: { id: string; role: UserRole; branchId?: string },

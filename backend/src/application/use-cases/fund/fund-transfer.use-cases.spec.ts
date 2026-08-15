@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { ConfirmTransferUseCase, ConvertCentralFundUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
+import { CancelTransferUseCase, ConfirmTransferUseCase, ConvertCentralFundUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
 import { FundTransferStatus } from '../../../domain/entities/fund.entity';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -43,6 +43,27 @@ describe('fund transfer receiver controls', () => {
       id: 'staff-b', role: UserRole.STAFF, branchId: 'branch-b',
     })).resolves.toMatchObject({ status: FundTransferStatus.CONFIRMED });
     expect(repo.confirmTransfer).toHaveBeenCalledWith('transfer-1', 'staff-b');
+  });
+
+  it('allows the maker to cancel a pending transfer', async () => {
+    const repo = {
+      findTransferById: jest.fn().mockResolvedValue(transfer),
+      cancelTransfer: jest.fn().mockResolvedValue({ ...transfer, status: FundTransferStatus.CANCELLED }),
+    };
+    const useCase = new CancelTransferUseCase(repo as any);
+
+    await expect(useCase.execute('transfer-1', { id: 'maker-1' }))
+      .resolves.toMatchObject({ status: FundTransferStatus.CANCELLED });
+    expect(repo.cancelTransfer).toHaveBeenCalledWith('transfer-1', 'maker-1');
+  });
+
+  it('prevents another user from cancelling the maker transfer', async () => {
+    const repo = { findTransferById: jest.fn().mockResolvedValue(transfer), cancelTransfer: jest.fn() };
+    const useCase = new CancelTransferUseCase(repo as any);
+
+    await expect(useCase.execute('transfer-1', { id: 'other-user' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.cancelTransfer).not.toHaveBeenCalled();
   });
 });
 

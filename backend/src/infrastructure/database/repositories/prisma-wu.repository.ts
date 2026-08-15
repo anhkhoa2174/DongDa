@@ -5,7 +5,7 @@ import { Injectable, BadRequestException, ConflictException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { IWuRepository, CreateWuInput, ListWuFilter } from '../../../domain/repositories/wu.repository';
-import { WuTransaction, Currency2, wuImpliedRate, wuProfit } from '../../../domain/entities/wu.entity';
+import { WuTransaction, Currency2, wuImpliedRate } from '../../../domain/entities/wu.entity';
 import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
@@ -241,7 +241,7 @@ function toDomain(row: any): WuTransaction {
     appliedRate: applied,
     paidCurrency: d.paid_currency,
     payoutCurrency: d.payout_currency,
-    profit: wuProfit(wuRate, applied, wuUsd),
+    transactionValueVnd: Number(d.received_usd) * applied + Number(d.received_vnd),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
   };

@@ -98,7 +98,7 @@ export class PrismaReportsRepository implements IReportsRepository {
     const sevenDayStart = this.addUtcDays(dayStart, -6);
     const now = new Date();
 
-    const [operations, transactions, accounts, bankAccounts, debtAccounts, branches, openShifts, variances, rates, summaries] = await Promise.all([
+    const [operations, transactions, accounts, bankAccounts, debtAccounts, branches, openShifts, variances, rates, historicalRates] = await Promise.all([
       this.dashboardOperations(dayStart),
       this.prisma.customer_transactions.findMany({
         where: {
@@ -113,20 +113,34 @@ export class PrismaReportsRepository implements IReportsRepository {
         include: {
           ledger_lines: {
             where: { ledger_entries: { status: 'POSTED' } },
-            select: { direction: true, amount: true },
+            select: {
+              direction: true,
+              amount: true,
+              ledger_entries: { select: { business_date: true } },
+            },
           },
         },
       }),
       this.prisma.bank_accounts.findMany({
         where: { status: 'ACTIVE' },
-        select: { current_balance: true, currency_code: true },
+        select: {
+          current_balance: true,
+          opening_balance: true,
+          currency_code: true,
+          created_at: true,
+          bank_balance_movements: {
+            where: { status: 'POSTED', business_date: { lt: dayEnd } },
+            orderBy: [{ business_date: 'asc' }, { occurred_at: 'asc' }, { created_at: 'asc' }],
+            select: { business_date: true, balance_after: true },
+          },
+        },
       }),
       this.prisma.debt_accounts.findMany({
         where: { status: 'ACTIVE' },
         include: {
           debt_movements: {
             where: { status: 'POSTED' },
-            select: { movement_type: true, amount: true },
+            select: { movement_type: true, amount: true, business_date: true },
           },
         },
       }),
@@ -164,9 +178,13 @@ export class PrismaReportsRepository implements IReportsRepository {
         },
         orderBy: { effective_from: 'desc' },
       }),
-      this.prisma.company_daily_summaries.findMany({
-        where: { business_date: { gte: sevenDayStart, lt: dayEnd } },
-        orderBy: { business_date: 'asc' },
+      this.prisma.exchange_rates.findMany({
+        where: {
+          status: { in: ['ACTIVE', 'SUPERSEDED'] },
+          approved_at: { not: null, lt: dayEnd },
+          effective_from: { lt: dayEnd },
+        },
+        orderBy: [{ approved_at: 'desc' }, { effective_from: 'desc' }],
       }),
     ]);
 
@@ -219,34 +237,27 @@ export class PrismaReportsRepository implements IReportsRepository {
     }, 0);
     const totalCapitalVnd = cashValueVnd + fundAValueVnd + bankValueVnd + debtValueVnd;
 
-    const transactionsByBranch = new Map<string, { count: number; revenue: number; profit: number }>();
-    const revenueByDate = new Map<string, { revenue: number; profit: number }>();
+    const transactionsByBranch = new Map<string, { count: number; transactionValueVnd: number }>();
+    const transactionValueByDate = new Map<string, number>();
     for (const transaction of transactions as any[]) {
       const dateKey = transaction.business_date.toISOString().slice(0, 10);
-      const revenue = this.transactionValueVnd(transaction);
-      const profit = this.transactionProfitVnd(transaction);
-      const day = revenueByDate.get(dateKey) ?? { revenue: 0, profit: 0 };
-      day.revenue += revenue;
-      day.profit += profit;
-      revenueByDate.set(dateKey, day);
+      const transactionValueVnd = this.transactionValueVnd(transaction);
+      transactionValueByDate.set(dateKey, (transactionValueByDate.get(dateKey) ?? 0) + transactionValueVnd);
       if (dateKey === dayStart.toISOString().slice(0, 10)) {
-        const branch = transactionsByBranch.get(transaction.branch_id) ?? { count: 0, revenue: 0, profit: 0 };
+        const branch = transactionsByBranch.get(transaction.branch_id) ?? { count: 0, transactionValueVnd: 0 };
         branch.count += 1;
-        branch.revenue += revenue;
-        branch.profit += profit;
+        branch.transactionValueVnd += transactionValueVnd;
         transactionsByBranch.set(transaction.branch_id, branch);
       }
     }
 
-    const revenueTrend = Array.from({ length: 7 }, (_, index) => {
+    const transactionValueTrend = Array.from({ length: 7 }, (_, index) => {
       const date = this.addUtcDays(sevenDayStart, index);
       const key = date.toISOString().slice(0, 10);
-      const values = revenueByDate.get(key) ?? { revenue: 0, profit: 0 };
       return {
         date: key,
         label: new Intl.DateTimeFormat('vi-VN', { weekday: 'short', timeZone: 'UTC' }).format(date),
-        revenueVnd: values.revenue,
-        profitVnd: values.profit,
+        valueVnd: transactionValueByDate.get(key) ?? 0,
       };
     });
 
@@ -263,7 +274,7 @@ export class PrismaReportsRepository implements IReportsRepository {
       const manager = branch.employees.find((employee) =>
         employee.users?.user_roles.some((userRole) => userRole.roles.code === 'MANAGER'));
       const cash = branchCash.get(branch.id) ?? { vnd: 0, usd: 0 };
-      const transaction = transactionsByBranch.get(branch.id) ?? { count: 0, revenue: 0, profit: 0 };
+      const transaction = transactionsByBranch.get(branch.id) ?? { count: 0, transactionValueVnd: 0 };
       const discrepancyValueVnd = varianceByBranch.get(branch.id) ?? 0;
       const absDiscrepancy = Math.abs(discrepancyValueVnd);
       const shiftStatus = openBranchIds.has(branch.id) ? 'open' as const : 'closed' as const;
@@ -282,22 +293,21 @@ export class PrismaReportsRepository implements IReportsRepository {
         vndBalance: cash.vnd,
         usdBalance: cash.usd,
         todayTransactions: transaction.count,
-        revenueToday: transaction.revenue,
-        profitToday: transaction.profit,
+        transactionValueTodayVnd: transaction.transactionValueVnd,
         discrepancy,
         discrepancyValueVnd,
         riskLevel,
       };
     });
 
-    const summaryByDate = new Map(summaries.map((summary) => [
-      summary.business_date.toISOString().slice(0, 10),
-      Number(summary.total_fund_value_vnd),
-    ]));
     const capitalTrend = Array.from({ length: 7 }, (_, index) => {
       const date = this.addUtcDays(sevenDayStart, index);
+      const cutoff = this.addUtcDays(date, 1);
       const key = date.toISOString().slice(0, 10);
-      return { date: key, valueVnd: key === dayStart.toISOString().slice(0, 10) ? totalCapitalVnd : summaryByDate.get(key) ?? 0 };
+      const valueVnd = key === dayStart.toISOString().slice(0, 10)
+        ? totalCapitalVnd
+        : this.historicalCapitalValueVnd(cutoff, accounts, bankAccounts, debtAccounts, historicalRates);
+      return { date: key, valueVnd };
     });
     const previousCapital = capitalTrend[5]?.valueVnd || null;
     const changeValueVnd = previousCapital === null ? null : totalCapitalVnd - previousCapital;
@@ -318,7 +328,7 @@ export class PrismaReportsRepository implements IReportsRepository {
         capitalTrend,
       },
       operations,
-      revenueTrend,
+      transactionValueTrend,
       transactionMix: [
         { source: 'WU', count: operations.sourceCounts.wu },
         { source: 'MG', count: operations.sourceCounts.mg },
@@ -333,6 +343,9 @@ export class PrismaReportsRepository implements IReportsRepository {
         fromCurrency: rate.from_currency,
         toCurrency: rate.to_currency,
         rate: Number(rate.rate),
+        buyRate: rate.buy_rate === null ? null : Number(rate.buy_rate),
+        sellRate: rate.sell_rate === null ? null : Number(rate.sell_rate),
+        margin: Number(rate.margin ?? 0),
         effectiveFrom: rate.effective_from,
         approvedAt: rate.approved_at,
       })),
@@ -341,6 +354,60 @@ export class PrismaReportsRepository implements IReportsRepository {
         null,
       ),
     };
+  }
+
+  private historicalCapitalValueVnd(
+    cutoff: Date,
+    accounts: any[],
+    bankAccounts: any[],
+    debtAccounts: any[],
+    rates: any[],
+  ) {
+    const rateAt = (rateType: string, currency: string) => {
+      const rate = rates.find((item) => (
+        item.rate_type === rateType
+        && item.from_currency === currency
+        && item.approved_at < cutoff
+        && item.effective_from < cutoff
+      ));
+      return rate ? Number(rate.rate) : 0;
+    };
+    const conversionRate = (currency: string) => {
+      if (currency === 'VND') return 1;
+      if (currency === 'USD') return rateAt('PAID_BUY', 'USD') || rateAt('FX_BUY', 'USD');
+      return rateAt('FX_BUY', currency);
+    };
+
+    const fundValueVnd = accounts.reduce((total, account) => {
+      const balance = account.ledger_lines.reduce((sum: number, line: any) => {
+        if (line.ledger_entries.business_date >= cutoff) return sum;
+        const amount = Number(line.amount);
+        return sum + (line.direction === 'DEBIT' ? amount : -amount);
+      }, 0);
+      return total + balance * conversionRate(account.currency_code);
+    }, 0);
+
+    const bankValueVnd = bankAccounts.reduce((total, account) => {
+      if (account.created_at >= cutoff) return total;
+      const movements = account.bank_balance_movements.filter((movement: any) => movement.business_date < cutoff);
+      const balance = movements.length > 0
+        ? Number(movements[movements.length - 1].balance_after)
+        : Number(account.opening_balance);
+      return total + balance * conversionRate(account.currency_code);
+    }, 0);
+
+    const debtValueVnd = debtAccounts.reduce((total, account) => {
+      const outstanding = account.debt_movements.reduce((sum: number, movement: any) => {
+        if (movement.business_date >= cutoff) return sum;
+        const amount = Number(movement.amount);
+        if (movement.movement_type === 'EXPECTED_DEBT' || movement.movement_type === 'ACTUAL_DEBT') return sum + amount;
+        if (movement.movement_type === 'SETTLEMENT' || movement.movement_type === 'REVERSAL') return sum - amount;
+        return sum;
+      }, 0);
+      return total + outstanding * conversionRate(account.currency_code);
+    }, 0);
+
+    return fundValueVnd + bankValueVnd + debtValueVnd;
   }
 
   private async providerStat(provider: 'WU' | 'MG', filter?: ReportFilter): Promise<ProviderStat> {
@@ -357,18 +424,18 @@ export class PrismaReportsRepository implements IReportsRepository {
         ? { wu_transaction_details: true }
         : { mg_transaction_details: true },
     });
-    let totalUsd = 0, totalVnd = 0, profit = 0;
+    let totalUsd = 0, totalVnd = 0, transactionValueVnd = 0, debtGeneratedUsd = 0, debtGeneratedVnd = 0;
     for (const r of rows as any[]) {
       const usd = Number(r.amount);
+      const vnd = Number(r.vnd_amount);
       totalUsd += usd;
-      totalVnd += Number(r.vnd_amount);
-      const d = provider === 'WU' ? r.wu_transaction_details : r.mg_transaction_details;
-      if (d) {
-        const impliedRate = provider === 'WU' ? Number(d.wu_rate) : (usd > 0 ? Number(r.vnd_amount) / usd : 0);
-        profit += (impliedRate - Number(d.applied_rate)) * usd;
-      }
+      totalVnd += vnd;
+      transactionValueVnd += this.transactionValueVnd(r);
+      const detail = provider === 'WU' ? r.wu_transaction_details : r.mg_transaction_details;
+      if (detail?.paid_currency === 'USD') debtGeneratedUsd += usd;
+      if (detail?.paid_currency === 'VND') debtGeneratedVnd += vnd;
     }
-    return { count: rows.length, totalUsd, totalVnd, profit };
+    return { count: rows.length, totalUsd, totalVnd, transactionValueVnd, debtGeneratedUsd, debtGeneratedVnd };
   }
 
   private async fxStat(filter?: ReportFilter) {
@@ -402,20 +469,6 @@ export class PrismaReportsRepository implements IReportsRepository {
       return Number(detail.received_usd) * Number(detail.applied_rate) + Number(detail.received_vnd);
     }
     return Number(transaction.vnd_amount);
-  }
-
-  private transactionProfitVnd(transaction: any): number {
-    if (transaction.operation_code === 'WU' && transaction.wu_transaction_details) {
-      const detail = transaction.wu_transaction_details;
-      return (Number(detail.wu_rate) - Number(detail.applied_rate)) * Number(detail.wu_usd_amount);
-    }
-    if (transaction.operation_code === 'MG' && transaction.mg_transaction_details) {
-      const usd = Number(transaction.amount);
-      if (usd <= 0) return 0;
-      const impliedRate = Number(transaction.vnd_amount) / usd;
-      return (impliedRate - Number(transaction.mg_transaction_details.applied_rate)) * usd;
-    }
-    return 0;
   }
 
   private utcDay(date: Date): Date {

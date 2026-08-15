@@ -7,6 +7,7 @@ function databaseMock() {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
   };
 }
@@ -24,15 +25,21 @@ describe('canonicalActiveFundAccount', () => {
     expect(db.fund_accounts.create).not.toHaveBeenCalled();
   });
 
-  it('does not post new movements into an inactive canonical account', async () => {
+  it('reactivates the same canonical account instead of creating another currency account', async () => {
     const db = databaseMock();
-    db.fund_accounts.findUnique.mockResolvedValue({
+    const inactive = {
       id: 'old-eur', code: 'FUND_A_EUR', account_type: 'FUND_A',
       currency_code: 'EUR', status: 'INACTIVE',
-    });
+    };
+    db.fund_accounts.findUnique.mockResolvedValue(inactive);
+    db.fund_accounts.update.mockResolvedValue({ ...inactive, status: 'ACTIVE' });
 
     await expect(canonicalActiveFundAccount(db, 'branch-1', 'EUR', true))
-      .rejects.toBeInstanceOf(BadRequestException);
+      .resolves.toEqual(expect.objectContaining({ id: 'old-eur', status: 'ACTIVE' }));
+    expect(db.fund_accounts.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'old-eur' },
+      data: expect.objectContaining({ status: 'ACTIVE' }),
+    }));
     expect(db.fund_accounts.create).not.toHaveBeenCalled();
   });
 
@@ -51,4 +58,3 @@ describe('canonicalActiveFundAccount', () => {
     }));
   });
 });
-

@@ -1,6 +1,13 @@
 import { httpClient } from '@/shared/api/httpClient';
 
-export interface ProviderStat { count: number; totalUsd: number; totalVnd: number; profit: number; }
+export interface ProviderStat {
+  count: number;
+  totalUsd: number;
+  totalVnd: number;
+  transactionValueVnd: number;
+  debtGeneratedUsd: number;
+  debtGeneratedVnd: number;
+}
 export interface SummaryDto {
   transactions: {
     wu: ProviderStat;
@@ -48,7 +55,7 @@ export interface CompanyDashboardDto {
     capitalTrend: Array<{ date: string; valueVnd: number }>;
   };
   operations: DashboardOperationsDto;
-  revenueTrend: Array<{ date: string; label: string; revenueVnd: number; profitVnd: number }>;
+  transactionValueTrend: Array<{ date: string; label: string; valueVnd: number }>;
   transactionMix: Array<{ source: 'WU' | 'MG' | 'FX' | 'DOMESTIC'; count: number }>;
   branches: Array<{
     id: string;
@@ -59,8 +66,7 @@ export interface CompanyDashboardDto {
     vndBalance: number;
     usdBalance: number;
     todayTransactions: number;
-    revenueToday: number;
-    profitToday: number;
+    transactionValueTodayVnd: number;
     discrepancy: 'matched' | 'warning' | 'danger' | 'none';
     discrepancyValueVnd: number;
     riskLevel: 'normal' | 'watch' | 'risk';
@@ -72,6 +78,9 @@ export interface CompanyDashboardDto {
     fromCurrency: string;
     toCurrency: string;
     rate: number;
+    buyRate: number | null;
+    sellRate: number | null;
+    margin: number;
     effectiveFrom: string;
     approvedAt: string | null;
   }>;

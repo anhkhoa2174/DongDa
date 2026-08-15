@@ -4,26 +4,38 @@ import type { ColumnsType } from 'antd/es/table';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatNumber } from '@/shared/utils/formatters';
 import { useSummary } from '../hooks/useSummary';
+import type { ProviderStat, SummaryDto } from '../api/summary.api';
 
 const vnd = (n: number) => formatNumber(n, 2);
+type ProviderRow = ProviderStat & { key: string; name: string };
+type DebtRow = SummaryDto['debt']['items'][number];
 
 export function ReportsLivePage() {
   const { data, isLoading } = useSummary();
   const t = data?.transactions;
 
-  const provRows = [
-    { key: 'WU', name: 'Western Union', ...(t?.wu ?? { count: 0, totalUsd: 0, totalVnd: 0, profit: 0 }) },
-    { key: 'MG', name: 'MoneyGram', ...(t?.mg ?? { count: 0, totalUsd: 0, totalVnd: 0, profit: 0 }) },
+  const provRows: ProviderRow[] = [
+    { key: 'WU', name: 'Western Union', ...(t?.wu ?? { count: 0, totalUsd: 0, totalVnd: 0, transactionValueVnd: 0, debtGeneratedUsd: 0, debtGeneratedVnd: 0 }) },
+    { key: 'MG', name: 'MoneyGram', ...(t?.mg ?? { count: 0, totalUsd: 0, totalVnd: 0, transactionValueVnd: 0, debtGeneratedUsd: 0, debtGeneratedVnd: 0 }) },
   ];
-  const provCols: ColumnsType<any> = [
+  const provCols: ColumnsType<ProviderRow> = [
     { title: 'Dịch vụ', dataIndex: 'name' },
     { title: 'Số GD', dataIndex: 'count', align: 'right' },
-    { title: 'Tổng USD', dataIndex: 'totalUsd', align: 'right', render: vnd },
-    { title: 'Tổng VND', dataIndex: 'totalVnd', align: 'right', render: vnd },
-    { title: 'Lợi nhuận', dataIndex: 'profit', align: 'right', render: (v) => `${vnd(v)}đ` },
+    { title: 'Giá trị giao dịch', dataIndex: 'transactionValueVnd', align: 'right', render: (v) => `${vnd(v)} VND` },
+    {
+      title: 'Công nợ phát sinh',
+      align: 'right',
+      render: (_, row) => (
+        <div>
+          {row.debtGeneratedUsd > 0 && <div>{vnd(row.debtGeneratedUsd)} USD</div>}
+          {row.debtGeneratedVnd > 0 && <div>{vnd(row.debtGeneratedVnd)} VND</div>}
+          {!row.debtGeneratedUsd && !row.debtGeneratedVnd && 'Không phát sinh'}
+        </div>
+      ),
+    },
   ];
 
-  const debtCols: ColumnsType<any> = [
+  const debtCols: ColumnsType<DebtRow> = [
     { title: 'Đối tác', dataIndex: 'provider', render: (v) => <Tag>{v}</Tag> },
     { title: 'Loại tiền', dataIndex: 'currency' },
     { title: 'Còn nợ', dataIndex: 'outstanding', align: 'right', render: vnd },

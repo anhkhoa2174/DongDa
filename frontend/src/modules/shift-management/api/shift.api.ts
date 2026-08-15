@@ -5,7 +5,9 @@ export interface CashCountLineDto {
   systemAmount: number;
   actualAmount: number;
   variance: number;
+  denominations?: DenominationCountDto[];
 }
+export interface DenominationCountDto { denomination: number; quantity: number; amount: number; }
 export interface CashCountDto {
   id: string;
   shiftId: string;
@@ -24,9 +26,11 @@ export interface CurrentShiftDto {
   shift: ShiftDto | null;
   cashCounts: CashCountDto[];
 }
-export interface CountInput { currency: string; actualAmount: number; }
-export interface BranchRef { id: string; code: string; name: string; type: string; }
-
+export interface CountInput {
+  currency: string;
+  actualAmount: number;
+  denominations?: Array<{ denomination: number; quantity: number }>;
+}
 export const shiftApi = {
   current: (branchId: string) =>
     httpClient.get<CurrentShiftDto>('/shifts/current', { params: { branchId } }).then((r) => r.data),
@@ -34,5 +38,4 @@ export const shiftApi = {
     httpClient.post('/shifts/open', { branchId, openingCounts }).then((r) => r.data),
   close: (shiftId: string, closingCounts: CountInput[], branchId?: string, note?: string) =>
     httpClient.post(`/shifts/${shiftId}/close`, { branchId, closingCounts, note }).then((r) => r.data),
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };

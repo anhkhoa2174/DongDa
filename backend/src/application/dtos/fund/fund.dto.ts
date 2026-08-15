@@ -2,7 +2,7 @@
 // Layer: Application
 
 import {
-  ArrayMaxSize, ArrayMinSize, IsEnum, IsOptional, IsNumber, IsPositive,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsEnum, IsOptional, IsNumber, IsPositive,
   IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -25,6 +25,7 @@ export class CreateTransferDto {
 
   @ArrayMinSize(1, { message: 'Phiếu tiếp quỹ phải có ít nhất một loại tiền' })
   @ArrayMaxSize(20, { message: 'Phiếu tiếp quỹ có tối đa 20 loại tiền' })
+  @ArrayUnique((item: CreateTransferItemDto) => item.currencyCode, { message: 'Mỗi loại tiền chỉ được thêm một lần trong phiếu tiếp quỹ' })
   @ValidateNested({ each: true })
   @Type(() => CreateTransferItemDto)
   items: CreateTransferItemDto[];
@@ -75,6 +76,7 @@ export class CreateCentralFundMovementDto {
 
   @ArrayMinSize(1, { message: 'Phiếu phải có ít nhất một khoản tiền' })
   @ArrayMaxSize(20, { message: 'Phiếu có tối đa 20 khoản tiền' })
+  @ArrayUnique((item: CreateCentralFundMovementItemDto) => item.currencyCode, { message: 'Mỗi loại tiền chỉ được thêm một lần trong phiếu thu/chi' })
   @ValidateNested({ each: true })
   @Type(() => CreateCentralFundMovementItemDto)
   items: CreateCentralFundMovementItemDto[];
@@ -97,6 +99,7 @@ export class ConvertCentralFundItemDto {
 export class ConvertCentralFundDto {
   @ArrayMinSize(1, { message: 'Phiếu quy đổi phải có ít nhất một loại ngoại tệ' })
   @ArrayMaxSize(18, { message: 'Phiếu quy đổi có tối đa 18 loại ngoại tệ' })
+  @ArrayUnique((item: ConvertCentralFundItemDto) => item.currencyCode, { message: 'Mỗi loại ngoại tệ chỉ được thêm một lần trong phiếu quy đổi' })
   @ValidateNested({ each: true })
   @Type(() => ConvertCentralFundItemDto)
   items: ConvertCentralFundItemDto[];

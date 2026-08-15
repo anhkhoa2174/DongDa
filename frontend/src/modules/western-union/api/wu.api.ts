@@ -18,7 +18,7 @@ export interface WuTransactionDto {
   appliedRate: number;
   paidCurrency: 'USD' | 'VND';
   payoutCurrency: 'USD' | 'VND';
-  profit: number;
+  transactionValueVnd: number;
   createdAt: string;
 }
 
@@ -35,12 +35,9 @@ export interface CreateWuPayload {
   paidCurrency: string;
 }
 
-export interface BranchRef { id: string; code: string; name: string; type: string; }
-
 export const wuApi = {
   list: (branchId?: string) =>
     httpClient.get<WuTransactionDto[]>('/wu/transactions', { params: { branchId } }).then((r) => r.data),
   create: (payload: CreateWuPayload) =>
     httpClient.post<WuTransactionDto>('/wu/transactions', payload).then((r) => r.data),
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };

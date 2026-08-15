@@ -26,6 +26,7 @@ export interface ExchangeRateDto {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: string;
   effectiveTo?: string | null;
   status: RateStatus;
@@ -70,6 +71,7 @@ export interface CreateRatePayload {
   buyRate?: number;
   sellRate?: number;
   rate: number;
+  margin?: number;
 }
 
 export interface ParsedRateCandidate {
@@ -78,6 +80,7 @@ export interface ParsedRateCandidate {
   fromCurrency: string;
   toCurrency: 'VND';
   rate: number;
+  margin?: number;
   buyRate?: number;
   sellRate?: number;
   confidence: number;
