@@ -483,9 +483,13 @@ Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành
 Màn hình vẫn giữ chi tiết từng chi nhánh để đối chiếu, đồng thời tổng hợp các khoản đang mở theo `business_date + provider_code + currency_code`. Khi tổng ngân hàng khớp, GĐ/KTTH dùng một nút **Xử lý toàn bộ**. Backend khóa tất cả khoản thuộc nhóm, tính lại số còn nợ, yêu cầu số tiền đối chiếu khớp chính xác tổng, ghi một biến động ngân hàng hoặc phiếu thu tiền mặt và phân bổ `SETTLEMENT` về từng chi nhánh trong cùng database transaction. Nếu một khoản đã thay đổi hoặc tổng không khớp, toàn bộ thao tác rollback.
 
 ```txt
-GET  /api/v1/bank/accounts
-GET  /api/v1/bank/movements?bankAccountId=:id
-POST /api/v1/bank/receive
+GET   /api/v1/bank/banks
+GET   /api/v1/bank/accounts?branchId=:branchId
+POST  /api/v1/bank/accounts
+PATCH /api/v1/bank/accounts/:id/deactivate
+GET   /api/v1/bank/movements?bankAccountId=:id
+POST  /api/v1/bank/accounts/:id/movements
+POST  /api/v1/bank/receive
 
 GET  /api/v1/debts?branchId=:branchId&providerCode=WU&currencyCode=USD
 GET  /api/v1/debts?businessDate=YYYY-MM-DD
@@ -499,7 +503,7 @@ POST /api/v1/debts/record
 
 `POST /debts/record` hiện được giữ để test/ghi nhận công nợ thủ công và nhận `businessDate` tùy chọn. Luồng production chính để WU/MG hoặc kết quả đối chiếu Journal sinh công nợ.
 
-Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có bảng tổng hợp để xử lý một lần và bảng chi tiết theo chi nhánh để kiểm tra lịch sử. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng. Diễn giải mặc định là `Đã nhận thanh khoản từ Ngân hàng` và chỉ cần sửa khi phát sinh nội dung khác.
+Mỗi chi nhánh có tài khoản ngân hàng riêng (`bank_accounts.branch_id`); Hội sở giữ tài khoản chung. ADMIN/MANAGER khai báo tài khoản (`POST /bank/accounts`, ngân hàng chưa có sẽ tạo theo mã; số dư đầu kỳ > 0 được ghi thành một biến động DEPOSIT để truy vết) và ngưng tài khoản khi số dư = 0. Chuyển khoản/nộp/rút thủ công ghi qua `POST /bank/accounts/:id/movements` với `movementType` DEPOSIT/TRANSFER_IN (tăng) hoặc WITHDRAW/TRANSFER_OUT (giảm), kèm đối tác và mã tham chiếu; STAFF chỉ ghi được trên tài khoản của chi nhánh mình (backend kiểm tra theo JWT). Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có bảng tổng hợp để xử lý một lần và bảng chi tiết theo chi nhánh để kiểm tra lịch sử. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng. Diễn giải mặc định là `Đã nhận thanh khoản từ Ngân hàng` và chỉ cần sửa khi phát sinh nội dung khác.
 
 - Nguồn ngân hàng: chọn tài khoản cùng loại tiền, tăng số dư đúng một lần theo tổng và phân bổ giảm công nợ từng chi nhánh.
 - Nguồn tiền mặt VND: tăng quỹ tiền mặt VND Hội sở theo tổng và phân bổ giảm công nợ từng chi nhánh.
@@ -515,7 +519,7 @@ GET  /api/v1/reconciliation/runs/:id/items
 POST /api/v1/reconciliation/run
 ```
 
-Workspace `/reconciliation/journal` dùng API thật. Trang `/reconciliation` hiện vẫn hiển thị `journalUploadsMock` và `wuReconciliationRowsMock`. Chưa có API upload/lưu file gốc vào storage; API hiện nhận các dòng đã parse từ frontend.
+Workspace `/reconciliation/journal` dùng API thật. Chi nhánh (STAFF) tự upload Journal và chạy đối chiếu cho chính chi nhánh mình (backend ép `branchId` từ JWT cho cả WU lẫn MG); GĐ/KTTH chạy MG toàn công ty (bỏ trống chi nhánh) hoặc riêng từng chi nhánh, và lọc lịch sử theo `?branchId`. Dòng Journal gồm mã, tên khách hàng, số tiền, loại tiền; tên khách được lưu vào `journal_rows.customer_name` và hiển thị ở chi tiết đối chiếu. Trang `/reconciliation` hiện vẫn hiển thị `journalUploadsMock` và `wuReconciliationRowsMock`. Chưa có API upload/lưu file gốc vào storage; API hiện nhận các dòng đã parse từ frontend.
 
 ### 9. Báo cáo và Audit Log
 

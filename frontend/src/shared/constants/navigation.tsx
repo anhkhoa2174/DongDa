@@ -81,7 +81,8 @@ export const navigationItems: AppMenuItem[] = [
     icon: <BankOutlined />,
     label: 'Ngân Hàng',
     path: '/bank-management/accounts',
-    allowedRoles: ['director', 'accountant', 'auditor'],
+    // Mỗi chi nhánh có tài khoản ngân hàng riêng -> chi nhánh cũng xem/ghi biến động tài khoản của mình.
+    allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
     requiredPermission: 'bank.view',
   },
   {

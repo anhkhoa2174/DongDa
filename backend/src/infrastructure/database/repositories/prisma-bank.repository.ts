@@ -3,8 +3,10 @@
 
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { IBankRepository, ReceiveFromProviderInput } from '../../../domain/repositories/bank.repository';
-import { BankAccount, BankMovement, CurrencyCode } from '../../../domain/entities/bank.entity';
+import {
+  IBankRepository, ReceiveFromProviderInput, CreateBankAccountInput, CreateBankMovementInput,
+} from '../../../domain/repositories/bank.repository';
+import { Bank, BankAccount, BankMovement, CurrencyCode, isBankInflow } from '../../../domain/entities/bank.entity';
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
 import { NotificationService } from '../../notifications/notification.service';
@@ -18,22 +20,140 @@ export class PrismaBankRepository implements IBankRepository {
     private readonly notifications: NotificationService,
   ) {}
 
-  async listAccounts(branchId?: string): Promise<BankAccount[]> {
+  async listBanks(): Promise<Bank[]> {
+    const rows = await this.prisma.banks.findMany({ where: { status: 'ACTIVE' }, orderBy: { code: 'asc' } });
+    return rows.map((r) => ({ id: r.id, code: r.code, name: r.name }));
+  }
+
+  async listAccounts(branchId?: string, includeInactive = false): Promise<BankAccount[]> {
     const rows = await this.prisma.bank_accounts.findMany({
-      where: { status: 'ACTIVE', ...(branchId && { branch_id: branchId }) },
-      include: { banks: true },
-      orderBy: [{ bank_id: 'asc' }, { currency_code: 'asc' }],
+      where: { ...(includeInactive ? {} : { status: 'ACTIVE' }), ...(branchId && { branch_id: branchId }) },
+      include: { banks: true, branches: { select: { code: true, name: true } } },
+      orderBy: [{ branches: { code: 'asc' } }, { bank_id: 'asc' }, { currency_code: 'asc' }],
     });
-    return rows.map((r: any) => ({
-      id: r.id,
-      bankCode: r.banks.code,
-      bankName: r.banks.name,
-      branchId: r.branch_id,
-      accountNo: r.account_no,
-      accountName: r.account_name,
-      currencyCode: r.currency_code as CurrencyCode,
-      currentBalance: Number(r.current_balance),
-    }));
+    return rows.map(toAccount);
+  }
+
+  async findAccount(id: string): Promise<BankAccount | null> {
+    const row = await this.prisma.bank_accounts.findUnique({
+      where: { id },
+      include: { banks: true, branches: { select: { code: true, name: true } } },
+    });
+    return row ? toAccount(row) : null;
+  }
+
+  // Tạo tài khoản NH cho 1 chi nhánh (hoặc Hội sở). Bank chưa có -> tạo mới theo code.
+  // Số dư đầu kỳ > 0 được ghi thành 1 biến động DEPOSIT để mọi số dư đều truy vết được.
+  async createAccount(input: CreateBankAccountInput): Promise<BankAccount> {
+    const now = new Date();
+    const id = await this.prisma.$transaction(async (tx) => {
+      const branch = await tx.branch.findUnique({ where: { id: input.branchId }, select: { id: true } });
+      if (!branch) throw new NotFoundException('Không tìm thấy chi nhánh');
+
+      let bank = await tx.banks.findUnique({ where: { code: input.bankCode } });
+      if (!bank) {
+        bank = await tx.banks.create({ data: { code: input.bankCode, name: input.bankName?.trim() || input.bankCode } });
+      } else if (bank.status !== 'ACTIVE') {
+        bank = await tx.banks.update({ where: { id: bank.id }, data: { status: 'ACTIVE' } });
+      }
+
+      const dup = await tx.bank_accounts.findUnique({
+        where: { bank_id_account_no: { bank_id: bank.id, account_no: input.accountNo } },
+      });
+      if (dup) throw new BadRequestException(`Số tài khoản ${input.accountNo} tại ${bank.code} đã tồn tại`);
+
+      const opening = Number(input.openingBalance ?? 0);
+      const account = await tx.bank_accounts.create({
+        data: {
+          branch_id: input.branchId,
+          bank_id: bank.id,
+          account_no: input.accountNo,
+          account_name: input.accountName,
+          currency_code: input.currencyCode as any,
+          opening_balance: opening,
+          current_balance: opening,
+          available_balance: opening,
+          status: 'ACTIVE',
+        },
+      });
+      if (opening > 0) {
+        await tx.bank_balance_movements.create({
+          data: {
+            movement_no: newMovementNo(),
+            bank_account_id: account.id,
+            branch_id: input.branchId,
+            movement_type: 'DEPOSIT',
+            business_date: toVietnamBusinessDate(now),
+            amount: opening,
+            currency_code: input.currencyCode as any,
+            balance_before: 0,
+            balance_after: opening,
+            description: 'Số dư đầu kỳ khi khai báo tài khoản',
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.createdByUserId,
+          },
+        });
+      }
+      return account.id;
+    });
+    return (await this.findAccount(id))!;
+  }
+
+  async deactivateAccount(id: string): Promise<BankAccount> {
+    await this.prisma.bank_accounts.update({ where: { id }, data: { status: 'INACTIVE', updated_at: new Date() } });
+    return (await this.findAccount(id))!;
+  }
+
+  // Nộp/rút/chuyển khoản thủ công trên 1 tài khoản NH.
+  async createMovement(input: CreateBankMovementInput): Promise<BankMovement> {
+    const now = new Date();
+    const businessDate = input.businessDate ?? toVietnamBusinessDate(now);
+    const inflow = isBankInflow(input.movementType);
+
+    const movementId = await this.prisma.$transaction(async (tx) => {
+      await this.lockBankAccount(tx, input.bankAccountId);
+      const account = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
+      if (!account) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
+      if (account.status !== 'ACTIVE') throw new BadRequestException('Tài khoản ngân hàng đã ngưng hoạt động');
+
+      const before = Number(account.current_balance);
+      const after = inflow ? before + input.amount : before - input.amount;
+      if (after < 0) {
+        throw new BadRequestException(
+          `Số dư tài khoản ${account.account_no} không đủ (còn ${before} ${account.currency_code})`,
+        );
+      }
+      const description = [input.description, input.counterparty ? `Đối tác: ${input.counterparty}` : null]
+        .filter(Boolean).join(' · ') || defaultDescription(input.movementType);
+
+      const movement = await tx.bank_balance_movements.create({
+        data: {
+          movement_no: newMovementNo(),
+          bank_account_id: account.id,
+          branch_id: account.branch_id,
+          movement_type: input.movementType,
+          business_date: businessDate,
+          amount: input.amount,
+          currency_code: account.currency_code,
+          balance_before: before,
+          balance_after: after,
+          bank_reference: input.bankReference ?? null,
+          description,
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
+      await tx.bank_accounts.update({
+        where: { id: account.id },
+        data: { current_balance: after, available_balance: after, updated_at: now },
+      });
+      return movement.id;
+    });
+
+    const row = await this.prisma.bank_balance_movements.findUniqueOrThrow({ where: { id: movementId } });
+    return toMovement(row);
   }
 
   async listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]> {
@@ -77,7 +197,7 @@ export class PrismaBankRepository implements IBankRepository {
       // 1. Bút toán tăng số dư ngân hàng
       const movement = await tx.bank_balance_movements.create({
         data: {
-          movement_no: `BM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          movement_no: newMovementNo(),
           bank_account_id: bankAcc.id,
           branch_id: bankAcc.branch_id,
           movement_type: 'DEPOSIT',
@@ -168,6 +288,37 @@ export class PrismaBankRepository implements IBankRepository {
   }
 }
 
+function newMovementNo(): string {
+  return `BM-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+}
+
+function defaultDescription(type: string): string {
+  switch (type) {
+    case 'DEPOSIT': return 'Nộp tiền vào tài khoản';
+    case 'WITHDRAW': return 'Rút tiền khỏi tài khoản';
+    case 'TRANSFER_IN': return 'Nhận chuyển khoản';
+    case 'TRANSFER_OUT': return 'Chuyển khoản đi';
+    default: return type;
+  }
+}
+
+function toAccount(r: any): BankAccount {
+  return {
+    id: r.id,
+    bankId: r.bank_id,
+    bankCode: r.banks.code,
+    bankName: r.banks.name,
+    branchId: r.branch_id,
+    branchCode: r.branches?.code,
+    branchName: r.branches?.name,
+    accountNo: r.account_no,
+    accountName: r.account_name,
+    currencyCode: r.currency_code as CurrencyCode,
+    currentBalance: Number(r.current_balance),
+    status: r.status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE',
+  };
+}
+
 function toMovement(row: any): BankMovement {
   return {
     id: row.id,
@@ -181,6 +332,7 @@ function toMovement(row: any): BankMovement {
     balanceAfter: Number(row.balance_after),
     bankReference: row.bank_reference ?? null,
     description: row.description ?? null,
+    createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
   };
 }

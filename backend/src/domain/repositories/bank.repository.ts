@@ -1,7 +1,7 @@
 // Repository Interface: Ngân hàng (Port)
 // Layer: Domain
 
-import type { BankAccount, BankMovement } from '../entities/bank.entity';
+import type { Bank, BankAccount, BankMovement, BankMovementType, CurrencyCode } from '../entities/bank.entity';
 
 export interface ReceiveFromProviderInput {
   bankAccountId: string;
@@ -12,9 +12,37 @@ export interface ReceiveFromProviderInput {
   createdByUserId: string;
 }
 
+export interface CreateBankAccountInput {
+  branchId: string;
+  bankCode: string; // ACB, MSB... — chưa có thì tạo mới bank theo code + name
+  bankName?: string;
+  accountNo: string;
+  accountName: string;
+  currencyCode: CurrencyCode;
+  openingBalance?: number; // > 0 -> ghi 1 biến động DEPOSIT "Số dư đầu kỳ" để truy vết
+  createdByUserId: string;
+}
+
+export interface CreateBankMovementInput {
+  bankAccountId: string;
+  movementType: BankMovementType; // DEPOSIT/TRANSFER_IN tăng; WITHDRAW/TRANSFER_OUT giảm
+  amount: number;
+  description?: string;
+  bankReference?: string;
+  counterparty?: string; // đối tác chuyển/nhận (khách hàng, ngân hàng khác...)
+  businessDate?: Date;
+  createdByUserId: string;
+}
+
 export interface IBankRepository {
-  listAccounts(branchId?: string): Promise<BankAccount[]>;
+  listBanks(): Promise<Bank[]>;
+  listAccounts(branchId?: string, includeInactive?: boolean): Promise<BankAccount[]>;
+  findAccount(id: string): Promise<BankAccount | null>;
+  createAccount(input: CreateBankAccountInput): Promise<BankAccount>;
+  deactivateAccount(id: string): Promise<BankAccount>;
   listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]>;
+  // Nộp/rút/chuyển khoản thủ công: cập nhật số dư + ghi 1 dòng biến động (1 transaction)
+  createMovement(input: CreateBankMovementInput): Promise<BankMovement>;
   // Ghi nhận tiền WU/MG về: NH tăng + công nợ giảm (1 transaction)
   receiveFromProvider(input: ReceiveFromProviderInput): Promise<BankMovement>;
 }

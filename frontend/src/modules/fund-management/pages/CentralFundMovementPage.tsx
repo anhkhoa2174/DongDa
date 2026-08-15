@@ -61,7 +61,7 @@ export function CentralFundMovementPage({ direction, scope = 'central' }: Props)
   const createMovement = isBranchScope ? createBranchMovement : createCentralMovement;
   const { data: summary } = useCentralFundSummary(!isBranchScope);
   const { data: branchBalances = [] } = useFundBalances(isBranchScope ? user?.branchId : undefined);
-  const { data: bankAccounts = [], isLoading: isLoadingBanks } = useBankAccounts(!isBranchScope);
+  const { data: bankAccounts = [], isLoading: isLoadingBanks } = useBankAccounts(undefined, !isBranchScope);
   const sourceType = Form.useWatch('sourceType', form) ?? 'CASH';
   const watchedItems = Form.useWatch('items', form) ?? [];
   const isReceipt = direction === 'IN';

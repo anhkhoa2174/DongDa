@@ -38,7 +38,7 @@ import { PrismaFxRepository } from './infrastructure/database/repositories/prism
 import { CreateFxUseCase, ListFxUseCase } from './application/use-cases/fx/fx.use-cases';
 import { BankController } from './interfaces/http/controllers/bank.controller';
 import { PrismaBankRepository } from './infrastructure/database/repositories/prisma-bank.repository';
-import { ListBankUseCase, ReceiveFromProviderUseCase } from './application/use-cases/bank/bank.use-cases';
+import { ListBankUseCase, ReceiveFromProviderUseCase, ManageBankAccountUseCase, RecordBankMovementUseCase } from './application/use-cases/bank/bank.use-cases';
 import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
 import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
 import { RunReconciliationUseCase, ListReconciliationUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
@@ -188,6 +188,8 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     ListBankUseCase,
     ReceiveFromProviderUseCase,
+    ManageBankAccountUseCase,
+    RecordBankMovementUseCase,
 
     RunReconciliationUseCase,
     ListReconciliationUseCase,
