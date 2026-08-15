@@ -4,6 +4,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
+  CashBook,
+  CashBookDay,
+  CashBookRow,
+  CashBookRowKind,
   CompanyDashboard,
   DashboardOperations,
   IReportsRepository,
@@ -11,10 +15,195 @@ import {
   ReportFilter,
   TxStats,
 } from '../../../domain/repositories/reports.repository';
+import { NotFoundException } from '@nestjs/common';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 @Injectable()
 export class PrismaReportsRepository implements IReportsRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  // Sổ theo dõi thu chi hằng ngày (mẫu Excel sổ quỹ chi nhánh): mỗi ngày 1 nhóm,
+  // từng bút toán POSTED chạm sổ tiền mặt VND/USD, tồn chạy dần từ tồn đầu kỳ.
+  async dailyCashBook(branchId: string, dateFrom: Date, dateToExclusive: Date): Promise<CashBook> {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId }, select: { id: true, code: true, name: true, address: true },
+    });
+    if (!branch) throw new NotFoundException('Không tìm thấy chi nhánh');
+
+    // Sổ tiền mặt VND/USD của chi nhánh (kể cả INACTIVE để giữ lịch sử).
+    const cashAccounts = await this.prisma.fund_accounts.findMany({
+      where: { branch_id: branchId, account_type: 'CASH', currency_code: { in: ['USD', 'VND'] } },
+      select: { id: true, currency_code: true },
+    });
+    const accountIds = cashAccounts.map((a) => a.id);
+    const currencyOf = new Map(cashAccounts.map((a) => [a.id, String(a.currency_code)]));
+
+    // Tồn đầu kỳ = tổng ledger trước ngày bắt đầu.
+    let openingUsd = 0;
+    let openingVnd = 0;
+    if (accountIds.length) {
+      const before = await this.prisma.ledger_lines.findMany({
+        where: {
+          fund_account_id: { in: accountIds },
+          ledger_entries: { status: 'POSTED', business_date: { lt: dateFrom } },
+        },
+        select: { fund_account_id: true, direction: true, amount: true },
+      });
+      for (const l of before) {
+        const signed = (l.direction === 'DEBIT' ? 1 : -1) * Number(l.amount);
+        if (currencyOf.get(l.fund_account_id) === 'USD') openingUsd += signed; else openingVnd += signed;
+      }
+    }
+
+    // Bút toán trong kỳ.
+    const entries = accountIds.length ? await this.prisma.ledger_entries.findMany({
+      where: {
+        status: 'POSTED',
+        business_date: { gte: dateFrom, lt: dateToExclusive },
+        ledger_lines: { some: { fund_account_id: { in: accountIds } } },
+      },
+      include: { ledger_lines: { where: { fund_account_id: { in: accountIds } } } },
+      orderBy: [{ business_date: 'asc' }, { posted_at: 'asc' }, { created_at: 'asc' }],
+    }) : [];
+
+    // Nạp thông tin nguồn theo lô để đặt tên dòng (MTCN/tên khách, số phiếu...).
+    const idsBy = (type: string) => entries.filter((e) => e.source_type === type).map((e) => e.source_id);
+    const [txs, transfers, cashMovements] = await Promise.all([
+      this.prisma.customer_transactions.findMany({
+        where: { id: { in: idsBy('CUSTOMER_TRANSACTION') } },
+        include: { wu_transaction_details: { select: { mtcn: true } }, mg_transaction_details: { select: { reference_no: true } } },
+      }),
+      this.prisma.fund_transfers.findMany({
+        where: { id: { in: idsBy('FUND_TRANSFER') } },
+        include: {
+          branches_fund_transfers_source_branch_idTobranches: { select: { code: true, name: true } },
+          branches_fund_transfers_destination_branch_idTobranches: { select: { code: true, name: true } },
+        },
+      }),
+      this.prisma.cash_movements.findMany({ where: { id: { in: idsBy('CASH_MOVEMENT') } } }),
+    ]);
+    const txById = new Map(txs.map((t) => [t.id, t]));
+    const transferById = new Map(transfers.map((t) => [t.id, t]));
+    const cashById = new Map(cashMovements.map((m) => [m.id, m]));
+
+    const days = new Map<string, CashBookDay>();
+    let balUsd = openingUsd;
+    let balVnd = openingVnd;
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+    for (const e of entries) {
+      let inUsd = 0, inVnd = 0, outUsd = 0, outVnd = 0;
+      for (const l of e.ledger_lines) {
+        const amt = Number(l.amount);
+        const usd = currencyOf.get(l.fund_account_id) === 'USD';
+        if (l.direction === 'DEBIT') { if (usd) inUsd += amt; else inVnd += amt; }
+        else { if (usd) outUsd += amt; else outVnd += amt; }
+      }
+      if (!inUsd && !inVnd && !outUsd && !outVnd) continue;
+      balUsd = round2(balUsd + inUsd - outUsd);
+      balVnd = round2(balVnd + inVnd - outVnd);
+
+      const inflow = inUsd + inVnd > 0;
+      let kind: CashBookRowKind = 'OTHER';
+      let code = e.entry_no;
+      let name = '';
+      let description = e.description ?? '';
+      if (e.reversed_entry_id) {
+        kind = 'REVERSAL';
+        description = description || 'Bút toán đảo (hủy/điều chỉnh)';
+      }
+      switch (e.source_type) {
+        case 'CUSTOMER_TRANSACTION': {
+          const t = txById.get(e.source_id);
+          if (t) {
+            if (kind !== 'REVERSAL') kind = t.operation_code as CashBookRowKind;
+            code = t.wu_transaction_details?.mtcn ?? t.mg_transaction_details?.reference_no ?? t.transaction_no ?? code;
+            name = t.customer_name ?? '';
+            if (kind === 'REVERSAL') description = `${description} · ${t.operation_code} ${code}`;
+          }
+          break;
+        }
+        case 'FUND_TRANSFER': {
+          const tr = transferById.get(e.source_id);
+          if (kind !== 'REVERSAL') kind = inflow ? 'FUND_IN' : 'FUND_OUT';
+          if (tr) {
+            code = tr.transfer_no ?? code;
+            const src = tr.branches_fund_transfers_source_branch_idTobranches;
+            const dst = tr.branches_fund_transfers_destination_branch_idTobranches;
+            name = inflow ? `Nhận tiếp quỹ từ ${src?.name ?? '—'}` : `Gửi tiếp quỹ đến ${dst?.name ?? '—'}`;
+          } else {
+            name = inflow ? 'Nhận tiếp quỹ' : 'Gửi tiếp quỹ';
+          }
+          break;
+        }
+        case 'CASH_MOVEMENT': {
+          const m = cashById.get(e.source_id);
+          if (kind !== 'REVERSAL') kind = inflow ? 'CASH_IN' : 'CASH_OUT';
+          if (m) {
+            code = m.movement_no ?? code;
+            name = m.source_name ?? '';
+            description = description || m.description || '';
+          }
+          break;
+        }
+        case 'DEBT_MOVEMENT':
+          if (kind !== 'REVERSAL') kind = 'DEBT_SETTLEMENT';
+          name = name || 'Công nợ WU/MG về bằng tiền mặt';
+          break;
+        default:
+          break;
+      }
+
+      const row: CashBookRow = {
+        time: e.posted_at ?? e.created_at,
+        kind, code, name, description,
+        inUsd, inVnd, outUsd, outVnd,
+        balanceUsd: balUsd, balanceVnd: balVnd,
+      };
+      const key = dayKey(e.business_date);
+      let day = days.get(key);
+      if (!day) {
+        day = {
+          date: key,
+          openingUsd: round2(balUsd - inUsd + outUsd),
+          openingVnd: round2(balVnd - inVnd + outVnd),
+          rows: [], totalInUsd: 0, totalInVnd: 0, totalOutUsd: 0, totalOutVnd: 0,
+          closingUsd: balUsd, closingVnd: balVnd,
+        };
+        days.set(key, day);
+      }
+      day.rows.push(row);
+      day.totalInUsd = round2(day.totalInUsd + inUsd);
+      day.totalInVnd = round2(day.totalInVnd + inVnd);
+      day.totalOutUsd = round2(day.totalOutUsd + outUsd);
+      day.totalOutVnd = round2(day.totalOutVnd + outVnd);
+      day.closingUsd = balUsd;
+      day.closingVnd = balVnd;
+    }
+
+    // Ngày không phát sinh vẫn hiện (tồn = tồn cuối ngày trước) để sổ liên tục.
+    const out: CashBookDay[] = [];
+    let carryUsd = openingUsd;
+    let carryVnd = openingVnd;
+    for (let d = new Date(dateFrom); d < dateToExclusive; d = this.addUtcDays(d, 1)) {
+      const key = dayKey(d);
+      const day = days.get(key) ?? {
+        date: key, openingUsd: carryUsd, openingVnd: carryVnd, rows: [],
+        totalInUsd: 0, totalInVnd: 0, totalOutUsd: 0, totalOutVnd: 0, closingUsd: carryUsd, closingVnd: carryVnd,
+      };
+      out.push(day);
+      carryUsd = day.closingUsd;
+      carryVnd = day.closingVnd;
+    }
+
+    return {
+      branch: { id: branch.id, code: branch.code, name: branch.name, address: branch.address },
+      dateFrom: dayKey(dateFrom),
+      dateTo: dayKey(this.addUtcDays(dateToExclusive, -1)),
+      days: out,
+    };
+  }
 
   async txStats(filter?: ReportFilter): Promise<TxStats> {
     return {

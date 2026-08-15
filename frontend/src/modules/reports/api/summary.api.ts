@@ -87,9 +87,20 @@ export interface CompanyDashboardDto {
   ratesUpdatedAt: string | null;
 }
 
+export interface ReportPreviewDto {
+  reportType: string;
+  format: string;
+  generatedAt: string;
+  title: string;
+  sheets: { name: string; aoa: (string | number)[][] }[];
+}
+
 export const summaryApi = {
   get: () => httpClient.get<SummaryDto>('/reports/summary').then((r) => r.data),
-  generate: async (input: { reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string }) => {
+  generate: async (input: {
+    reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string;
+    columns?: string[]; // cashbook: cột hiển thị
+  }) => {
     if (input.format === 'EXCEL') {
       // Nhận file nhị phân và tải về.
       const response = await httpClient.post('/reports/generate', input, { responseType: 'blob' });
@@ -106,7 +117,7 @@ export const summaryApi = {
       URL.revokeObjectURL(url);
       return { downloaded: true, fileName };
     }
-    const response = await httpClient.post('/reports/generate', input);
+    const response = await httpClient.post<ReportPreviewDto>('/reports/generate', input);
     return response.data;
   },
   dashboardOperations: (date: string) =>

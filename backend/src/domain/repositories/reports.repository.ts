@@ -23,6 +23,50 @@ export interface TxStats {
   fx: FxStat;
 }
 
+// ---- Sổ theo dõi thu chi hằng ngày (theo mẫu Excel sổ quỹ chi nhánh) ----
+// Mỗi dòng = 1 bút toán POSTED chạm sổ tiền mặt VND/USD của chi nhánh; tồn chạy dần.
+export type CashBookRowKind =
+  | 'WU' | 'MG' | 'FX' | 'DOMESTIC_TRANSFER'
+  | 'FUND_IN' | 'FUND_OUT'      // tiếp quỹ nhận / gửi đi
+  | 'CASH_IN' | 'CASH_OUT'      // phiếu thu / phiếu chi
+  | 'DEBT_SETTLEMENT'           // công nợ về bằng tiền mặt
+  | 'REVERSAL'                  // bút toán đảo (hủy/điều chỉnh)
+  | 'OTHER';
+
+export interface CashBookRow {
+  time: Date;              // posted_at
+  kind: CashBookRowKind;
+  code: string;            // MTCN / Reference / số phiếu
+  name: string;            // tên khách / nguồn tiền / đối tác
+  description: string;
+  inUsd: number;
+  inVnd: number;
+  outUsd: number;
+  outVnd: number;
+  balanceUsd: number;      // tồn sau dòng này
+  balanceVnd: number;
+}
+
+export interface CashBookDay {
+  date: string;            // YYYY-MM-DD
+  openingUsd: number;
+  openingVnd: number;
+  rows: CashBookRow[];
+  totalInUsd: number;
+  totalInVnd: number;
+  totalOutUsd: number;
+  totalOutVnd: number;
+  closingUsd: number;
+  closingVnd: number;
+}
+
+export interface CashBook {
+  branch: { id: string; code: string; name: string; address?: string | null };
+  dateFrom: string;
+  dateTo: string;
+  days: CashBookDay[];
+}
+
 export interface ReportFilter {
   branchId?: string;
   dateFrom?: Date;
@@ -90,6 +134,8 @@ export interface CompanyDashboard {
 }
 
 export interface IReportsRepository {
+  // Sổ thu chi hằng ngày của 1 chi nhánh trong khoảng ngày (mỗi ngày 1 nhóm, tồn chạy dần).
+  dailyCashBook(branchId: string, dateFrom: Date, dateToExclusive: Date): Promise<CashBook>;
   txStats(filter?: ReportFilter): Promise<TxStats>;
   dashboardOperations(businessDate: Date): Promise<DashboardOperations>;
   companyDashboard(businessDate: Date): Promise<CompanyDashboard>;

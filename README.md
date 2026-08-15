@@ -530,6 +530,8 @@ GET /api/v1/reports/company-dashboard
 GET /api/v1/audit-logs?action=:action&entityType=:type&userId=:userId
 ```
 
+`POST /reports/generate` với `reportType=cashbook` xuất **Sổ theo dõi thu chi hằng ngày** theo mẫu Excel sổ quỹ chi nhánh: bắt buộc `branchId`, tối đa 62 ngày; mỗi ngày một sheet (`ddMMyy`) gồm tồn đầu kỳ, từng bút toán chạm sổ tiền mặt VND/USD của chi nhánh (WU/MG/FX, tiếp quỹ, phiếu thu/chi, công nợ về, bút toán đảo) với cột Nhận/Chi/Tồn chạy dần, tổng cộng và tồn cuối kỳ; sheet `Tổng hợp` theo ngày. Tham số `columns` chọn cột hiển thị (`stt,date,time,kind,code,name,inUsd,inVnd,outUsd,outVnd,balanceUsd,balanceVnd,description`). Trang Báo cáo có ô chọn cột và xem trước từng sheet.
+
 `/reports/summary` và `/audit-log/live` dùng dữ liệu thật. Trang `/reports` hiện là UI demo với KPI, biểu đồ và leaderboard hard-code; các nút xem trước, xuất Excel và PDF chưa có API. Trang `/audit-log` cũ dùng `auditRecordsMock`; nhật ký thật nằm ở `/audit-log/live`.
 
 Audit log được thiết kế append-only: thao tác quan trọng ghi actor, action, entity, dữ liệu trước/sau, IP và thời gian. Không cung cấp endpoint update/delete audit log.

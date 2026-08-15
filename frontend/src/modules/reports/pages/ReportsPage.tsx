@@ -1,6 +1,7 @@
 import {
   BankOutlined,
   BarChartOutlined,
+  BookOutlined,
   DollarOutlined,
   DownloadOutlined,
   FileExcelOutlined,
@@ -11,7 +12,7 @@ import {
   WalletOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Typography } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, DatePicker, Row, Select, Space, Statistic, Table, Tabs, Typography } from 'antd';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -19,11 +20,30 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { formatVnd } from '@/shared/utils/formatters';
-import { summaryApi } from '../api/summary.api';
+import { summaryApi, type ReportPreviewDto } from '../api/summary.api';
 import { useNotify } from '@/app/providers/notifications/useNotify';
 import { useBranches } from '@/shared/hooks/useBranches';
 
+// Sổ thu chi hằng ngày: cột chọn được (mặc định = đúng cột sổ mẫu Excel + Loại)
+const CASHBOOK_COLUMNS: { value: string; label: string }[] = [
+  { value: 'stt', label: 'STT' },
+  { value: 'date', label: 'Ngày' },
+  { value: 'time', label: 'Giờ' },
+  { value: 'kind', label: 'Loại (WU/MG/Tiếp quỹ...)' },
+  { value: 'code', label: 'MTCN / Mã' },
+  { value: 'name', label: 'Họ tên người nhận / Nguồn tiền' },
+  { value: 'inUsd', label: 'Nhận USD' },
+  { value: 'inVnd', label: 'Nhận VND' },
+  { value: 'outUsd', label: 'Chi USD' },
+  { value: 'outVnd', label: 'Chi VND' },
+  { value: 'balanceUsd', label: 'Tồn USD' },
+  { value: 'balanceVnd', label: 'Tồn VND' },
+  { value: 'description', label: 'Diễn giải' },
+];
+const CASHBOOK_DEFAULT_COLUMNS = ['stt', 'date', 'kind', 'code', 'name', 'inUsd', 'inVnd', 'outUsd', 'outVnd', 'balanceUsd', 'balanceVnd'];
+
 const reportCards = [
+  { key: 'cashbook', title: 'Sổ thu chi hằng ngày', desc: 'Từng giao dịch + tồn chạy dần theo chi nhánh (mẫu sổ quỹ)', icon: <BookOutlined />, color: '#0f766e' },
   { key: 'fund',     title: 'Báo cáo Vốn & Quỹ',    desc: 'Tổng vốn, biến động, tồn quỹ',     icon: <WalletOutlined />,        color: '#2563eb' },
   { key: 'wu',       title: 'Báo cáo WU',           desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#2563eb' },
   { key: 'mg',       title: 'Báo cáo MoneyGram',    desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#7c3aed' },
@@ -38,6 +58,9 @@ export function ReportsPage() {
   const [reportType, setReportType] = useState('wu');
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day'), dayjs()]);
   const [branchId, setBranchId] = useState<string>();
+  const [cashbookColumns, setCashbookColumns] = useState<string[]>(CASHBOOK_DEFAULT_COLUMNS);
+  const [preview, setPreview] = useState<ReportPreviewDto | null>(null);
+  const isCashbook = reportType === 'cashbook';
   const { data: branches = [] } = useBranches();
   const { data: dashboard } = useQuery({
     queryKey: ['reports', 'dashboard', range[1].format('YYYY-MM-DD')],
@@ -45,16 +68,24 @@ export function ReportsPage() {
   });
   const notify = useNotify();
   const generateReport = useMutation({
-    mutationFn: ({ format, type = reportType }: { format: 'PREVIEW' | 'EXCEL' | 'PDF'; type?: string }) =>
-      summaryApi.generate({
+    mutationFn: ({ format, type = reportType }: { format: 'PREVIEW' | 'EXCEL' | 'PDF'; type?: string }) => {
+      if (type === 'cashbook' && !branchId) {
+        return Promise.reject(new Error('Sổ thu chi hằng ngày phải chọn chi nhánh'));
+      }
+      return summaryApi.generate({
         reportType: type, format, branchId,
         dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD'),
-      }),
-    onSuccess: (_, { format }) => notify.success(
-      format === 'PREVIEW' ? 'Đã tổng hợp dữ liệu báo cáo'
-        : format === 'EXCEL' ? 'Đã tải file Excel báo cáo'
-        : `Đã chuẩn bị báo cáo ${format}`,
-    ),
+        columns: type === 'cashbook' ? cashbookColumns : undefined,
+      });
+    },
+    onSuccess: (data, { format }) => {
+      if (format === 'PREVIEW' && data && typeof data === 'object' && 'sheets' in data) setPreview(data as ReportPreviewDto);
+      notify.success(
+        format === 'PREVIEW' ? 'Đã tổng hợp dữ liệu báo cáo'
+          : format === 'EXCEL' ? 'Đã tải file Excel báo cáo'
+          : `Đã chuẩn bị báo cáo ${format}`,
+      );
+    },
     onError: (error: unknown) => notify.error(getApiErrorMessage(error, 'Không thể tạo báo cáo')),
   });
 
@@ -88,11 +119,12 @@ export function ReportsPage() {
             <Typography.Text type="secondary" className="text-xs!">Chi nhánh</Typography.Text>
             <Select
               className="w-full"
-              allowClear
-              placeholder="Tất cả chi nhánh"
+              allowClear={!isCashbook}
+              placeholder={isCashbook ? 'Bắt buộc chọn chi nhánh' : 'Tất cả chi nhánh'}
+              status={isCashbook && !branchId ? 'warning' : undefined}
               value={branchId}
               onChange={setBranchId}
-              options={branches.map((branch) => ({ value: branch.id, label: branch.name }))}
+              options={branches.map((branch) => ({ value: branch.id, label: `${branch.code} - ${branch.name}` }))}
             />
           </Col>
           <Col xs={24} md={4}>
@@ -109,7 +141,60 @@ export function ReportsPage() {
             />
           </Col>
         </Row>
+        {isCashbook && (
+          <div className="mt-4">
+            <Alert
+              type="info"
+              showIcon
+              className="mb-3"
+              message="Sổ thu chi hằng ngày: mỗi ngày 1 sheet, liệt kê từng giao dịch WU/MG/FX, tiếp quỹ, phiếu thu/chi trên sổ tiền mặt VND/USD của chi nhánh, tồn chạy dần từ tồn đầu kỳ. Tối đa 62 ngày/lần."
+            />
+            <Typography.Text type="secondary" className="text-xs!">Cột hiển thị trong sổ</Typography.Text>
+            <div className="mt-1">
+              <Checkbox.Group
+                value={cashbookColumns}
+                onChange={(values) => setCashbookColumns(values as string[])}
+                options={CASHBOOK_COLUMNS}
+              />
+            </div>
+            <Space className="mt-2">
+              <Button size="small" type="link" className="p-0!" onClick={() => setCashbookColumns(CASHBOOK_DEFAULT_COLUMNS)}>Theo sổ mẫu</Button>
+              <Button size="small" type="link" className="p-0!" onClick={() => setCashbookColumns(CASHBOOK_COLUMNS.map((c) => c.value))}>Tất cả cột</Button>
+            </Space>
+          </div>
+        )}
       </Card>
+
+      {preview && (
+        <Card
+          title={`Xem trước: ${preview.title}`}
+          className="mb-4"
+          extra={<Button size="small" onClick={() => setPreview(null)}>Đóng</Button>}
+        >
+          <Tabs
+            items={preview.sheets.map((sheet, index) => ({
+              key: `${index}-${sheet.name}`,
+              label: sheet.name,
+              children: (
+                <Table
+                  size="small"
+                  bordered
+                  pagination={{ pageSize: 50, hideOnSinglePage: true }}
+                  scroll={{ x: 'max-content' }}
+                  rowKey={(_, i) => String(i)}
+                  showHeader={false}
+                  dataSource={sheet.aoa.map((row, i) => ({ key: i, cells: row }))}
+                  columns={Array.from({ length: Math.max(...sheet.aoa.map((r) => r.length), 1) }, (_, c) => ({
+                    key: c,
+                    dataIndex: ['cells', c],
+                    render: (value: string | number) => (typeof value === 'number' ? value.toLocaleString('vi-VN') : value),
+                  }))}
+                />
+              ),
+            }))}
+          />
+        </Card>
+      )}
 
       <Row gutter={[16, 16]} className="mb-4">
         {reportCards.map((r) => (
