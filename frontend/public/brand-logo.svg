@@ -1,0 +1,11 @@
+<svg width="240" height="72" viewBox="0 0 240 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="240" height="72" rx="12" fill="#0B0B0B"/>
+  <rect x="12" y="12" width="48" height="48" rx="8" fill="#F5B301"/>
+  <path d="M27 46V26H35.2C41.5 26 45.5 29.8 45.5 36C45.5 42.2 41.5 46 35.2 46H27ZM32 41.7H35C38.4 41.7 40.4 39.6 40.4 36C40.4 32.4 38.4 30.3 35 30.3H32V41.7Z" fill="#0B0B0B"/>
+  <path d="M68 27H85.6V31.5H73.2V34.5H84.4V38.8H73.2V42H85.9V46.5H68V27Z" fill="#FFFFFF"/>
+  <path d="M91 27H100.2C106.3 27 110.3 30.7 110.3 36.8C110.3 42.8 106.3 46.5 100.2 46.5H91V27ZM96.2 42H99.9C103.1 42 105 40.1 105 36.8C105 33.4 103.1 31.5 99.9 31.5H96.2V42Z" fill="#FFFFFF"/>
+  <path d="M115.6 27H120.8V46.5H115.6V27Z" fill="#F5B301"/>
+  <path d="M126.8 27H132L140.3 38.4V27H145.3V46.5H140.3L131.8 34.8V46.5H126.8V27Z" fill="#FFFFFF"/>
+  <path d="M151 27H156.2V34.2H164.1V27H169.3V46.5H164.1V38.8H156.2V46.5H151V27Z" fill="#FFFFFF"/>
+  <text x="68" y="61" fill="#F5B301" font-family="Arial, sans-serif" font-size="9" font-weight="700" letter-spacing="1.2">FINANCIAL OPERATIONS</text>
+</svg>

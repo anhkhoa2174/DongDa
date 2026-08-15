@@ -3,8 +3,8 @@ set -e
 
 SCHEMA=src/infrastructure/database/prisma/schema.prisma
 
-echo "⏳ Sync Prisma schema (db push)..."
-npx prisma db push --schema=$SCHEMA --skip-generate
+echo "⏳ Áp dụng migrations (prisma migrate deploy)..."
+npx prisma migrate deploy --schema=$SCHEMA
 
 echo "🔧 Generate Prisma client..."
 npx prisma generate --schema=$SCHEMA

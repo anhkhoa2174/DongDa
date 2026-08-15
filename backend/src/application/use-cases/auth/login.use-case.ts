@@ -58,9 +58,11 @@ export class LoginUseCase {
       user: {
         id: user.id,
         username: user.username,
+        email: user.email,
         fullName: user.fullName,
         role: user.role,
         branchId: user.branchId,
+        branchName: user.branchName,
       },
     };
   }

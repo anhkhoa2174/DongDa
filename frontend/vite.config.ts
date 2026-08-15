@@ -1,21 +1,27 @@
-import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
+import { fileURLToPath, URL } from 'node:url';
+import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
+
+const devProxyTarget = process.env.VITE_DEV_PROXY_TARGET ?? 'http://localhost:3000';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(), 
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
-      '@domain':      resolve(__dirname, 'src/domain'),
-      '@application': resolve(__dirname, 'src/application'),
-      '@infra':       resolve(__dirname, 'src/infrastructure'),
-      '@ui':          resolve(__dirname, 'src/presentation'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': {
+        target: devProxyTarget,
+        changeOrigin: true,
+      },
     },
   },
 });

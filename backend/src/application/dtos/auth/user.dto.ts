@@ -3,7 +3,7 @@
 
 import {
   IsString, IsNotEmpty, IsEmail, IsEnum, IsOptional,
-  IsBoolean, MinLength, MaxLength, Matches,
+  IsBoolean, MinLength, MaxLength, Matches, IsUUID,
 } from 'class-validator';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -14,15 +14,13 @@ export class CreateUserDto {
   @Matches(/^[a-zA-Z0-9_]+$/, { message: 'Username chỉ gồm chữ cái, số và dấu gạch dưới' })
   username: string;
 
+  @IsOptional()
   @IsEmail()
-  email: string;
+  email?: string;
 
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   @MaxLength(100)
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message: 'Mật khẩu phải có ít nhất 1 chữ hoa, 1 chữ thường, 1 số',
-  })
   password: string;
 
   @IsString()
@@ -34,7 +32,7 @@ export class CreateUserDto {
   role: UserRole;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   branchId?: string;
 }
 
@@ -53,7 +51,7 @@ export class UpdateUserDto {
   role?: UserRole;
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   branchId?: string;
 
   @IsOptional()
@@ -64,7 +62,7 @@ export class UpdateUserDto {
 export class UserResponseDto {
   id: string;
   username: string;
-  email: string;
+  email?: string;
   fullName: string;
   role: UserRole;
   branchId?: string;
