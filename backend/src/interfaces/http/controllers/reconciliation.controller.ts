@@ -1,8 +1,9 @@
 // Reconciliation Controller — Đối chiếu Journal (diagram 4)
 // Layer: Interface (HTTP)
 //   POST /reconciliation/run        chạy đối chiếu (nhận journal rows đã parse)
-//   GET  /reconciliation/runs       danh sách lần đối chiếu
+//   GET  /reconciliation/runs?branchId=   danh sách lần đối chiếu (GĐ/KTTH lọc theo chi nhánh; STAFF chỉ chi nhánh mình)
 //   GET  /reconciliation/runs/:id/items   chi tiết sai lệch
+//   POST /reconciliation/parse-journal    upload Journal (chi nhánh upload cho chính mình; GĐ/KTTH upload bất kỳ)
 
 import {
   Controller, Post, Get, Body, Param, Query, UseGuards, Request,
@@ -12,7 +13,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
-import { RunReconciliationUseCase, ListReconciliationUseCase } from '../../../application/use-cases/reconciliation/reconciliation.use-cases';
+import { RunReconciliationUseCase, ListReconciliationUseCase, ReconActor } from '../../../application/use-cases/reconciliation/reconciliation.use-cases';
 import { ParseJournalUseCase } from '../../../application/use-cases/reconciliation/parse-journal.use-case';
 import { RunReconciliationDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
 
@@ -27,16 +28,16 @@ export class ReconciliationController {
 
   @Get('runs')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
-  runs() {
-    return this.listRecon.runs();
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR, UserRole.STAFF)
+  runs(@Request() req: any, @Query('branchId') branchId?: string) {
+    return this.listRecon.runs(actorOf(req), branchId || undefined);
   }
 
   @Get('runs/:id/items')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
-  items(@Param('id') id: string) {
-    return this.listRecon.items(id);
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR, UserRole.STAFF)
+  items(@Request() req: any, @Param('id') id: string) {
+    return this.listRecon.items(actorOf(req), id);
   }
 
   // F9.1 — Đối chiếu quỹ: tồn hệ thống vs kiểm quỹ thực tế gần nhất (KTTH/GĐ/kiểm toán)
@@ -47,19 +48,19 @@ export class ReconciliationController {
     return this.listRecon.fundReconciliation(branchId);
   }
 
-  // Chạy đối chiếu — KTTH/GĐ
+  // Chạy đối chiếu — chi nhánh (cho chính mình) hoặc KTTH/GĐ (toàn công ty / từng chi nhánh)
   @Post('run')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   run(@Request() req: any, @Body() dto: RunReconciliationDto) {
-    return this.runRecon.execute(dto, req.user.id);
+    return this.runRecon.execute(dto, actorOf(req));
   }
 
-  // Upload file WU/MG Journal (CSV/XLSX) -> parse ra danh sách dòng đối chiếu.
-  // FE hiển thị cho KTTH rà lại rồi bấm "Chạy đối chiếu" (POST /reconciliation/run).
+  // Upload file WU/MG Journal (PDF scan/CSV/XLSX) -> parse ra danh sách dòng đối chiếu.
+  // FE hiển thị cho người dùng rà lại rồi bấm "Chạy đối chiếu" (POST /reconciliation/run).
   @Post('parse-journal')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   parse(
     @UploadedFile() file: any,
@@ -76,4 +77,8 @@ export class ReconciliationController {
     }
     return this.parseJournal.execute(file.buffer, file.originalname, provider);
   }
+}
+
+function actorOf(req: any): ReconActor {
+  return { id: req.user.id, role: req.user.role, branchId: req.user.branchId ?? null };
 }

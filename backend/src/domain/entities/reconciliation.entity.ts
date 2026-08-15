@@ -51,6 +51,7 @@ export interface ReconItem {
   journalAmount: number;
   varianceAmount: number;
   currencyCode: 'USD' | 'VND';
+  customerName?: string | null; // tên khách theo Journal (ưu tiên) hoặc theo hệ thống
   note?: string;
 }
 
@@ -80,7 +81,7 @@ export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResu
     if (!sys) {
       items.push({
         status: ReconItemStatus.MISSING_IN_SYSTEM, code: jr.code,
-        branchId: jr.branchId ?? null, currencyCode,
+        branchId: jr.branchId ?? null, currencyCode, customerName: jr.customerName ?? null,
         systemAmount: 0, journalAmount: jr.amount, varianceAmount: jr.amount,
         note: 'Journal có nhưng hệ thống chưa ghi nhận',
       });
@@ -92,12 +93,14 @@ export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResu
       items.push({
         status: ReconItemStatus.MATCHED, code: jr.code, transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: 0,
+        customerName: jr.customerName ?? sys.customerName ?? null,
       });
     } else {
       items.push({
         status: ReconItemStatus.AMOUNT_VARIANCE, code: jr.code, transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: variance,
-        note: `Lệch ${variance} USD`,
+        customerName: jr.customerName ?? sys.customerName ?? null,
+        note: `Lệch ${variance} ${currencyCode}`,
       });
     }
   }
@@ -107,6 +110,7 @@ export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResu
       items.push({
         status: ReconItemStatus.MISSING_IN_JOURNAL, code: sys.code, transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode: sys.currencyCode, systemAmount: sys.amount, journalAmount: 0, varianceAmount: sys.amount,
+        customerName: sys.customerName ?? null,
         note: 'Hệ thống có nhưng Journal thiếu',
       });
     }

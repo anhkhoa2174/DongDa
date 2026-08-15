@@ -3,8 +3,8 @@ import { reconApi, type RunReconInput } from '../api/reconciliation.api';
 
 const KEY = ['reconciliation'] as const;
 
-export function useReconRuns() {
-  return useQuery({ queryKey: [...KEY, 'runs'], queryFn: () => reconApi.runs() });
+export function useReconRuns(branchId?: string) {
+  return useQuery({ queryKey: [...KEY, 'runs', branchId ?? 'all'], queryFn: () => reconApi.runs(branchId) });
 }
 export function useFundReconciliation(branchId?: string) {
   return useQuery({
