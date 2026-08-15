@@ -158,6 +158,17 @@ nhánh cho **Công ty TNHH TM DV PT Đống Đa**. Thay thế Excel/sổ giấy/
 9. `fix(reconciliation)` — Chạy đối chiếu **tách theo từng loại tiền** (WU có USD+VND).
    **← commit này CHƯA push (local bb921a1), chờ lệnh push.**
 
+**15/08/2026 (branch `DongDav5`, Khoa + AI):**
+10. `feat(reconciliation)` — Journal có **tên khách hàng** (parse CSV/XLSX/OCR → lưu `journal_rows.customer_name`
+    → cột Khách hàng ở chi tiết). **Chi nhánh tự upload Journal + đối chiếu** cho chính mình (backend ép branchId
+    từ JWT, cả WU lẫn MG); GĐ/KTTH chạy MG toàn công ty hoặc từng chi nhánh, lọc lịch sử theo chi nhánh.
+11. `feat(bank)` — **Mỗi chi nhánh có tài khoản ngân hàng riêng**: API tạo/ngưng tài khoản, ghi chuyển khoản/
+    nộp/rút (`POST /bank/accounts/:id/movements`), FE bỏ mock, modal Thêm tài khoản + Tiền vào/ra, STAFF chỉ
+    thấy/ghi tài khoản chi nhánh mình. Trước đó KHÔNG có cách nào tạo tài khoản NH (module chết).
+
+**Còn dang dở (ưu tiên sau):** kiểm quỹ sai → quy trình xử lý + báo GĐ/KTTH; OCR ảnh (hiện chỉ PDF scan);
+đối chiếu ngân hàng F9.4/F9.5 (sao kê ↔ biến động).
+
 **Anh Quyền (Trương Quyền) làm song song:** UI (thu/chi, dashboard), form WU (chẵn/lẻ,
 MTCN có gạch), **fix Quỹ A duplicate** (unique index), **công nợ theo ngày**, format
 tiền/tỉ giá, tỉ giá thập phân. (Đã review — xem mục 9.)
