@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
+const devProxyTarget = process.env.VITE_DEV_PROXY_TARGET ?? 'http://localhost:3000';
+
 export default defineConfig({
   plugins: [
     react(), 
@@ -17,7 +19,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: devProxyTarget,
         changeOrigin: true,
       },
     },

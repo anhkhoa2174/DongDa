@@ -81,9 +81,28 @@
 }
 
 .page-heading {
-  margin-bottom: 18px;
-  padding-bottom: 14px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #eef0f3;
+}
+
+.ant-alert {
+  border-radius: 6px !important;
+  padding: 9px 12px !important;
+}
+
+.ant-alert-with-description {
+  align-items: flex-start;
+  padding: 10px 12px !important;
+}
+
+.ant-alert-message {
+  line-height: 1.35;
+}
+
+.ant-alert-description {
+  margin-top: 2px;
+  line-height: 1.4;
 }
 
 .polished-card,
@@ -165,75 +184,1170 @@
   background: linear-gradient(135deg, #fff8db, #ffffff);
 }
 
-.fund-branch-card {
-  border-radius: 14px !important;
-}
-
-.fund-branch-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 18px 20px;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.28), transparent 180px),
-    linear-gradient(135deg, #080808, #161616);
-}
-
-.fund-metric {
-  min-width: 0;
-  border: 1px solid #eceff3;
-  border-radius: 10px;
-  background: #fbfbfc;
-  padding: 12px;
-}
-
-.fund-detail-list {
+.shift-workspace {
   display: grid;
+  gap: 16px;
+}
+
+.operational-overview {
+  overflow: hidden;
+  border: 1px solid #242424 !important;
+  border-radius: 8px !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.12) !important;
+}
+
+.operational-overview .ant-card-body {
+  padding: 0;
+}
+
+.operational-overview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+}
+
+.operational-overview__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.operational-overview__icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border: 1px solid rgba(245, 179, 1, 0.42);
+  border-radius: 7px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 18px;
+}
+
+.operational-overview__icon.is-success {
+  border-color: rgba(52, 211, 153, 0.42);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+}
+
+.operational-overview__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.operational-overview__title {
+  max-width: 720px;
+  margin: 0 0 3px !important;
+  color: #ffffff !important;
+  font-size: 20px !important;
+  line-height: 1.25 !important;
+  overflow-wrap: anywhere;
+}
+
+.operational-overview__meta,
+.operational-overview__meta .ant-typography {
+  color: #8f8f8f !important;
+  font-size: 12px;
+}
+
+.operational-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.operational-overview__aside {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.shift-hero__tag {
+  margin-inline-end: 0;
+}
+
+.shift-hero__open-button {
+  border-color: #f5b301 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
+  font-weight: 700;
+  box-shadow: 0 8px 22px rgba(245, 179, 1, 0.2);
+}
+
+.shift-hero__close-button {
+  border-color: #ef4444 !important;
+  background: transparent !important;
+  color: #fca5a5 !important;
+  font-weight: 700;
+}
+
+.operational-overview__metrics {
+  display: grid;
+  border-top: 1px solid #282828;
+  background: #121212;
+}
+
+.operational-overview__metrics--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operational-overview__metrics--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.operational-overview__metrics--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.operational-overview__metric {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   gap: 10px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-right: 1px solid #282828;
 }
 
-.fund-command-center,
-.fund-central-hero {
-  overflow: hidden;
-  border-color: rgba(245, 179, 1, 0.28) !important;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.26), transparent 260px),
-    linear-gradient(135deg, #090909, #171717);
+.operational-overview__metric:last-child {
+  border-right: 0;
 }
 
-.fund-command-metric {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 14px;
+.operational-overview__metric-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.12);
+  color: #f5b301;
 }
 
-.fund-central-tile {
-  min-height: 112px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  padding: 16px;
+.operational-overview__metric .ant-typography,
+.operational-overview__metric strong,
+.operational-overview__metric div > span {
+  display: block;
 }
 
-.branch-monitor-hero {
-  overflow: hidden;
-  background:
-    radial-gradient(circle at top right, rgba(245, 179, 1, 0.28), transparent 300px),
-    linear-gradient(135deg, #080808, #171717);
+.operational-overview__metric .ant-typography {
+  color: #999999 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
-.branch-monitor-hero .ant-statistic-title,
-.branch-monitor-hero .ant-statistic-content {
+.operational-overview__metric strong {
+  margin-top: 2px;
+  color: #ffffff;
+  font-size: 16px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.operational-overview__metric div > span {
+  margin-top: 2px;
+  color: #737373;
+  font-size: 10px;
+}
+
+.section-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-card-title .anticon {
+  color: #d99a00;
+}
+
+.shift-fund-panel .ant-card-body,
+.shift-process-panel .ant-card-body {
+  padding: 18px;
+}
+
+.shift-process-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shift-process-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  border: 1px solid #e8eaee;
+  border-radius: 7px;
+  padding: 10px;
+}
+
+.shift-process-step.is-active {
+  border-color: rgba(245, 179, 1, 0.55);
+  background: #fffaf0;
+}
+
+.shift-process-step.is-done {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.shift-process-step__number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.shift-process-step.is-active .shift-process-step__number {
+  background: #f5b301;
+  color: #111111;
+}
+
+.shift-process-step.is-done .shift-process-step__number {
+  background: #16a34a;
   color: #ffffff;
 }
 
-.branch-monitor-hero .ant-statistic-title {
-  color: rgba(255, 255, 255, 0.66);
+.shift-process-step .ant-typography {
+  display: block;
+}
+
+.shift-process-step .ant-typography-secondary {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.shift-process-step__arrow {
+  color: #a3a3a3;
+  font-size: 11px;
+}
+
+.shift-count-history.is-divided {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #eceef1;
+}
+
+.shift-count-history__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.shift-count-header,
+.shift-count-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.7fr) minmax(210px, 0.9fr);
+  align-items: center;
+  gap: 16px;
+}
+
+.shift-count-header {
+  padding: 0 12px 8px;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.shift-count-row {
+  min-height: 70px;
+  border-top: 1px solid #eceef1;
+  padding: 10px 12px;
+}
+
+.shift-count-row:last-child {
+  border-bottom: 1px solid #eceef1;
+}
+
+.shift-count-row__currency strong,
+.shift-count-row__currency .ant-typography {
+  display: block;
+}
+
+.shift-count-row__currency strong {
+  margin-bottom: 2px;
+  font-size: 14px;
+}
+
+.shift-count-row__system {
+  color: #111827 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 650;
+}
+
+.shift-count-row .ant-input-number-group-wrapper {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .operational-overview__header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .operational-overview__identity {
+    align-items: flex-start;
+  }
+
+  .operational-overview__title {
+    font-size: 19px !important;
+  }
+
+  .operational-overview__aside {
+    width: 100%;
+  }
+
+  .shift-hero__open-button,
+  .shift-hero__close-button {
+    width: 100%;
+  }
+
+  .operational-overview__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .operational-overview__metric {
+    padding: 13px 18px;
+    border-right: 0;
+    border-bottom: 1px solid #282828;
+  }
+
+  .operational-overview__metric:last-child {
+    border-bottom: 0;
+  }
+
+  .shift-count-header {
+    display: none;
+  }
+
+  .shift-count-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 4px;
+  }
+
+  .shift-count-row__system::before {
+    margin-right: 6px;
+    color: #6b7280;
+    content: "Số lượng:";
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .shift-count-history__heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
+.branch-fund-overview__status {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.fund-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 0;
+  border-top: 1px solid #eceef1;
+  border-bottom: 1px solid #eceef1;
+}
+
+.fund-actions > div:first-child .ant-typography {
+  display: block;
+}
+
+.fund-actions > div:first-child .ant-typography-secondary {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.fund-action--primary {
+  border-color: #e0a500 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
+  font-weight: 650;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.16);
+}
+
+.fund-action--secondary {
+  border-color: #111111 !important;
+  background: #111111 !important;
+  color: #f5b301 !important;
+  box-shadow: 0 5px 14px rgba(17, 24, 39, 0.14);
+}
+
+.fund-action--primary:hover,
+.fund-action--primary:focus-visible {
+  border-color: #c89200 !important;
+  background: #e0a500 !important;
+  color: #111111 !important;
+}
+
+.fund-action--secondary:hover,
+.fund-action--secondary:focus-visible {
+  border-color: #2f2f2f !important;
+  background: #2f2f2f !important;
+  color: #f5b301 !important;
+}
+
+.fund-action--conversion {
+  border-color: #e0a500 !important;
+  background: #fff8df !important;
+  color: #8a5a00 !important;
+  font-weight: 700;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.18);
+}
+
+.fund-action--conversion:hover,
+.fund-action--conversion:focus-visible {
+  border-color: #c89200 !important;
+  background: #f5b301 !important;
+  color: #111111 !important;
+}
+
+.branch-fund-table-card .ant-card-body {
+  padding: 0 20px 18px;
+}
+
+.fund-balance-currency {
+  display: inline-grid;
+  min-width: 46px;
+  height: 28px;
+  place-items: center;
+  border-radius: 5px;
+  background: #111111;
+  color: #f5b301;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   font-weight: 800;
+}
+
+.fund-balance-row--negative td {
+  background: #fff7f7 !important;
+}
+
+.fund-balance-row--negative td:last-child .ant-typography {
+  color: #b91c1c !important;
+}
+
+.fund-balance-table .ant-table-thead > tr > th {
+  background: #f7f7f8 !important;
+  color: #4b5563 !important;
+  font-size: 11px;
+  font-weight: 750;
   text-transform: uppercase;
+}
+
+.fund-balance-table .ant-table-tbody > tr > td {
+  min-height: 58px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.fund-balance-table .ant-table-tbody > tr:hover > td {
+  background: #fffaf0 !important;
+}
+
+.wu-currency-segmented.ant-segmented {
+  border: 1px solid #e0a500;
+  border-radius: 6px;
+  padding: 4px;
+  background: #ffffff;
+  box-shadow: 0 5px 14px rgba(245, 179, 1, 0.14);
+}
+
+.wu-currency-segmented .ant-segmented-group {
+  gap: 4px;
+}
+
+.wu-currency-segmented .ant-segmented-item {
+  min-height: 36px;
+  border-radius: 4px;
+  color: #111111;
+  font-weight: 750;
+}
+
+.wu-currency-segmented .ant-segmented-item-label {
+  display: grid;
+  min-height: 36px;
+  place-items: center;
+  padding: 0 18px;
+}
+
+.wu-currency-segmented .ant-segmented-thumb,
+.wu-currency-segmented .ant-segmented-item-selected {
+  background: #f5b301 !important;
+  color: #111111 !important;
+  box-shadow: 0 4px 12px rgba(245, 179, 1, 0.28) !important;
+}
+
+.wu-currency-segmented:not(.ant-segmented-disabled) .ant-segmented-item:not(.ant-segmented-item-selected):hover {
+  background: #fff8df;
+  color: #111111;
+}
+
+@media (max-width: 991px) {
+  .fund-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 575px) {
+  .fund-actions .ant-space,
+  .fund-actions .ant-space-item,
+  .fund-actions .ant-btn {
+    width: 100%;
+  }
+
+  .branch-fund-table-card .ant-card-body {
+    padding: 0 12px 12px;
+  }
+}
+
+.central-fund-overview {
+  border-color: #262626 !important;
+  background: #0b0b0b !important;
+  color: #ffffff;
+}
+
+.central-fund-overview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 24px;
+}
+
+.central-fund-overview__eyebrow,
+.central-fund-overview__caption {
+  color: #a3a3a3 !important;
+}
+
+.central-fund-overview__eyebrow {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.central-fund-overview__amount {
+  margin: 5px 0 2px !important;
+  color: #ffffff !important;
+  font-size: 34px !important;
+  line-height: 1.2 !important;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-overview__amount-usd {
+  display: block;
+  margin-bottom: 7px;
+  color: #ffffff !important;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-overview__meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  min-width: 590px;
+  border: 1px solid #2f2f2f;
+  border-radius: 6px;
+}
+
+.central-fund-overview__meta div {
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.central-fund-overview__meta div + div {
+  border-left: 1px solid #2f2f2f;
+}
+
+.central-fund-overview__meta span,
+.central-fund-overview__meta strong {
+  display: block;
+}
+
+.central-fund-overview__meta strong.is-positive {
+  color: #86efac;
+}
+
+.central-fund-overview__meta strong.is-negative {
+  color: #fca5a5;
+}
+
+.central-fund-overview__meta span {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.central-fund-overview__meta strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #262626;
+}
+
+.central-fund-kpi {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 128px;
+  padding: 18px;
+  border-right: 1px solid #262626;
+}
+
+.central-fund-kpi:last-child {
+  border-right: 0;
+}
+
+.central-fund-kpi__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid rgba(245, 179, 1, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 17px;
+}
+
+.central-fund-kpi__label {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.central-fund-kpi__values {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.central-fund-kpi__values strong {
+  color: #f5b301;
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.central-fund-detail {
+  height: 100%;
+}
+
+.central-fund-detail .ant-card-body {
+  padding: 4px 22px 10px;
+}
+
+.central-fund-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 70px;
+  padding: 12px 0;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.central-fund-row:last-child {
+  border-bottom: 0;
+}
+
+.central-fund-row--total {
+  margin-top: 2px;
+  border-bottom: 0;
+  color: #111827;
+}
+
+.central-fund-row__value {
+  flex: 0 0 auto;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.fund-conversion-line-result {
+  min-height: 82px;
+  padding: 11px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.fund-conversion-line-result span,
+.fund-conversion-line-result strong,
+.fund-conversion-line-result small {
+  display: block;
+}
+
+.fund-conversion-line-result span {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fund-conversion-line-result strong {
+  margin-top: 3px;
+  color: #111827;
+  font-size: 16px;
+}
+
+.fund-conversion-line-result small {
+  margin-top: 2px;
+  color: #8a5a00;
+  font-weight: 650;
+}
+
+.fund-conversion-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 16px;
+  padding: 15px 18px;
+  border: 1px solid #e0a500;
+  border-radius: 6px;
+  background: #fffaf0;
+}
+
+.fund-conversion-total > span {
+  color: #6b7280;
+}
+
+.fund-conversion-total > div {
+  text-align: right;
+}
+
+.fund-conversion-total small,
+.fund-conversion-total strong {
+  display: block;
+}
+
+.fund-conversion-total small {
+  color: #8a5a00;
+  font-weight: 650;
+}
+
+.fund-conversion-total strong {
+  margin-top: 2px;
+  color: #111827;
+  font-size: 22px;
+}
+
+.fund-transfer-context {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #262626;
+  border-radius: 6px;
+  background: #0b0b0b;
+  color: #ffffff;
+}
+
+.fund-transfer-context__item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 82px;
+  padding: 18px 20px;
+  border-right: 1px solid #262626;
+}
+
+.fund-transfer-context__item:last-child {
+  border-right: 0;
+}
+
+.fund-transfer-context__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border: 1px solid rgba(245, 179, 1, 0.34);
+  border-radius: 6px;
+  background: rgba(245, 179, 1, 0.1);
+  color: #f5b301;
+  font-size: 16px;
+}
+
+.fund-transfer-context__label {
+  color: #a3a3a3;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.fund-transfer-context__value {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.fund-transfer-panel {
+  height: 100%;
+}
+
+.fund-transfer-panel .ant-card-body {
+  padding: 22px;
+}
+
+.fund-transfer-line {
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #f5b301;
+  border-radius: 6px;
+  background: #fbfbfc;
+  padding: 15px 16px 12px;
+}
+
+.fund-transfer-line .ant-form-item-extra {
+  min-height: 20px;
+  padding-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.exchange-rate-entry {
+  background: #ffffff;
+}
+
+.exchange-rate-entry__number {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #111111;
+  color: #f5b301;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.exchange-rate-tabs .ant-tabs-tab-btn {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.exchange-rate-code {
+  color: #111827 !important;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.exchange-rate-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+
+.exchange-rate-value strong {
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.exchange-rate-value span {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.exchange-rate-value--compact strong {
+  font-size: 16px;
+}
+
+.exchange-rate-table .ant-table-thead > tr > th,
+.exchange-rate-table .ant-table-tbody > tr > td {
+  padding: 9px 10px !important;
+}
+
+.exchange-rate-table .ant-table-cell {
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto minmax(150px, auto);
+  align-items: end;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e7e9ed;
+  border-radius: 7px;
+  background: #fafafa;
+}
+
+.branch-monitor-toolbar__field > .ant-typography,
+.branch-monitor-toolbar__date .ant-typography {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b7280 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-monitor-toolbar__field--branch .ant-select {
+  width: 100%;
+}
+
+.branch-monitor-toolbar__date {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 9px;
+  padding-left: 18px;
+  border-left: 1px solid #e1e3e7;
+}
+
+.branch-monitor-toolbar__date > .anticon {
+  color: #d99a00;
+  font-size: 17px;
+}
+
+.branch-monitor-toolbar__date .ant-typography {
+  margin-bottom: 0;
+}
+
+.branch-monitor-toolbar__date strong {
+  display: block;
+  margin-top: 1px;
+  color: #111827;
+  font-size: 13px;
+}
+
+.branch-monitor-overview__total {
+  flex: 0 1 460px;
+  text-align: right;
+}
+
+.branch-monitor-overview__total .ant-typography,
+.branch-monitor-overview__total strong,
+.branch-monitor-overview__total span {
+  display: block;
+}
+
+.branch-monitor-overview__total .ant-typography {
+  color: #a3a3a3 !important;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.branch-monitor-overview__total strong {
+  margin-top: 4px;
+  color: #ffffff;
+  font-size: 28px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-overview__total span {
+  margin-top: 4px;
+  color: #8f8f8f;
+  font-size: 11px;
+}
+
+.branch-monitor-chart,
+.branch-monitor-shift {
+  height: 100%;
+}
+
+.branch-monitor-chart__canvas {
+  height: 300px;
+}
+
+.branch-monitor-chart__empty {
+  padding-top: 90px;
+}
+
+.branch-monitor-shift__content {
+  display: grid;
+  gap: 0;
+}
+
+.branch-monitor-shift__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 7px;
+  background: #f0fdf4;
+}
+
+.branch-monitor-shift__status > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 6px;
+  background: #16a34a;
+  color: #ffffff;
+}
+
+.branch-monitor-shift__status .ant-typography,
+.branch-monitor-shift__status strong {
+  display: block;
+}
+
+.branch-monitor-shift__status .ant-typography {
+  color: #15803d !important;
+  font-size: 11px;
+}
+
+.branch-monitor-shift__status strong {
+  color: #14532d;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-shift__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  border-bottom: 1px solid #eceef1;
+}
+
+.branch-monitor-shift__row:last-child {
+  border-bottom: 0;
+}
+
+.branch-monitor-shift__row .ant-typography:last-child {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.branch-monitor-shift__closed {
+  display: flex;
+  min-height: 258px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  text-align: center;
+}
+
+.branch-monitor-shift__closed > .anticon {
+  margin-bottom: 4px;
+  color: #d99a00;
+  font-size: 32px;
+}
+
+.branch-monitor-shift__closed .ant-typography-secondary {
+  max-width: 240px;
+  font-size: 12px;
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+  .branch-monitor-toolbar {
+    grid-template-columns: minmax(240px, 1fr) auto;
+  }
+
+  .branch-monitor-toolbar__date {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid #e1e3e7;
+    border-left: 0;
+  }
+
+  .operational-overview__metrics--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operational-overview__metrics--4 .operational-overview__metric:nth-child(2) {
+    border-right: 0;
+  }
+
+  .operational-overview__metrics--4 .operational-overview__metric:nth-child(-n + 2) {
+    border-bottom: 1px solid #282828;
+  }
+}
+
+@media (max-width: 575px) {
+  .branch-monitor-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-monitor-toolbar__field .ant-segmented {
+    width: 100%;
+  }
+
+  .branch-monitor-toolbar__field .ant-segmented-group {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .branch-monitor-toolbar__date {
+    grid-column: auto;
+  }
+
+  .branch-monitor-overview__total {
+    width: 100%;
+    flex: none;
+    padding-top: 14px;
+    border-top: 1px solid #282828;
+    text-align: left;
+  }
+
+  .branch-monitor-overview__total strong {
+    font-size: 23px;
+  }
+
+  .branch-monitor-chart__canvas {
+    height: 260px;
+  }
 }
 
 .header-user-trigger {
@@ -330,6 +1444,40 @@
   font-size: 24px;
 }
 
+.balance-card--compact-primary .balance-card__amount {
+  margin-bottom: 3px;
+  font-size: 27px;
+  font-weight: 720;
+}
+
+.balance-card--compact-primary .balance-card__amount span {
+  font-size: 18px;
+}
+
+.balance-card__secondary-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-bottom: 9px;
+  color: #ffffff;
+  overflow-wrap: anywhere;
+}
+
+.balance-card__secondary-amount span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.balance-card__secondary-amount strong {
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 25px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
 .balance-card__sparkline {
   min-width: 160px;
   text-align: right;
@@ -382,6 +1530,18 @@
   font-size: 17px;
 }
 
+.balance-card--emphasized-balances .sub-balance-grid {
+  gap: 20px;
+}
+
+.balance-card--emphasized-balances .sub-balance-grid strong {
+  margin-top: 7px;
+  color: #f5b301;
+  font-size: 22px;
+  font-weight: 780;
+  line-height: 1.2;
+}
+
 .dashboard-actions {
   display: flex;
   width: 100%;
@@ -413,7 +1573,54 @@
   color: #ffffff !important;
 }
 
+.fx-stock-row--active > td {
+  background: #fffbea !important;
+}
+
+.fx-stock-row--active:hover > td {
+  background: #fff6cc !important;
+}
+
+.fx-stock-row--empty > td {
+  color: #8c8c8c;
+}
+
 @media (max-width: 960px) {
+  .central-fund-overview__header {
+    flex-direction: column;
+  }
+
+  .central-fund-overview__meta {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .central-fund-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .central-fund-kpi:nth-child(2) {
+    border-right: 0;
+  }
+
+  .central-fund-kpi:nth-child(-n + 2) {
+    border-bottom: 1px solid #262626;
+  }
+
+  .fund-transfer-context {
+    grid-template-columns: 1fr;
+  }
+
+  .fund-transfer-context__item {
+    min-height: 72px;
+    border-right: 0;
+    border-bottom: 1px solid #262626;
+  }
+
+  .fund-transfer-context__item:last-child {
+    border-bottom: 0;
+  }
+
   .balance-card__content {
     flex-direction: column;
   }
@@ -433,12 +1640,77 @@
 }
 
 @media (max-width: 560px) {
+  .central-fund-overview__header {
+    padding: 20px;
+  }
+
+  .central-fund-overview__amount {
+    font-size: 27px !important;
+  }
+
+  .central-fund-overview__meta,
+  .central-fund-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .central-fund-overview__meta div + div {
+    border-top: 1px solid #2f2f2f;
+    border-left: 0;
+  }
+
+  .central-fund-kpi {
+    min-height: 82px;
+    border-right: 0;
+    border-bottom: 1px solid #262626;
+  }
+
+  .central-fund-kpi:nth-child(3) {
+    border-bottom: 1px solid #262626;
+  }
+
+  .central-fund-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .central-fund-row__value {
+    text-align: left;
+  }
+
+  .fund-conversion-total {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fund-conversion-total > div {
+    text-align: left;
+  }
+
   .balance-card .ant-card-body {
     padding: 18px;
   }
 
   .balance-card__amount {
     font-size: 30px;
+  }
+
+  .balance-card--compact-primary .balance-card__amount {
+    font-size: 23px;
+  }
+
+  .balance-card__secondary-amount {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .balance-card__secondary-amount strong {
+    font-size: 22px;
+  }
+
+  .balance-card--emphasized-balances .sub-balance-grid strong {
+    font-size: 20px;
   }
 
   .sub-balance-grid {

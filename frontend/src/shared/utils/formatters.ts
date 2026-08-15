@@ -19,12 +19,19 @@ function parseDate(value: NullableDate) {
 
 function formatInputNumber(
   value: InputValue,
-  groupSeparator = '.',
-  decimalSeparator = ',',
+  groupSeparator = ',',
+  decimalSeparator = '.',
 ) {
   if (value === null || value === undefined || value === '') return '';
 
-  const rawValue = String(value).replace(/[^\d.-]/g, '');
+  const escapedGroupSeparator = groupSeparator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stringValue = String(value);
+  const rawValue = typeof value === 'number'
+    ? stringValue
+    : stringValue
+        .replace(new RegExp(escapedGroupSeparator, 'g'), '')
+        .replace(decimalSeparator, '.')
+        .replace(/[^\d.-]/g, '');
   if (!rawValue) return '';
 
   const isNegative = rawValue.startsWith('-');
@@ -38,8 +45,8 @@ function formatInputNumber(
 
 function parseInputNumber(
   value: string | undefined,
-  groupSeparator = '.',
-  decimalSeparator = ',',
+  groupSeparator = ',',
+  decimalSeparator = '.',
 ) {
   if (!value) return 0;
 
@@ -61,31 +68,41 @@ function parseInputNumber(
 
 export const numberInputFormatter = (value: InputValue) => formatInputNumber(value);
 export const numberInputParser = (value: string | undefined) => parseInputNumber(value);
-export const usdInputFormatter = (value: InputValue) => formatInputNumber(value, ',', '.');
-export const usdInputParser = (value: string | undefined) => parseInputNumber(value, ',', '.');
+export const usdInputFormatter = numberInputFormatter;
+export const usdInputParser = numberInputParser;
 export const exchangeRateInputFormatter = numberInputFormatter;
 export const exchangeRateInputParser = numberInputParser;
 
+export function normalizeDigits(value: string | number | null | undefined, maxLength?: number) {
+  const digits = String(value ?? '').replace(/\D/g, '');
+  return typeof maxLength === 'number' ? digits.slice(0, maxLength) : digits;
+}
+
+export function formatWuMtcn(value: string | number | null | undefined) {
+  const digits = normalizeDigits(value, 10);
+  const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 10)].filter(Boolean);
+  return parts.join('-');
+}
+
 /**
  * Format tiền Việt
- * Example: 1250000 -> 1.250.000 ₫
+ * Example: 1250000 -> 1,250,000 VND
  */
 export function formatVnd(value: NullableNumber) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
+  return `${new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(value)} VND`;
 }
 
 /**
  * Format ngoại tệ theo mã tiền tệ
  * Example:
- * USD 1234.5 -> USD 1,234.50
- * EUR 1234.5 -> EUR 1,234.50
- * JPY 85000 -> JPY 85,000
+ * USD 1234.5 -> 1,234.5 USD
+ * EUR 1234.5 -> 1,234.5 EUR
+ * JPY 85000 -> 85,000 JPY
  */
 export function formatForeignCurrency(
   value: NullableNumber,
@@ -94,30 +111,30 @@ export function formatForeignCurrency(
 ) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return `${currencyCode.toUpperCase()} ${new Intl.NumberFormat('en-US', {
+  return `${new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
-  }).format(value)}`;
+  }).format(value)} ${currencyCode.toUpperCase()}`;
 }
 
 /**
  * Format USD riêng để tránh nhầm với VND
- * Example: 1234.5 -> $ 1,234.50
+ * Example: 1234.5 -> 1,234.5 USD
  */
 export function formatUsd(value: NullableNumber, maximumFractionDigits = 2) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return `$ ${new Intl.NumberFormat('en-US', {
+  return `${new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
-  }).format(value)}`;
+  }).format(value)} USD`;
 }
 
 /**
  * Format tỷ giá
  * Example:
- * 26235 -> 26.235
- * 26235.5 -> 26.235,5
+ * 26235 -> 26,235
+ * 26235.5 -> 26,235.5
  */
 export function formatExchangeRate(
   value: NullableNumber,
@@ -125,7 +142,7 @@ export function formatExchangeRate(
 ) {
   if (!isValidNumber(value)) return FALLBACK;
 
-  return new Intl.NumberFormat('vi-VN', {
+  return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits,
   }).format(value);
@@ -133,7 +150,7 @@ export function formatExchangeRate(
 
 /**
  * Format tỷ giá có đơn vị
- * Example: 26235 -> 26.235 VND/USD
+ * Example: 26235 -> 26,235 VND/USD
  */
 export function formatExchangeRatePair(
   value: NullableNumber,

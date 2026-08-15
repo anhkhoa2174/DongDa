@@ -4,6 +4,7 @@ export type BackendRole = 'ADMIN' | 'MANAGER' | 'STAFF' | 'AUDITOR';
 export type AuthUser = {
   id: string;
   username?: string;
+  email?: string;
   name: string;
   role: AppRole;
   backendRole?: BackendRole;

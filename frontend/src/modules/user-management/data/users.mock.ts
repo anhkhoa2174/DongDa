@@ -80,7 +80,7 @@ export const usersMock: AppUser[] = [
 ];
 
 export const activityLogsMock: UserActivityLog[] = [
-  { id: 'a1', userId: 'u-01', action: 'APPROVE_EXCHANGE_RATE', target: 'USD 25,650', ip: '10.0.0.5', at: '2026-06-29T07:42:00' },
+  { id: 'a1', userId: 'u-01', action: 'APPROVE_EXCHANGE_RATE', target: '25,650 VND/USD', ip: '10.0.0.5', at: '2026-06-29T07:42:00' },
   { id: 'a2', userId: 'u-02', action: 'CREATE_EXCHANGE_RATE', target: 'USD Pending', ip: '10.0.0.8', at: '2026-06-29T07:38:00' },
   { id: 'a3', userId: 'u-03', action: 'APPROVE_TRANSFER', target: 'DD-2026060700003', ip: '10.0.1.10', at: '2026-06-29T11:32:00' },
   { id: 'a4', userId: 'u-04', action: 'CREATE_TRANSACTION', target: 'WU-2640987641', ip: '10.0.2.18', at: '2026-06-29T10:05:00' },

@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import {
@@ -19,7 +19,7 @@ import {
   formatUsd,
   formatVnd,
 } from '@/shared/utils/formatters';
-import { bankAccountsMock, bankBalanceMovementsMock } from '../data/bankAccounts.mock';
+import { useBankMovementsView } from '../hooks/useBankMovementsView';
 import type { BankAccount, BankBalanceMovement, BankBalanceMovementType } from '../model/bank.types';
 
 const movementMeta: Record<BankBalanceMovementType, { label: string; color: string }> = {
@@ -38,11 +38,7 @@ export function BankAccountMovementsPage() {
   const { accountKey } = useParams();
   const navigate = useNavigate();
   const [operation, setOperation] = useState<'deposit' | 'withdraw' | null>(null);
-  const account = bankAccountsMock.find((item) => item.key === accountKey);
-  const movements = useMemo(
-    () => bankBalanceMovementsMock.filter((item) => item.accountKey === accountKey),
-    [accountKey],
-  );
+  const { account, movements } = useBankMovementsView(accountKey);
 
   if (!account) {
     return (

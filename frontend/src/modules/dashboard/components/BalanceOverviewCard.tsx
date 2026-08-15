@@ -18,6 +18,10 @@ type BalanceOverviewCardProps = {
   eyebrow: string;
   amount: string;
   amountSuffix?: string;
+  secondaryAmount?: string;
+  secondaryAmountLabel?: string;
+  compactPrimaryAmount?: boolean;
+  emphasizeSubBalances?: boolean;
   statusTag: {
     label: string;
     color: string;
@@ -26,20 +30,30 @@ type BalanceOverviewCardProps = {
   subBalances: SubBalance[];
   sparklineBars: number[];
   actions: BalanceAction[];
+  loading?: boolean;
 };
 
 export function BalanceOverviewCard({
   eyebrow,
   amount,
-  amountSuffix = '₫',
+  amountSuffix = 'VND',
+  secondaryAmount,
+  secondaryAmountLabel,
+  compactPrimaryAmount = false,
+  emphasizeSubBalances = false,
   statusTag,
   caption,
   subBalances,
   sparklineBars,
   actions,
+  loading = false,
 }: BalanceOverviewCardProps) {
   return (
-    <Card className="balance-card" bordered={false}>
+    <Card
+      loading={loading}
+      className={`balance-card${compactPrimaryAmount ? ' balance-card--compact-primary' : ''}${emphasizeSubBalances ? ' balance-card--emphasized-balances' : ''}`}
+      bordered={false}
+    >
       <div className="balance-card__content">
         <div className="balance-card__main">
           <Typography.Text className="balance-card__eyebrow">{eyebrow}</Typography.Text>
@@ -47,6 +61,12 @@ export function BalanceOverviewCard({
             {amount}
             <span>{amountSuffix}</span>
           </div>
+          {secondaryAmount && (
+            <div className="balance-card__secondary-amount">
+              {secondaryAmountLabel && <span>{secondaryAmountLabel}</span>}
+              <strong>{secondaryAmount}</strong>
+            </div>
+          )}
           <Space size={8} wrap>
             <Tag color={statusTag.color}>{statusTag.label}</Tag>
             <Typography.Text className="balance-card__muted">{caption}</Typography.Text>
@@ -58,7 +78,7 @@ export function BalanceOverviewCard({
           <div className="sparkline">
             {sparklineBars.map((height, index) => (
               <span
-                key={height}
+                key={`${index}-${height}`}
                 style={{ height: `${height}%`, opacity: index === sparklineBars.length - 1 ? 1 : 0.62 }}
               />
             ))}

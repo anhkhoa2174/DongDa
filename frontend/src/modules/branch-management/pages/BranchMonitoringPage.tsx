@@ -1,49 +1,43 @@
 import {
+  ArrowRightOutlined,
   BankOutlined,
   BarChartOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
+  DollarOutlined,
   FieldTimeOutlined,
   LineChartOutlined,
-  SwapOutlined,
+  PlusOutlined,
+  TeamOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
-import { Card, Col, Row, Segmented, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import { useMemo, useState } from 'react';
+import { Alert, App, Button, Card, Col, Empty, Form, Input, Modal, Row, Segmented, Select, Space, Steps, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
+import axios from 'axios';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
-import { branchFundsMock } from '@/modules/fund-management/data/funds.mock';
-import { aggregatedTransactionsMock } from '@/modules/transactions/data/transactions.mock';
-import type { TransactionSource } from '@/modules/transactions/model/transaction.types';
-import { formatExchangeRate, formatForeignCurrency, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import type { BranchFund, FundACurrencyBalance } from '@/modules/fund-management/model/fund.types';
-
-type PeriodKey = 'day' | 'month' | 'year';
-
-type BranchMonitoringRow = {
-  key: string;
-  branchName: string;
-  manager: string;
-  currentFundValue: number;
-  vndCash: number;
-  usdCash: number;
-  transactionCount: number;
-  completedCount: number;
-  transactionValue: number;
-  openShiftLabel: string;
-  status: BranchFund['status'];
-};
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
+import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
+import { useAuthStore } from '@/modules/auth/model/auth.store';
+import {
+  formatExchangeRate,
+  formatDateTime,
+  formatVnd,
+} from '@/shared/utils/formatters';
+import type { BranchFundStatus, CreateBranchPayload, FundCurrencyBalanceDto, MonitoringPeriod } from '../api/branchMonitoring.api';
+import { useBranchActivity, useBranchFunds, useCreateBranch, useMonitoringBranches } from '../hooks/useBranchMonitoring';
 
 const periodOptions = [
   { label: 'Ngày', value: 'day' },
@@ -51,153 +45,83 @@ const periodOptions = [
   { label: 'Năm', value: 'year' },
 ];
 
-const branchOptions = [
-  ...branchFundsMock.map((branch) => ({ label: branch.branchName, value: branch.key })),
-];
-
-const statusMeta: Record<BranchFund['status'], { label: string; color: string }> = {
+const statusMeta: Record<BranchFundStatus, { label: string; color: string }> = {
   NORMAL: { label: 'Ổn định', color: 'green' },
   LOW_CASH: { label: 'Thiếu quỹ', color: 'gold' },
   NEEDS_RECONCILIATION: { label: 'Cần kiểm quỹ', color: 'red' },
 };
 
-const sourceColors: Record<TransactionSource, string> = {
-  WU: '#111827',
-  MG: '#f5b301',
-  FX: '#64748b',
-  DOMESTIC: '#a16207',
-};
-
-const sourceLabels: Record<TransactionSource, string> = {
-  WU: 'Western Union',
-  MG: 'MoneyGram',
-  FX: 'Ngoại tệ',
-  DOMESTIC: 'Chuyển tiền',
-};
-
-function getFundAValue(branch: BranchFund) {
-  return branch.fundA.reduce((sum, item) => sum + item.vndValue, 0);
+function getErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const message = error.response?.data?.message;
+    return Array.isArray(message) ? message.join(', ') : message || 'Không thể tạo chi nhánh';
+  }
+  return 'Không thể tạo chi nhánh';
 }
 
-function getCurrentFundValue(branch: BranchFund) {
-  return branch.vndCash + branch.usdCash * activePaidRatesMock.paidBuy + getFundAValue(branch);
-}
-
-function getPeriodMultiplier(period: PeriodKey) {
-  if (period === 'month') return 18;
-  if (period === 'year') return 240;
-  return 1;
-}
-
-function getBranchBaseTransactions(branch: BranchFund) {
-  const branchCode = branch.openShift?.code.split('-')[0] ?? branch.key.toUpperCase();
-  const branchRatio = getCurrentFundValue(branch) / getCurrentFundValue(branchFundsMock[0]);
-
-  return aggregatedTransactionsMock.map((transaction, index) => ({
-    ...transaction,
-    key: `${branch.key}-${transaction.key}`,
-    branch: branchCode,
-    shiftCode: branch.openShift?.code ?? `${branchCode}-20260626-00`,
-    vndAmount: Math.round(transaction.vndAmount * branchRatio * (0.82 + index * 0.045)),
-  }));
-}
-
-function buildBranchRows(period: PeriodKey): BranchMonitoringRow[] {
-  const multiplier = getPeriodMultiplier(period);
-
-  return branchFundsMock.map((branch) => {
-    const transactions = getBranchBaseTransactions(branch);
-    const periodTransactions = transactions.map((transaction) => ({
-      ...transaction,
-      vndAmount: Math.round(transaction.vndAmount * multiplier),
-    }));
-
-    return {
-      key: branch.key,
-      branchName: branch.branchName,
-      manager: branch.manager,
-      currentFundValue: getCurrentFundValue(branch),
-      vndCash: branch.vndCash,
-      usdCash: branch.usdCash,
-      transactionCount: periodTransactions.length * multiplier,
-      completedCount: periodTransactions.filter((transaction) => transaction.status === 'COMPLETED').length * multiplier,
-      transactionValue: periodTransactions.reduce((sum, transaction) => sum + transaction.vndAmount, 0),
-      openShiftLabel: branch.openShift ? `${branch.openShift.cashier} · ${branch.openShift.code}` : 'Không có ca mở',
-      status: branch.status,
-    };
-  });
-}
-
-function buildSourceMix(period: PeriodKey, branchKey: string) {
-  const multiplier = getPeriodMultiplier(period);
-  const sourceTotals = new Map<TransactionSource, number>();
-  const branches = branchFundsMock.filter((branch) => branch.key === branchKey);
-
-  branches.forEach((branch) => {
-    getBranchBaseTransactions(branch).forEach((transaction) => {
-      sourceTotals.set(transaction.source, (sourceTotals.get(transaction.source) ?? 0) + Math.round(transaction.vndAmount * multiplier));
-    });
-  });
-
-  return Array.from(sourceTotals.entries()).map(([source, value]) => ({
-    source,
-    label: sourceLabels[source],
-    value,
-  }));
-}
-
-function buildTrend(period: PeriodKey, rows: BranchMonitoringRow[]) {
-  const labels = period === 'day'
-    ? ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00']
-    : period === 'month'
-      ? ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4']
-      : ['Q1', 'Q2', 'Q3', 'Q4'];
-  const total = rows.reduce((sum, row) => sum + row.transactionValue, 0);
-
-  return labels.map((label, index) => {
-    const weight = 0.12 + index * 0.035;
-    return {
-      label,
-      value: Math.round(total * weight),
-      fund: Math.round(rows.reduce((sum, row) => sum + row.currentFundValue, 0) * (0.92 + index * 0.018)),
-    };
-  });
+function BranchShiftRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="branch-monitor-shift__row">
+      <Typography.Text type="secondary">{label}</Typography.Text>
+      <Typography.Text strong>{value}</Typography.Text>
+    </div>
+  );
 }
 
 export function BranchMonitoringPage() {
-  const [period, setPeriod] = useState<PeriodKey>('day');
-  const [branchKey, setBranchKey] = useState(branchFundsMock[0]?.key ?? '');
+  const { message } = App.useApp();
+  const navigate = useNavigate();
+  const role = useAuthStore((state) => state.user?.role);
+  const [branchForm] = Form.useForm<CreateBranchPayload>();
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [period, setPeriod] = useState<MonitoringPeriod>('day');
+  const [branchId, setBranchId] = useState('');
+  const anchorDate = dayjs().format('YYYY-MM-DD');
+  const { data: branches = [], isLoading: isBranchesLoading, isError: isBranchesError } = useMonitoringBranches();
+  const { data: funds, isLoading: isFundsLoading, isError: isFundsError } = useBranchFunds(branchId);
+  const { data: activity, isLoading: isActivityLoading, isError: isActivityError } = useBranchActivity(branchId, period, anchorDate);
+  const createBranch = useCreateBranch();
 
-  const rows = useMemo(() => {
-    const allRows = buildBranchRows(period);
-    return allRows.filter((row) => row.key === branchKey);
-  }, [branchKey, period]);
-  const sourceMix = useMemo(() => buildSourceMix(period, branchKey), [branchKey, period]);
-  const trend = useMemo(() => buildTrend(period, rows), [period, rows]);
+  useEffect(() => {
+    if (!branchId && branches[0]) setBranchId(branches[0].id);
+  }, [branchId, branches]);
 
-  const totalCurrentFund = rows.reduce((sum, row) => sum + row.currentFundValue, 0);
-  const totalTransactionValue = rows.reduce((sum, row) => sum + row.transactionValue, 0);
-  const totalTransactionCount = rows.reduce((sum, row) => sum + row.transactionCount, 0);
-  const activeShiftCount = rows.filter((row) => row.openShiftLabel !== 'Không có ca mở').length;
-  const shiftStatusLabel = activeShiftCount > 0 ? 'Đang mở' : 'Đã đóng';
-  const selectedBranch = branchFundsMock.find((branch) => branch.key === branchKey) ?? branchFundsMock[0];
-  const fundATotalValue = selectedBranch.fundA.reduce((sum, item) => sum + item.vndValue, 0);
+  const selectedBranch = branches.find((branch) => branch.id === branchId);
+  const branchOptions = branches.map((branch) => ({
+    value: branch.id,
+    label: `${branch.code} - ${branch.name}`,
+  }));
+  const trend = activity?.trend ?? [];
+  const branchFundBalances = useMemo<FundCurrencyBalanceDto[]>(() => {
+    if (!funds) return [];
 
-  const fundAColumns: ColumnsType<FundACurrencyBalance> = [
-    {
-      title: 'Ngoại tệ',
-      dataIndex: 'currency',
-      render: (value: string, record) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{value}</Typography.Text>
-          <Typography.Text type="secondary" className="text-xs!">{record.name}</Typography.Text>
-        </Space>
-      ),
-    },
-    { title: 'Số lượng', dataIndex: 'amount', align: 'right', render: (value: number, record) => formatForeignCurrency(value, record.currency) },
-    { title: 'Tỷ giá mua', dataIndex: 'buyRate', align: 'right', render: (value: number) => formatExchangeRate(value) },
-    { title: 'Giá trị quy đổi', dataIndex: 'vndValue', align: 'right', render: (value: number) => formatVnd(value) },
-  ];
+    return [
+      { currency: 'VND', name: 'Việt Nam đồng', amount: funds.vndCash, buyRate: 1, vndValue: funds.vndCash },
+      { currency: 'USD', name: 'Đô la Mỹ', amount: funds.usdCash, buyRate: funds.usdBuyRate, vndValue: funds.usdCash * funds.usdBuyRate },
+      ...funds.fundA.filter((balance) => !['VND', 'USD'].includes(balance.currency)),
+    ];
+  }, [funds]);
+
+  const submitBranch = async () => {
+    try {
+      const values = await branchForm.validateFields();
+      const created = await createBranch.mutateAsync(values);
+      message.success('Đã tạo chi nhánh, chuyển sang lập phiếu tiếp quỹ');
+      setCreateModalOpen(false);
+      branchForm.resetFields();
+      navigate(`/fund-transfer?destinationBranchId=${encodeURIComponent(created.id)}&origin=branch-creation`);
+    } catch (error) {
+      if (!('errorFields' in (error as object))) message.error(getErrorMessage(error));
+    }
+  };
+
+  const fundBalanceRows = branchFundBalances.map((item) => ({
+    key: item.currency,
+    currencyCode: item.currency,
+    accountType: item.currency === 'VND' || item.currency === 'USD' ? 'CASH' : 'FUND_A',
+    accountName: item.currency === 'VND' || item.currency === 'USD' ? `Tiền mặt ${item.currency}` : item.name,
+    balance: item.amount,
+  }));
 
   return (
     <PageScaffold
@@ -205,118 +129,201 @@ export function BranchMonitoringPage() {
       description="Giám đốc/KTTH theo dõi quỹ hiện tại và giao dịch theo ngày, tháng, năm của từng chi nhánh."
       moduleName="branch-management"
       extra={(
-        <Space wrap>
-          <Segmented value={period} options={periodOptions} onChange={(value) => setPeriod(value as PeriodKey)} />
-          <Select className="min-w-64" value={branchKey} options={branchOptions} onChange={setBranchKey} />
-        </Space>
+        role === 'director' ? (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+            Thêm chi nhánh
+          </Button>
+        ) : undefined
       )}
     >
-      <Space direction="vertical" size={16} className="w-full">
-        <Card className="branch-monitor-hero polished-card" classNames={{ body: 'p-0!' }}>
-          <div className="grid xl:grid-cols-[1.2fr_1.8fr]">
-            <div className="border-b border-white/10 p-6 xl:border-r xl:border-b-0">
-              <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Tổng quỹ hiện tại</Typography.Text>
-              <Typography.Title level={2} className="mt-2! mb-2! text-white!">{formatVnd(totalCurrentFund)}</Typography.Title>
-              <Typography.Text className="text-white/70!">
-                Quy đổi USD theo Paid mua {formatExchangeRate(activePaidRatesMock.paidBuy)}.
-              </Typography.Text>
+      {isBranchesError ? (
+        <Alert type="error" showIcon message="Không thể tải danh sách chi nhánh" description="Vui lòng kiểm tra kết nối backend hoặc tải lại trang." />
+      ) : !isBranchesLoading && branches.length === 0 ? (
+        <Card><Empty description="Không có chi nhánh đang hoạt động" /></Card>
+      ) : (
+        <Space direction="vertical" size={16} className="w-full">
+          {(isFundsError || isActivityError) && (
+            <Alert type="error" showIcon message="Không thể tải đầy đủ dữ liệu chi nhánh" description="Vui lòng kiểm tra kết nối backend hoặc tải lại trang." />
+          )}
+
+          <div className="branch-monitor-toolbar">
+            <div className="branch-monitor-toolbar__field branch-monitor-toolbar__field--branch">
+              <Typography.Text>Chi nhánh theo dõi</Typography.Text>
+              <Select
+                value={branchId || undefined}
+                loading={isBranchesLoading}
+                placeholder="Chọn chi nhánh"
+                options={branchOptions}
+                onChange={setBranchId}
+                showSearch
+                optionFilterProp="label"
+              />
             </div>
-            <Row gutter={[12, 12]} className="p-6">
-              <Col xs={24} md={8}>
-                <Statistic title="Trạng thái ca" value={shiftStatusLabel} prefix={<FieldTimeOutlined />} />
-                <Typography.Text className="text-white/60! text-xs!">
-                  {rows[0]?.openShiftLabel}
-                </Typography.Text>
-              </Col>
-              <Col xs={24} md={8}>
-                <Statistic title="Số giao dịch" value={totalTransactionCount} prefix={<BarChartOutlined />} />
-                <Typography.Text className="text-white/60! text-xs!">Theo kỳ lọc</Typography.Text>
-              </Col>
-              <Col xs={24} md={8}>
-                <Statistic title="Giá trị giao dịch" value={totalTransactionValue} formatter={(value) => formatVnd(Number(value))} prefix={<BankOutlined />} />
-                <Typography.Text className="text-white/60! text-xs!">Theo kỳ lọc</Typography.Text>
-              </Col>
-            </Row>
+            <div className="branch-monitor-toolbar__field">
+              <Typography.Text>Khoảng thời gian</Typography.Text>
+              <Segmented value={period} options={periodOptions} onChange={(value) => setPeriod(value as MonitoringPeriod)} />
+            </div>
+            <div className="branch-monitor-toolbar__date">
+              <CalendarOutlined />
+              <div>
+                <Typography.Text>Ngày tham chiếu</Typography.Text>
+                <strong>{dayjs(anchorDate).format('DD/MM/YYYY')}</strong>
+              </div>
+            </div>
           </div>
-        </Card>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={15}>
-            <Card title={<Space><LineChartOutlined />Xu hướng giao dịch và quỹ</Space>} className="polished-card">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trend}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="label" />
-                    <YAxis tickFormatter={(value) => `${Math.round(Number(value) / 1_000_000)}M`} />
-                    <Tooltip formatter={(value: number) => formatVnd(Number(value))} />
-                    <Legend />
-                    <Line type="monotone" dataKey="value" name="Giá trị giao dịch" stroke="#f5b301" strokeWidth={3} dot={false} />
-                    <Line type="monotone" dataKey="fund" name="Quỹ hiện tại" stroke="#111827" strokeWidth={3} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
+          <OperationalOverviewCard
+            loading={isFundsLoading || isActivityLoading}
+            eyebrow="Chi nhánh đang theo dõi"
+            title={selectedBranch?.name ?? 'Đang tải chi nhánh'}
+            icon={<BankOutlined />}
+            meta={(
+              <Space size={8} wrap>
+                <Typography.Text className="operational-code">{selectedBranch?.code ?? '—'}</Typography.Text>
+                <Typography.Text><TeamOutlined /> {selectedBranch?.employeeCount ?? 0} nhân viên</Typography.Text>
+              </Space>
+            )}
+            aside={(
+              <div className="branch-monitor-overview__total">
+                <Typography.Text>Tổng quỹ hiện tại</Typography.Text>
+                <strong>{formatVnd(funds?.currentFundValueVnd ?? 0)}</strong>
+                <span>Paid mua USD: {funds?.usdBuyRate ? formatExchangeRate(funds.usdBuyRate) : 'Chưa có tỷ giá'}</span>
               </div>
-            </Card>
-          </Col>
-          <Col xs={24} xl={9}>
-            <Card title={<Space><SwapOutlined />Cơ cấu giao dịch</Space>} className="polished-card">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={sourceMix} dataKey="value" nameKey="label" innerRadius={64} outerRadius={108} paddingAngle={3}>
-                      {sourceMix.map((entry) => (
-                        <Cell key={entry.source} fill={sourceColors[entry.source]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => formatVnd(Number(value))} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          </Col>
-        </Row>
+            )}
+            metrics={[
+              { icon: <WalletOutlined />, label: 'Tiền mặt VND', value: formatVnd(funds?.vndCash ?? 0), note: 'Tồn tại chi nhánh' },
+              { icon: <DollarOutlined />, label: 'Tiền mặt USD', value: `${(funds?.usdCash ?? 0).toLocaleString('en-US')} USD`, note: 'Tồn tại chi nhánh' },
+              { icon: <BarChartOutlined />, label: 'Số giao dịch', value: String(activity?.transactionCount ?? 0), note: `${activity?.completedCount ?? 0} giao dịch hoàn tất` },
+              { icon: <BankOutlined />, label: 'Giá trị giao dịch', value: formatVnd(activity?.transactionValueVnd ?? 0), note: 'Theo kỳ đang chọn' },
+            ]}
+          />
 
-        <Card
-          title="Chi tiết chi nhánh"
-          extra={<Tag color={statusMeta[selectedBranch.status].color}>{statusMeta[selectedBranch.status].label}</Tag>}
-          className="polished-card"
-        >
-          <Space direction="vertical" size={16} className="w-full">
-            <div>
-              <Typography.Title level={4} className="mb-1!">{selectedBranch.branchName}</Typography.Title>
-              <Typography.Text type="secondary">
-                Quản lý: {selectedBranch.manager} · Kiểm quỹ gần nhất: {selectedBranch.lastCashCountAt}
-              </Typography.Text>
-            </div>
+          <Row gutter={[16, 16]} align="stretch">
+            <Col xs={24} xl={16} className="flex">
+              <Card loading={isActivityLoading} title={<SectionCardTitle icon={<LineChartOutlined />}>Dòng tiền vào/ra</SectionCardTitle>} extra={<Tag>{periodOptions.find((item) => item.value === period)?.label}</Tag>} className="branch-monitor-chart w-full">
+                <div className="branch-monitor-chart__canvas">
+                  {trend.length ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={trend} margin={{ top: 10, right: 12, left: 4, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                        <XAxis dataKey="label" axisLine={false} tickLine={false} />
+                        <YAxis axisLine={false} tickLine={false} width={54} tickFormatter={(value) => `${Math.round(Number(value) / 1_000_000)}M`} />
+                        <Tooltip formatter={(value: number) => formatVnd(Number(value))} contentStyle={{ borderRadius: 6, borderColor: '#e5e7eb' }} />
+                        <Legend />
+                        <Line type="monotone" dataKey="moneyInVnd" name="Tiền vào" stroke="#059669" strokeWidth={3} dot={false} />
+                        <Line type="monotone" dataKey="moneyOutVnd" name="Tiền ra" stroke="#dc2626" strokeWidth={3} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : <Empty className="branch-monitor-chart__empty" description="Chưa có dòng tiền trong kỳ" />}
+                </div>
+              </Card>
+            </Col>
+            <Col xs={24} xl={8} className="flex">
+              <Card loading={isFundsLoading} title={<SectionCardTitle icon={<FieldTimeOutlined />}>Trạng thái ca</SectionCardTitle>} className="branch-monitor-shift w-full">
+                {funds?.openShift ? (
+                  <div className="branch-monitor-shift__content">
+                    <div className="branch-monitor-shift__status">
+                      <span><CheckCircleOutlined /></span>
+                      <div>
+                        <Typography.Text>Ca đang hoạt động</Typography.Text>
+                        <strong>{funds.openShift.code}</strong>
+                      </div>
+                    </div>
+                    <BranchShiftRow label="Giao dịch viên" value={funds.openShift.cashier} />
+                    <BranchShiftRow label="Thời gian mở" value={formatDateTime(funds.openShift.openedAt)} />
+                    <BranchShiftRow label="Chờ tiếp quỹ" value={`${funds.pendingTransferCount} phiếu`} />
+                  </div>
+                ) : (
+                  <div className="branch-monitor-shift__closed">
+                    <FieldTimeOutlined />
+                    <Typography.Text strong>Không có ca mở</Typography.Text>
+                    <Typography.Text type="secondary">Chi nhánh hiện không thực hiện giao dịch theo ca.</Typography.Text>
+                  </div>
+                )}
+              </Card>
+            </Col>
+          </Row>
 
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={8}>
-                <Card className="border-brand-100! bg-brand-50!" classNames={{ body: 'p-4!' }}>
-                  <Statistic title="VND tiền mặt" value={selectedBranch.vndCash} formatter={(value) => formatVnd(Number(value))} />
-                </Card>
-              </Col>
-              <Col xs={24} md={8}>
-                <Card className="border-slate-200!" classNames={{ body: 'p-4!' }}>
-                  <Statistic title="USD tiền mặt" value={selectedBranch.usdCash} formatter={(value) => formatUsd(Number(value))} />
-                </Card>
-              </Col>
-              <Col xs={24} md={8}>
-                <Card className="border-slate-200!" classNames={{ body: 'p-4!' }}>
-                  <Statistic title="Quỹ A quy đổi" value={fundATotalValue} formatter={(value) => formatVnd(Number(value))} />
-                </Card>
-              </Col>
-            </Row>
+          <Card
+            loading={isFundsLoading}
+            title={<SectionCardTitle icon={<WalletOutlined />}>Chi tiết tồn quỹ</SectionCardTitle>}
+            extra={funds && <Tag color={statusMeta[funds.status].color}>{statusMeta[funds.status].label}</Tag>}
+            className="polished-card"
+          >
+            <FundBalanceTable items={fundBalanceRows} emptyText="Chi nhánh chưa có số dư quỹ" />
+          </Card>
+        </Space>
+      )}
 
-            <Table
-              columns={fundAColumns}
-              dataSource={selectedBranch.fundA}
-              rowKey="currency"
-              pagination={false}
-            />
+      <Modal
+        title="Khởi tạo chi nhánh"
+        open={createModalOpen}
+        width={680}
+        onCancel={() => setCreateModalOpen(false)}
+        destroyOnClose
+        footer={(
+          <Space>
+            <Button onClick={() => setCreateModalOpen(false)}>Hủy</Button>
+            <Button
+              type="primary"
+              icon={<ArrowRightOutlined />}
+              loading={createBranch.isPending}
+              onClick={submitBranch}
+            >
+              Tạo và chuyển sang Tiếp quỹ
+            </Button>
           </Space>
-        </Card>
-      </Space>
+        )}
+      >
+        <Steps
+          className="mt-2! mb-6!"
+          size="small"
+          current={0}
+          items={[
+            { title: 'Khởi tạo chi nhánh' },
+            { title: 'Tiếp quỹ ban đầu' },
+          ]}
+        />
+        <Form form={branchForm} layout="vertical" preserve={false}>
+          <Row gutter={16}>
+            <Col xs={24} md={9}>
+              <Form.Item
+                name="code"
+                label="Mã chi nhánh"
+                rules={[
+                  { required: true, message: 'Vui lòng nhập mã chi nhánh' },
+                  { pattern: /^[A-Za-z0-9_]+$/, message: 'Chỉ dùng chữ, số và dấu gạch dưới' },
+                ]}
+              >
+                <Input
+                  size="large"
+                  placeholder="VD: NCT"
+                  onInput={(event) => { event.currentTarget.value = event.currentTarget.value.toUpperCase(); }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={15}>
+              <Form.Item
+                name="name"
+                label="Tên chi nhánh"
+                rules={[{ required: true, message: 'Vui lòng nhập tên chi nhánh' }]}
+              >
+                <Input size="large" placeholder="Chi nhánh Nguyễn Chí Thanh" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="address" label="Địa chỉ">
+            <Input size="large" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="Số điện thoại"
+            rules={[{ pattern: /^[0-9+(). -]*$/, message: 'Số điện thoại không hợp lệ' }]}
+          >
+            <Input size="large" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </PageScaffold>
   );
 }

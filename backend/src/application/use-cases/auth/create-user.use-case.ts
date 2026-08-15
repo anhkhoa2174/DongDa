@@ -34,9 +34,10 @@ export class CreateUserUseCase {
       }
     }
 
+    const email = dto.email?.trim() || undefined;
     const [existingUsername, existingEmail] = await Promise.all([
       this.userRepo.findByUsername(dto.username),
-      this.userRepo.findByEmail(dto.email),
+      email ? this.userRepo.findByEmail(email) : Promise.resolve(null),
     ]);
 
     if (existingUsername) throw new ConflictException('Username đã tồn tại');
@@ -51,7 +52,7 @@ export class CreateUserUseCase {
 
     const user = await this.userRepo.save({
       username: dto.username,
-      email: dto.email,
+      email,
       password: hashedPassword,
       fullName: dto.fullName,
       role: dto.role,

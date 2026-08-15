@@ -13,7 +13,7 @@ const rows: { feature: string; values: Cell[] }[] = [
   { feature: 'Mở/đóng ca',                 values: ['YES', 'YES', 'YES', 'READ'] },
   { feature: 'Xem tỷ giá',                 values: ['YES', 'YES', 'YES', 'READ'] },
   { feature: 'Quản lý tỷ giá',             values: ['YES', 'NO',  'NO',  'NO']   },
-  { feature: 'Tiếp quỹ',                   values: ['YES', 'YES', 'NO',  'NO']   },
+  { feature: 'Tiếp quỹ',                   values: ['YES', 'YES', 'YES', 'NO']   },
   { feature: 'Ngân hàng/Công nợ',          values: ['YES', 'YES', 'NO',  'READ'] },
   { feature: 'Đối chiếu Journal',          values: ['YES', 'YES', 'NO',  'READ'] },
   { feature: 'Báo cáo',                    values: ['YES', 'YES', 'NO',  'READ'] },

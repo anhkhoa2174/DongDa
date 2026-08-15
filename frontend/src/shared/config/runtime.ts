@@ -4,7 +4,8 @@ export const runtimeConfig = {
   environment: import.meta.env.MODE,
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
-  useMockApi: import.meta.env.VITE_USE_MOCK_API !== 'false',
+  useMockApi: import.meta.env.VITE_USE_MOCK_API === 'true',
+  uiTestMode: import.meta.env.VITE_UI_TEST_MODE === 'true',
 } as const;
 
-export const isUiTestMode = runtimeConfig.isDevelopment;
+export const isUiTestMode = runtimeConfig.uiTestMode;

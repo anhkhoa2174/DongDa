@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatNumber, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import { bankAccountsMock } from '../data/bankAccounts.mock';
+import { useBankAccountsView } from '../hooks/useBankAccountsView';
 import type { BankAccount, BankAccountStatus, BankReconciliationStatus } from '../model/bank.types';
 
 const bankOptions = [
@@ -163,6 +163,7 @@ function BankAccountCard({ account }: { account: BankAccount }) {
 }
 
 export function BankAccountsPage() {
+  const { data: bankAccountsMock } = useBankAccountsView();
   const [keyword, setKeyword] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');

@@ -1,6 +1,6 @@
 import type { AppRole } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
-import type { Shift } from '@/modules/shift-management/model/shift.store';
+import type { Shift } from '@/modules/shift-management/model/shift.types';
 
 export type TransactionAccess = {
   canView: boolean;

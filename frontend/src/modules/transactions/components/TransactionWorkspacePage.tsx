@@ -1,4 +1,5 @@
 import {
+  ArrowLeftOutlined,
   EditOutlined,
   FileSearchOutlined,
   StopOutlined,
@@ -27,7 +28,9 @@ import type { ColumnsType } from 'antd/es/table';
 import type { FormInstance } from 'antd';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -39,7 +42,8 @@ import {
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useShiftStore } from '@/modules/shift-management/model/shift.store';
+import type { Shift } from '@/modules/shift-management/model/shift.types';
+import { useTransactionShift } from '../hooks/useTransactionShift';
 import { getTransactionAccess } from '../model/transactionAccess';
 import type { TransactionRecord, TransactionStatus } from '../model/transaction.types';
 
@@ -62,11 +66,13 @@ export type TransactionField = {
   rangeMaxField?: string;
   precision?: number;
   prefix?: string;
+  suffix?: string;
   inputFormat?: 'vnd' | 'usd' | 'exchangeRate' | 'number';
   maxLength?: number;
   pattern?: RegExp;
   patternMessage?: string;
   readOnly?: boolean;
+  positive?: boolean;
   visibleWhen?: (values: TransactionFormValues) => boolean;
   disabledWhen?: (values: TransactionFormValues) => boolean;
 };
@@ -92,6 +98,10 @@ type TransactionWorkspacePageProps = {
   ) => void;
   transformFormValues?: (values: TransactionFormValues) => TransactionFormValues;
   createOnly?: boolean;
+  showHistory?: boolean;
+  showBackButton?: boolean;
+  showShiftHeader?: boolean;
+  canCreateOverride?: boolean;
   onCreated?: () => void;
 };
 
@@ -99,6 +109,8 @@ const statusMeta: Record<TransactionStatus, { color: string; label: string }> = 
   COMPLETED: { color: 'green', label: 'Hoàn tất' },
   PENDING: { color: 'gold', label: 'Chờ xử lý' },
   VOID: { color: 'red', label: 'Đã void' },
+  VOIDED: { color: 'red', label: 'Đã deactive' },
+  DEACTIVATED: { color: 'red', label: 'Đã deactive' },
   ADJUSTED: { color: 'blue', label: 'Đã điều chỉnh' },
 };
 
@@ -119,15 +131,20 @@ export function TransactionWorkspacePage({
   onFormValuesChange,
   transformFormValues,
   createOnly = false,
+  showHistory = true,
+  showBackButton = false,
+  showShiftHeader = true,
+  canCreateOverride,
   onCreated,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
+  const navigate = useNavigate();
   const [createForm] = Form.useForm<TransactionFormValues>();
   const [editorForm] = Form.useForm<TransactionFormValues>();
   const user = useAuthStore((state) => state.user);
-  const currentShift = useShiftStore((state) => state.currentShift);
+  const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(user?.role, currentShift);
-  const canCreate = access.canCreate || isUiTestMode;
+  const canCreate = canCreateOverride ?? (access.canCreate || isUiTestMode);
   const canUpdate = access.canUpdate || isUiTestMode;
   const canVoid = access.canVoid || isUiTestMode;
   const canAdjustClosed = access.canAdjustClosed || isUiTestMode;
@@ -312,11 +329,12 @@ export function TransactionWorkspacePage({
           }
     >
           {!createOnly && formNotice}
-          <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />
+          {showShiftHeader && <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />}
           <Form<TransactionFormValues>
             form={createForm}
             layout="vertical"
             onFinish={submitCreateTransaction}
+            onKeyDownCapture={preventNumberInputEnter}
             disabled={!canCreate}
             initialValues={initialFormValues}
             onValuesChange={(changedValues, allValues) =>
@@ -339,6 +357,23 @@ export function TransactionWorkspacePage({
     return createFormCard;
   }
 
+  if (!showHistory) {
+    return (
+      <PageScaffold
+        title={title}
+        description={description}
+        moduleName={moduleName}
+        extra={showBackButton ? (
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>
+            Quay lại Giao Dịch
+          </Button>
+        ) : undefined}
+      >
+        {createFormCard}
+      </PageScaffold>
+    );
+  }
+
   return (
     <PageScaffold
       title={title}
@@ -352,7 +387,7 @@ export function TransactionWorkspacePage({
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Tổng giao dịch" value={records.length} /></Card></Col>
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Hoàn tất" value={records.filter((item) => item.status === 'COMPLETED').length} /></Card></Col>
           <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Void / Điều chỉnh" value={records.filter((item) => ['VOID', 'ADJUSTED'].includes(item.status)).length} /></Card></Col>
-          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Giá trị quy đổi" value={totalValue} suffix="₫" /></Card></Col>
+          <Col xs={24} sm={12} xl={6}><Card className="transaction-stat-card polished-card"><Statistic title="Giá trị quy đổi" value={totalValue} suffix="VND" /></Card></Col>
         </Row>
 
         <Card className="polished-card">
@@ -419,7 +454,7 @@ function ShiftReadOnlyHeader({
   currentShift,
   fallbackUserName,
 }: {
-  currentShift: ReturnType<typeof useShiftStore.getState>['currentShift'];
+  currentShift: Shift | null;
   fallbackUserName?: string;
 }) {
   const openedAt = currentShift?.openedAt
@@ -489,12 +524,7 @@ function TransactionFields({
               className="mb-4! w-full"
               name={field.name}
               label={field.label}
-              rules={[
-                { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
-                ...(field.pattern
-                  ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
-                  : []),
-              ]}
+              rules={buildFieldRules(field, isDisabled, watchedValues)}
             >
               {renderField(field, isDisabled, watchedValues)}
             </Form.Item>
@@ -503,6 +533,78 @@ function TransactionFields({
       })}
     </Row>
   );
+}
+
+function buildFieldRules(
+  field: TransactionField,
+  isDisabled: boolean,
+  values: TransactionFormValues,
+) {
+  return [
+    { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
+    ...(field.pattern
+      ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
+      : []),
+    ...(['number', 'slider'].includes(field.kind)
+      ? [{
+          validator: (_: unknown, value: unknown) => validateNumericField(field, value, values, isDisabled),
+        }]
+      : []),
+  ];
+}
+
+function validateNumericField(
+  field: TransactionField,
+  value: unknown,
+  values: TransactionFormValues,
+  isDisabled: boolean,
+) {
+  if (isDisabled || field.readOnly || value === undefined || value === null || value === '') {
+    return Promise.resolve();
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) {
+    return Promise.reject(new Error(`${field.label} phải là số hợp lệ`));
+  }
+
+  if (field.positive && numberValue <= 0) {
+    return Promise.reject(new Error(`${field.label} phải lớn hơn 0`));
+  }
+
+  const min = getFieldMin(field, values);
+  const max = getFieldMax(field, values);
+
+  if (typeof min === 'number' && Number.isFinite(min) && numberValue < min) {
+    return Promise.reject(new Error(`${field.label} không được nhỏ hơn ${formatNumberInputTooltip(min, field.precision ?? 0)}`));
+  }
+
+  if (typeof max === 'number' && Number.isFinite(max) && numberValue > max) {
+    return Promise.reject(new Error(`${field.label} không được lớn hơn ${formatNumberInputTooltip(max, field.precision ?? 0)}`));
+  }
+
+  return Promise.resolve();
+}
+
+function getFieldMin(field: TransactionField, values: TransactionFormValues) {
+  if (field.kind !== 'slider' || !field.rangeMinField || !field.rangeMaxField) return field.min;
+
+  const rangeValues = getSliderRangeValues(field, values);
+  return rangeValues.length > 0 ? Math.min(...rangeValues) : field.min;
+}
+
+function getFieldMax(field: TransactionField, values: TransactionFormValues) {
+  if (field.kind !== 'slider' || !field.rangeMinField || !field.rangeMaxField) return field.max;
+
+  const rangeValues = getSliderRangeValues(field, values);
+  return rangeValues.length > 0 ? Math.max(...rangeValues) : field.max;
+}
+
+function getSliderRangeValues(field: TransactionField, values: TransactionFormValues) {
+  return [
+    Number(values[field.rangeMinField ?? ''] ?? field.min ?? 0),
+    Number(values[field.rangeMaxField ?? ''] ?? field.max ?? 0),
+  ].filter((value) => Number.isFinite(value) && value > 0);
 }
 
 function renderField(
@@ -519,10 +621,7 @@ function renderField(
     return <Select className={controlClassName} disabled={disabled || field.readOnly} placeholder={field.placeholder} options={field.options} />;
   }
   if (field.kind === 'slider') {
-    const rangeValues = [
-      Number(values[field.rangeMinField ?? ''] ?? field.min ?? 0),
-      Number(values[field.rangeMaxField ?? ''] ?? field.max ?? 0),
-    ].filter((value) => Number.isFinite(value) && value > 0);
+    const rangeValues = getSliderRangeValues(field, values);
     const min = rangeValues.length > 0 ? Math.min(...rangeValues) : field.min ?? 0;
     const max = rangeValues.length > 0 ? Math.max(...rangeValues) : field.max ?? min;
 
@@ -552,7 +651,9 @@ function renderField(
         min={field.min ?? 0}
         precision={field.precision}
         controls={false}
+        keyboard={false}
         prefix={field.prefix}
+        suffix={field.suffix}
         formatter={inputFormatter}
         parser={inputParser}
         placeholder={field.placeholder}
@@ -567,7 +668,7 @@ function renderField(
 function formatNumberInputTooltip(value: number | undefined, maximumFractionDigits: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '';
 
-  return new Intl.NumberFormat('vi-VN', {
+  return new Intl.NumberFormat('en-US', {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(value);
@@ -579,8 +680,8 @@ function getNumberInputFormat(field: TransactionField) {
   const normalizedName = field.name.toLowerCase();
   const normalizedLabel = field.label.toLowerCase();
 
-  if (field.prefix === '$') return 'usd';
-  if (field.prefix === '₫') return 'vnd';
+  if (field.prefix === '$' || field.suffix === 'USD') return 'usd';
+  if (field.prefix === '₫' || field.prefix === 'VND' || field.suffix === 'VND') return 'vnd';
   if (normalizedName.includes('rate') || normalizedLabel.includes('tỷ giá')) return 'exchangeRate';
   if (normalizedName.includes('vnd') || normalizedName.includes('fee')) return 'vnd';
   if (normalizedName.includes('amount') && !field.precision) return 'vnd';

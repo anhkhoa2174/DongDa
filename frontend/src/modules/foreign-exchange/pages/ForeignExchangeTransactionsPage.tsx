@@ -27,9 +27,9 @@ const fields: TransactionField[] = [
     options: ['EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'KRW', 'THB', 'HKD', 'CNY'].map((value) => ({ value, label: value })),
   },
   { name: 'customerName', label: 'Tên khách hàng', kind: 'text', required: true },
-  { name: 'foreignAmount', label: 'Số lượng ngoại tệ', kind: 'number', required: true, precision: 2 },
-  { name: 'rate', label: 'Tỷ giá áp dụng', kind: 'number', required: true, precision: 2 },
-  { name: 'vndAmount', label: 'Thành tiền VND', kind: 'number', required: true },
+  { name: 'foreignAmount', label: 'Số lượng ngoại tệ', kind: 'number', required: true, positive: true, precision: 2 },
+  { name: 'rate', label: 'Tỷ giá áp dụng', kind: 'number', required: true, positive: true, precision: 2 },
+  { name: 'vndAmount', label: 'Thành tiền VND', kind: 'number', required: true, positive: true },
 ];
 
 const columns: ColumnsType<TransactionRecord> = [

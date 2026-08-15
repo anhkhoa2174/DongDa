@@ -1,65 +1,68 @@
 import {
-  AlertOutlined,
   AuditOutlined,
   BankOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  EyeOutlined,
-  FilterOutlined,
+  CalculatorOutlined,
   InboxOutlined,
   MoneyCollectOutlined,
+  MinusCircleOutlined,
+  PlusCircleOutlined,
   ReloadOutlined,
+  SafetyCertificateOutlined,
   SwapOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Input, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Row, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
+import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { activePaidRatesMock } from '@/modules/exchange-rate/data/exchangeRates.mock';
-import { formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import { branchFundsMock, centralFundMock } from '../data/funds.mock';
-import type { BranchFund, FundACurrencyBalance, FundStatus } from '../model/fund.types';
+import { formatCurrency, formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { useBranches as useFundBranches, useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
+import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
+import type { FundACurrencyBalance } from '../model/fund.types';
+import type { FundMovementHistoryDto } from '../api/centralFund.api';
+import { useCentralFundSummary, useFundMovementHistory } from '../hooks/useCentralFund';
 
-const statusMeta: Record<FundStatus, { label: string; color: string; icon: JSX.Element }> = {
-  NORMAL: { label: 'Ổn định', color: 'green', icon: <CheckCircleOutlined /> },
-  LOW_CASH: { label: 'Thiếu quỹ', color: 'gold', icon: <AlertOutlined /> },
-  NEEDS_RECONCILIATION: { label: 'Cần kiểm quỹ', color: 'red', icon: <ClockCircleOutlined /> },
-};
-
-const branchOptions = [
-  { value: 'ALL', label: 'Tất cả chi nhánh' },
-  ...branchFundsMock.map((branch) => ({ value: branch.key, label: branch.branchName })),
-];
-
-function getFundAValue(fundA: FundACurrencyBalance[]) {
-  return fundA.reduce((sum, item) => sum + item.vndValue, 0);
+function FundActionBar({
+  description,
+  children,
+}: {
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fund-actions">
+      <div>
+        <Typography.Text strong>Thao tác quỹ</Typography.Text>
+        <Typography.Text type="secondary">{description}</Typography.Text>
+      </div>
+      <Space wrap size={8}>{children}</Space>
+    </div>
+  );
 }
 
-function getBranchVndValue(branch: BranchFund) {
-  return branch.vndCash + branch.usdCash * activePaidRatesMock.paidBuy + getFundAValue(branch.fundA);
-}
-
-function FundMetric({
+function FundBreakdownRow({
   label,
   value,
-  tone = 'default',
+  note,
+  strong = false,
 }: {
   label: string;
   value: string;
-  tone?: 'default' | 'in' | 'out' | 'warning';
+  note?: string;
+  strong?: boolean;
 }) {
-  const toneClass = {
-    default: 'text-slate-950',
-    in: 'text-emerald-700',
-    out: 'text-rose-700',
-    warning: 'text-amber-700',
-  }[tone];
-
   return (
-    <div className="fund-metric">
-      <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">{label}</Typography.Text>
-      <div className={`mt-1 truncate text-base font-bold ${toneClass}`}>{value}</div>
+    <div className={`central-fund-row ${strong ? 'central-fund-row--total' : ''}`}>
+      <div className="min-w-0">
+        <Typography.Text strong={strong}>{label}</Typography.Text>
+        {note && <Typography.Text type="secondary" className="mt-0.5 block text-xs!">{note}</Typography.Text>}
+      </div>
+      <Typography.Text strong className="central-fund-row__value">{value}</Typography.Text>
     </div>
   );
 }
@@ -84,220 +87,190 @@ function FundAList({ items }: { items: FundACurrencyBalance[] }) {
   return <Table columns={columns} dataSource={items} rowKey="currency" pagination={false} size="small" />;
 }
 
-function BranchFundCard({ branch, compact = false }: { branch: BranchFund; compact?: boolean }) {
-  const status = statusMeta[branch.status];
-  const totalValue = getBranchVndValue(branch);
-  const movementTotal = branch.todayIn + branch.todayOut;
-  const outPercent = movementTotal === 0 ? 0 : Math.round((branch.todayOut / movementTotal) * 100);
+const movementKind: Record<FundMovementHistoryDto['kind'], { label: string; color: string }> = {
+  RECEIPT: { label: 'Phiếu thu', color: 'green' },
+  EXPENSE: { label: 'Phiếu chi', color: 'red' },
+  TRANSFER_IN: { label: 'Tiếp quỹ vào', color: 'blue' },
+  TRANSFER_OUT: { label: 'Tiếp quỹ ra', color: 'gold' },
+};
+
+function FundMovementHistoryTable({
+  items,
+  loading,
+  branchNames,
+}: {
+  items: FundMovementHistoryDto[];
+  loading: boolean;
+  branchNames: Record<string, string>;
+}) {
+  const columns: ColumnsType<FundMovementHistoryDto> = [
+    {
+      title: 'Mã phiếu',
+      dataIndex: 'documentNo',
+      render: (value) => <Typography.Text code>{value}</Typography.Text>,
+    },
+    {
+      title: 'Loại biến động',
+      dataIndex: 'kind',
+      render: (value: FundMovementHistoryDto['kind']) => (
+        <Tag color={movementKind[value].color}>{movementKind[value].label}</Tag>
+      ),
+    },
+    {
+      title: 'Nguồn',
+      dataIndex: 'sourceType',
+      render: (value) => value === 'CASH' ? 'Tiền mặt' : value === 'BANK' ? 'Ngân hàng' : 'Điều chuyển',
+    },
+    {
+      title: 'Đối tác',
+      dataIndex: 'counterpartyBranchId',
+      render: (value?: string | null) => value ? (branchNames[value] ?? value) : '-',
+    },
+    { title: 'Ngoại tệ', dataIndex: 'currencyCode', width: 90 },
+    {
+      title: 'Số tiền',
+      dataIndex: 'amount',
+      align: 'right',
+      render: (value, row) => formatCurrency(Number(value), row.currencyCode, row.currencyCode === 'VND' ? 0 : 2),
+    },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'status',
+      render: (value) => <Tag>{value}</Tag>,
+    },
+    {
+      title: 'Thời gian',
+      dataIndex: 'occurredAt',
+      render: formatDateTime,
+    },
+  ];
 
   return (
     <Card
-      className="fund-branch-card h-full overflow-hidden"
-      classNames={{ body: 'p-0!' }}
+      className="polished-card"
+      title={<SectionCardTitle icon={<SwapOutlined />}>Lịch sử biến động quỹ</SectionCardTitle>}
+      extra={<Typography.Text type="secondary">{items.length} dòng biến động</Typography.Text>}
     >
-      <div className="fund-branch-card__header">
-        <div className="min-w-0">
-          <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Chi nhánh</Typography.Text>
-          <Typography.Title level={4} className="m-0! truncate text-white!">{branch.branchName}</Typography.Title>
-          <Typography.Text className="text-white/70! text-xs!">Quản lý: {branch.manager}</Typography.Text>
-        </div>
-        <Tag color={status.color} icon={status.icon} className="m-0!">{status.label}</Tag>
-      </div>
-
-      <div className="space-y-5 p-5">
-        <div className="flex items-start justify-between gap-4 max-sm:flex-col">
-          <div>
-            <Typography.Text type="secondary" className="text-xs! font-semibold! uppercase">Tổng quy đổi theo Paid mua</Typography.Text>
-            <Typography.Title level={2} className="mt-1! mb-0! text-3xl!">{formatVnd(totalValue)}</Typography.Title>
-          </div>
-          <div className="rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-right">
-            <Typography.Text type="secondary" className="block text-xs!">Paid mua</Typography.Text>
-            <Typography.Text strong>{formatExchangeRate(activePaidRatesMock.paidBuy)}</Typography.Text>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <FundMetric label="VND tiền mặt" value={formatVnd(branch.vndCash)} />
-          <FundMetric label="USD tiền mặt" value={formatUsd(branch.usdCash)} />
-          <FundMetric label="Quỹ A" value={`${branch.fundA.length} ngoại tệ`} />
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <Typography.Text type="secondary">Tỷ trọng tiền ra hôm nay</Typography.Text>
-            <Typography.Text strong>{outPercent}%</Typography.Text>
-          </div>
-          <Progress percent={outPercent} showInfo={false} strokeColor="#f5b301" />
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <FundMetric label="Tiền vào hôm nay" value={formatVnd(branch.todayIn)} tone="in" />
-          <FundMetric label="Tiền ra hôm nay" value={formatVnd(branch.todayOut)} tone="out" />
-        </div>
-
-        <div className="fund-detail-list border-t border-slate-100 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Ca đang mở</Typography.Text>
-            {branch.openShift ? <Tag color="green">{branch.openShift.cashier}</Tag> : <Tag>Không có ca</Tag>}
-          </div>
-          {branch.openShift && (
-            <Typography.Text type="secondary" className="block">
-              {branch.openShift.code} · mở lúc {branch.openShift.openedAt}
-            </Typography.Text>
-          )}
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Chờ tiếp quỹ</Typography.Text>
-            <Typography.Text strong>{formatVnd(branch.pendingFundTransfer)}</Typography.Text>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Kiểm quỹ cuối</Typography.Text>
-            <Typography.Text>{branch.lastCashCountAt}</Typography.Text>
-          </div>
-        </div>
-
-        {!compact && <FundAList items={branch.fundA} />}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-4">
-        <Button icon={<EyeOutlined />}>Chi tiết</Button>
-        <Button icon={<InboxOutlined />}>Tiếp quỹ</Button>
-        <Button icon={<AuditOutlined />}>Kiểm quỹ</Button>
-        <Button icon={<SwapOutlined />}>Lịch sử</Button>
-      </div>
+      <Table
+        columns={columns}
+        dataSource={items}
+        rowKey="id"
+        loading={loading}
+        pagination={{ pageSize: 10, showSizeChanger: false }}
+        scroll={{ x: 1040 }}
+        size="small"
+        locale={{ emptyText: 'Chưa có phiếu thu, chi hoặc tiếp quỹ' }}
+      />
     </Card>
   );
 }
 
 function BranchFundMainPage() {
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const branch = branchFundsMock.find((item) => item.key === user?.branchId) ?? branchFundsMock[0];
+  const branchId = user?.branchId;
+  const { data: balances = [], isLoading, isFetching, isError, refetch } = useFundBalances(branchId);
+  const { data: currentShift, isFetching: isFetchingShift, refetch: refetchShift } = useCurrentShift(branchId);
+  const { data: branches = [] } = useFundBranches();
+  const { data: movementHistory = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useFundMovementHistory(branchId);
+  const branch = branches.find((item) => item.id === branchId);
+  const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
+  const shift = currentShift?.shift;
+  const cashBalances = balances.filter((item) => item.accountType === 'CASH');
+  const fundABalances = balances.filter((item) => item.accountType === 'FUND_A');
+  const vndCash = cashBalances
+    .filter((item) => item.currencyCode === 'VND')
+    .reduce((sum, item) => sum + item.balance, 0);
+  const usdCash = cashBalances
+    .filter((item) => item.currencyCode === 'USD')
+    .reduce((sum, item) => sum + item.balance, 0);
+  const refresh = async () => {
+    await Promise.all([refetch(), refetchShift(), refetchHistory()]);
+  };
+  const balanceRows = balances.map((item) => ({
+    key: item.id,
+    currencyCode: item.currencyCode,
+    accountType: item.accountType,
+    accountName: item.name,
+    accountCode: item.code,
+    balance: item.balance,
+  }));
 
   return (
     <PageScaffold
       title="Quỹ Chi Nhánh"
-      description="Theo dõi VND, USD, Quỹ A và ca đang mở của chi nhánh."
+      description="Theo dõi số dư ledger và ghi nhận phiếu thu, chi của chi nhánh đang làm việc."
       moduleName="fund-management"
-      extra={<Button icon={<ReloadOutlined />}>Làm mới quỹ</Button>}
+      extra={(
+        <Button icon={<ReloadOutlined />} loading={isFetching || isFetchingShift} onClick={() => void refresh()}>
+          Đồng bộ số dư
+        </Button>
+      )}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <BranchFundCard branch={branch} />
-      </Space>
-    </PageScaffold>
-  );
-}
-
-function ControlBranchFundsPage() {
-  const [branchFilter, setBranchFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | FundStatus>('ALL');
-  const [keyword, setKeyword] = useState('');
-
-  const filteredBranches = useMemo(
-    () =>
-      branchFundsMock.filter((branch) => {
-        const matchesBranch = branchFilter === 'ALL' || branch.key === branchFilter;
-        const matchesStatus = statusFilter === 'ALL' || branch.status === statusFilter;
-        const text = `${branch.branchName} ${branch.manager} ${branch.openShift?.cashier ?? ''}`.toLowerCase();
-        const matchesKeyword = text.includes(keyword.toLowerCase());
-        return matchesBranch && matchesStatus && matchesKeyword;
-      }),
-    [branchFilter, keyword, statusFilter],
-  );
-
-  const totalBranchValue = branchFundsMock.reduce((sum, branch) => sum + getBranchVndValue(branch), 0);
-  const lowCashCount = branchFundsMock.filter((branch) => branch.status === 'LOW_CASH').length;
-  const needsReconciliationCount = branchFundsMock.filter((branch) => branch.status === 'NEEDS_RECONCILIATION').length;
-  const selectedBranch = branchFilter === 'ALL' ? null : branchFundsMock.find((branch) => branch.key === branchFilter);
-
-  return (
-    <PageScaffold
-      title="Quỹ Chi Nhánh"
-      description="GĐ/KTTH theo dõi tồn quỹ từng chi nhánh, ca đang mở, trạng thái kiểm quỹ và nhu cầu tiếp quỹ."
-      moduleName="fund-management"
-      extra={<Button icon={<ReloadOutlined />}>Đồng bộ quỹ chi nhánh</Button>}
-    >
-      <Space direction="vertical" size={16} className="w-full">
-        <Card className="fund-command-center polished-card" classNames={{ body: 'p-0!' }}>
-          <div className="grid xl:grid-cols-[1.3fr_1fr]">
-            <div className="border-b border-slate-200 p-6 xl:border-r xl:border-b-0">
-              <Typography.Text className="text-xs! font-semibold! uppercase text-white/65!">Tổng quan quỹ chi nhánh</Typography.Text>
-              <Typography.Title level={2} className="mt-2! mb-2! text-white!">{formatVnd(totalBranchValue)}</Typography.Title>
-              <Typography.Text className="text-white/70!">
-                Bao gồm VND, USD quy đổi theo Paid mua và toàn bộ Quỹ A tại chi nhánh.
-              </Typography.Text>
-            </div>
-            <div className="grid gap-3 p-6 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="fund-command-metric">
-                <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Chi nhánh thiếu quỹ</Typography.Text>
-                <div className="mt-1 text-3xl font-bold text-brand-700">{lowCashCount}<span className="ml-1 text-base text-white/60">CN</span></div>
-              </div>
-              <div className="fund-command-metric">
-                <Typography.Text className="text-white/65! text-xs! font-semibold! uppercase">Cần kiểm quỹ</Typography.Text>
-                <div className="mt-1 text-3xl font-bold text-white">{needsReconciliationCount}<span className="ml-1 text-base text-white/60">CN</span></div>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card title="Danh sách quỹ chi nhánh" className="polished-card">
-          <Row gutter={[12, 12]} align="middle" className="mb-4">
-            <Col xs={24} lg={9}>
-              <Input.Search allowClear placeholder="Tìm chi nhánh, quản lý, giao dịch viên..." value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-            </Col>
-            <Col xs={24} sm={12} lg={5}>
-              <Select className="w-full" value={branchFilter} onChange={setBranchFilter} options={branchOptions} />
-            </Col>
-            <Col xs={24} sm={12} lg={5}>
-              <Select
-                className="w-full"
-                value={statusFilter}
-                onChange={setStatusFilter}
-                options={[
-                  { value: 'ALL', label: 'Tất cả trạng thái' },
-                  ...Object.entries(statusMeta).map(([value, meta]) => ({ value, label: meta.label })),
-                ]}
-              />
-            </Col>
-            <Col xs={24} lg={5}>
-              <Button className="w-full" icon={<FilterOutlined />}>Bộ lọc nâng cao</Button>
-            </Col>
-          </Row>
-
-          {selectedBranch ? (
-            <BranchFundCard branch={selectedBranch} />
-          ) : (
-            <>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <Typography.Text type="secondary">Đang hiển thị {filteredBranches.length} chi nhánh</Typography.Text>
-                <Tag color="blue">Chọn một chi nhánh để mở page chi tiết</Tag>
-              </div>
-              <Row gutter={[16, 16]}>
-                {filteredBranches.map((branch) => (
-                  <Col xs={24} xl={12} key={branch.key}>
-                    <BranchFundCard branch={branch} compact />
-                  </Col>
-                ))}
-              </Row>
-            </>
+        {isError && <Alert type="error" showIcon message="Không thể tải số dư Quỹ Chi Nhánh" />}
+        <OperationalOverviewCard
+          loading={isLoading}
+          eyebrow="Quỹ tiền mặt chi nhánh"
+          title={branch?.name ?? user?.branchName ?? 'Chi nhánh đang làm việc'}
+          icon={<WalletOutlined />}
+          meta={<Typography.Text className="operational-code">{branch?.code ?? branchId}</Typography.Text>}
+          aside={(
+            <Tag className="branch-fund-overview__status" color={shift ? 'green' : 'gold'} icon={<SafetyCertificateOutlined />}>
+              {shift ? `CA ${shift.shiftCode} ĐANG MỞ` : 'KHÔNG CÓ CA MỞ'}
+            </Tag>
           )}
+          metrics={[
+            {
+              label: 'Quỹ gốc',
+              value: formatVnd(vndCash),
+              note: `${formatUsd(usdCash)} · VND và USD tiền mặt`,
+            },
+            {
+              label: 'Quỹ A',
+              value: `${fundABalances.length} loại ngoại tệ`,
+              note: 'Ngoại tệ khác USD theo tồn ledger',
+            },
+          ]}
+        />
+
+        <FundActionBar description="Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh">
+          <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+          <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
+          <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
+        </FundActionBar>
+
+        <Card
+          className="branch-fund-table-card"
+          title={<SectionCardTitle icon={<MoneyCollectOutlined />}>Chi tiết tồn quỹ</SectionCardTitle>}
+          extra={<Space><Tag color="green">LEDGER</Tag><Typography.Text type="secondary">{balances.length} tài khoản</Typography.Text></Space>}
+          loading={isLoading}
+        >
+          <FundBalanceTable items={balanceRows} emptyText="Chi nhánh chưa có tài khoản quỹ" />
         </Card>
+        <FundMovementHistoryTable items={movementHistory} loading={isLoadingHistory} branchNames={branchNames} />
       </Space>
     </PageScaffold>
   );
 }
 
 export function CentralFundPage() {
-  const totalBranchValue = branchFundsMock.reduce((sum, branch) => sum + getBranchVndValue(branch), 0);
-  const totalFundAValue = centralFundMock.fundA.reduce((sum, item) => sum + item.vndValue, 0);
-  const centralCashValue =
-    centralFundMock.vndCash +
-    centralFundMock.usdCash * activePaidRatesMock.paidBuy +
-    totalFundAValue;
-  const totalDebtValue = centralFundMock.debtVnd + centralFundMock.debtUsd * activePaidRatesMock.paidBuy;
-  const totalCompanyCapital =
-    centralCashValue +
-    centralFundMock.bankBalance +
-    totalBranchValue -
-    totalDebtValue;
+  const navigate = useNavigate();
+  const role = useAuthStore((state) => state.user?.role);
+  const canTransfer = role === 'director' || role === 'accountant';
+  const canCreateCashMovement = role === 'director' || role === 'accountant';
+  const { data: summary, isLoading, isError, isFetching, refetch } = useCentralFundSummary();
+  const { data: branches = [] } = useFundBranches();
+  const headOffice = branches.find((item) => item.type === 'HEAD_OFFICE');
+  const { data: movementHistory = [], isLoading: isLoadingHistory } = useFundMovementHistory(headOffice?.id);
+  const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
+  const fundA = summary?.fundA ?? [];
+  const totalCompanyFundUsd = summary?.paidBuyRate
+    ? (summary.totalCompanyFundVnd / summary.paidBuyRate)
+    : null;
+  const weeklyChange = summary?.weeklyCapitalChangeVnd ?? 0;
+  const weeklyChangeLabel = weeklyChange > 0 ? 'Tăng' : weeklyChange < 0 ? 'Giảm' : 'Không đổi';
 
   return (
     <PageScaffold
@@ -305,94 +278,171 @@ export function CentralFundPage() {
       description="Theo dõi nguồn vốn trung tâm, tiền mặt VND/USD, ngân hàng, Quỹ A và công nợ quy đổi."
       moduleName="fund-management"
       extra={(
-        <Space wrap>
-          <Button icon={<ReloadOutlined />}>Đồng bộ số dư</Button>
-          <Button type="primary" icon={<InboxOutlined />}>Tạo tiếp quỹ</Button>
-        </Space>
+        <Button icon={<ReloadOutlined />} loading={isFetching} onClick={() => void refetch()}>Đồng bộ số dư</Button>
       )}
     >
-      <Space direction="vertical" size={16} className="w-full">
-        <Card className="fund-central-hero overflow-hidden text-white!" classNames={{ body: 'p-0!' }}>
-          <div className="p-6">
-            <div className="mb-6 flex items-start justify-between gap-4 max-lg:flex-col">
-              <div>
-                <Typography.Text className="text-white/75! uppercase tracking-normal!">Tổng vốn kiểm soát</Typography.Text>
-                <Typography.Title level={2} className="mt-1! mb-2! text-white!">{formatVnd(totalCompanyCapital)}</Typography.Title>
-                <Typography.Text className="text-white/75!">
-                  Tiền mặt, ngân hàng, công nợ và tổng quỹ chi nhánh quy đổi theo Paid mua {formatExchangeRate(activePaidRatesMock.paidBuy)}.
-                </Typography.Text>
-              </div>
-              <Tag color="gold" className="m-0!">Đối chiếu {centralFundMock.lastReconciledAt}</Tag>
+      <Space direction="vertical" size={20} className="w-full">
+        {isError && (
+          <Alert
+            type="error"
+            showIcon
+            message="Không thể tải dữ liệu Quỹ Chung"
+            action={<Button size="small" onClick={() => void refetch()}>Thử lại</Button>}
+          />
+        )}
+        {summary?.missingRateCurrencies.length ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={`Chưa có tỷ giá ACTIVE cho: ${summary.missingRateCurrencies.join(', ')}`}
+            description="Giá trị quy đổi của các loại tiền này đang được tính bằng 0."
+          />
+        ) : null}
+        <FundActionBar description="Điều chuyển vốn, kiểm quỹ và ghi nhận thu chi tại Hội sở">
+          {canTransfer && (
+            <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
+          )}
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
+          {canCreateCashMovement && (
+            <>
+              <Button className="fund-action--conversion" icon={<SwapOutlined />} onClick={() => navigate('/fund-management/central-fund/convert-fund-a')}>Bán ngoại tệ Quỹ A</Button>
+              <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/receipts')}>Tạo Phiếu Thu</Button>
+              <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/expenses')}>Tạo Phiếu Chi</Button>
+            </>
+          )}
+        </FundActionBar>
+        <Card loading={isLoading} className="central-fund-overview overflow-hidden" classNames={{ body: 'p-0!' }}>
+          <div className="central-fund-overview__header">
+            <div className="min-w-0">
+              <Typography.Text className="central-fund-overview__eyebrow">Tổng vốn kiểm soát</Typography.Text>
+              <Typography.Title level={2} className="central-fund-overview__amount">{formatVnd(summary?.totalCompanyFundVnd ?? 0)}</Typography.Title>
+              <Typography.Text className="central-fund-overview__amount-usd">
+                {totalCompanyFundUsd === null ? 'Chưa có tỷ giá quy đổi USD' : formatUsd(totalCompanyFundUsd)}
+              </Typography.Text>
+              <Typography.Text className="central-fund-overview__caption">
+                Tiền mặt, ngân hàng và công nợ phải thu trên toàn hệ thống.
+              </Typography.Text>
             </div>
+            <div className="central-fund-overview__meta">
+              <div>
+                <span>Paid mua</span>
+                <strong>{formatExchangeRate(summary?.paidBuyRate ?? 0)}</strong>
+              </div>
+              <div>
+                <span>Đối chiếu gần nhất</span>
+                <strong>{summary?.lastReconciledAt ? formatDateTime(summary.lastReconciledAt) : 'Chưa đối chiếu'}</strong>
+              </div>
+              <div>
+                <span>Biến động từ đầu tuần</span>
+                <strong className={weeklyChange > 0 ? 'is-positive' : weeklyChange < 0 ? 'is-negative' : ''}>
+                  {weeklyChangeLabel} {formatVnd(Math.abs(weeklyChange))}
+                  {summary?.weeklyCapitalChangePercent === null || summary?.weeklyCapitalChangePercent === undefined
+                    ? ''
+                    : ` (${Math.abs(summary.weeklyCapitalChangePercent).toFixed(2)}%)`}
+                </strong>
+              </div>
+            </div>
+          </div>
 
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Tiền mặt</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralCashValue)}</div>
+          <div className="central-fund-kpis">
+            {[
+              {
+                label: 'Tiền mặt Hội sở',
+                usd: formatUsd(summary?.usdCash ?? 0),
+                vnd: formatVnd(summary?.vndCash ?? 0),
+                icon: <MoneyCollectOutlined />,
+              },
+              {
+                label: 'Số dư ngân hàng',
+                usd: formatUsd(summary?.bankUsd ?? 0),
+                vnd: formatVnd(summary?.bankVnd ?? 0),
+                icon: <BankOutlined />,
+              },
+              {
+                label: 'Công nợ phải thu',
+                usd: formatUsd(summary?.debtUsd ?? 0),
+                vnd: formatVnd(summary?.debtVnd ?? 0),
+                icon: <AuditOutlined />,
+              },
+              {
+                label: 'Quỹ tại chi nhánh',
+                usd: formatUsd(summary?.branchFundUsd ?? 0),
+                vnd: formatVnd(summary?.branchFundVnd ?? 0),
+                icon: <InboxOutlined />,
+              },
+            ].map((item) => (
+              <div className="central-fund-kpi" key={item.label}>
+                <span className="central-fund-kpi__icon">{item.icon}</span>
+                <div className="min-w-0">
+                  <div className="central-fund-kpi__label">{item.label}</div>
+                  <div className="central-fund-kpi__values">
+                    <strong>{item.usd}</strong>
+                    <strong>{item.vnd}</strong>
+                  </div>
                 </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Ngân hàng</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(centralFundMock.bankBalance)}</div>
-                </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Công nợ</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalDebtValue)}</div>
-                </div>
-              </Col>
-              <Col xs={24} md={12} xl={6}>
-                <div className="fund-central-tile">
-                  <Typography.Text className="text-white/70!">Tổng quỹ chi nhánh</Typography.Text>
-                  <div className="mt-2 text-2xl font-semibold">{formatVnd(totalBranchValue)}</div>
-                </div>
-              </Col>
-            </Row>
+              </div>
+            ))}
           </div>
         </Card>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={15}>
-            <Card title={<Space><MoneyCollectOutlined />Quỹ Chung</Space>} className="polished-card">
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={8}>
-                  <Statistic title="Tiền mặt VND" value={centralFundMock.vndCash} formatter={(value) => formatVnd(Number(value))} />
-                </Col>
-                <Col xs={24} md={8}>
-                  <Statistic title="Tiền mặt USD" value={centralFundMock.usdCash} formatter={(value) => formatUsd(Number(value))} />
-                </Col>
-                <Col xs={24} md={8}>
-                  <Statistic title="Quỹ A quy đổi" value={totalFundAValue} formatter={(value) => formatVnd(Number(value))} />
-                </Col>
-              </Row>
+        <Row gutter={[20, 20]} align="stretch">
+          <Col xs={24} xl={12} className="flex">
+            <Card
+              title={<Space><MoneyCollectOutlined />Cấu phần tiền mặt</Space>}
+              extra={<Tag color="gold">Quỹ Chung</Tag>}
+              className="central-fund-detail w-full"
+            >
+              <FundBreakdownRow label="Tiền mặt VND" value={formatVnd(summary?.vndCash ?? 0)} />
+              <FundBreakdownRow label="Tiền mặt USD" value={formatUsd(summary?.usdCash ?? 0)} />
+              <FundBreakdownRow
+                label="Tiền mặt USD quy đổi"
+                value={formatVnd(summary?.usdCashValueVnd ?? 0)}
+                note={`${formatUsd(summary?.usdCash ?? 0)} × ${formatExchangeRate(summary?.paidBuyRate ?? 0)}`}
+              />
+              <FundBreakdownRow
+                label="Quỹ A quy đổi"
+                value={formatVnd(summary?.fundAValueVnd ?? 0)}
+                note={`${fundA.length} loại ngoại tệ`}
+              />
+              <FundBreakdownRow label="Tổng tiền mặt quy đổi" value={formatVnd(summary?.centralCashValueVnd ?? 0)} strong />
             </Card>
           </Col>
-          <Col xs={24} xl={9}>
-            <Card title={<Space><BankOutlined />Cấu phần kiểm soát</Space>} className="polished-card">
-              <Space direction="vertical" className="w-full">
-                <div className="flex items-center justify-between"><Typography.Text>Tiền mặt quy đổi</Typography.Text><Typography.Text strong>{formatVnd(centralCashValue)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Số dư ngân hàng</Typography.Text><Typography.Text strong>{formatVnd(centralFundMock.bankBalance)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Công nợ quy đổi</Typography.Text><Typography.Text strong>{formatVnd(totalDebtValue)}</Typography.Text></div>
-                <div className="flex items-center justify-between"><Typography.Text>Tổng quỹ chi nhánh</Typography.Text><Typography.Text strong>{formatVnd(totalBranchValue)}</Typography.Text></div>
-              </Space>
+          <Col xs={24} xl={12} className="flex">
+            <Card
+              title={<Space><BankOutlined />Ngân hàng và công nợ</Space>}
+              extra={<Button type="link" onClick={() => navigate('/bank-management/accounts')}>Xem tài khoản</Button>}
+              className="central-fund-detail w-full"
+            >
+              <FundBreakdownRow label="Số dư ngân hàng" value={formatVnd(summary?.bankValueVnd ?? 0)} />
+              <FundBreakdownRow label="Công nợ VND" value={formatVnd(summary?.debtVnd ?? 0)} />
+              <FundBreakdownRow
+                label="Công nợ USD quy đổi"
+                value={formatVnd((summary?.debtUsd ?? 0) * (summary?.paidBuyRate ?? 0))}
+                note={`${formatUsd(summary?.debtUsd ?? 0)} × ${formatExchangeRate(summary?.paidBuyRate ?? 0)}`}
+              />
+              <FundBreakdownRow label="Tổng công nợ quy đổi" value={formatVnd(summary?.debtValueVnd ?? 0)} strong />
             </Card>
           </Col>
         </Row>
 
-        <Card title="Quỹ A thuộc Quỹ Chung" className="polished-card">
-          <FundAList items={centralFundMock.fundA} />
+        <Card
+          title="Chi tiết Quỹ A"
+          extra={<Tag>{fundA.length} ngoại tệ</Tag>}
+          className="polished-card"
+          loading={isLoading}
+        >
+          <FundAList items={fundA} />
         </Card>
+        <FundMovementHistoryTable items={movementHistory} loading={isLoadingHistory} branchNames={branchNames} />
       </Space>
+
     </PageScaffold>
   );
 }
 
 export function BranchFundsPage() {
   const role = useAuthStore((state) => state.user?.role);
-  const isControlRole = role === 'director' || role === 'accountant';
+  const isControlRole = role === 'director' || role === 'accountant' || role === 'auditor';
 
-  return isControlRole ? <ControlBranchFundsPage /> : <BranchFundMainPage />;
+  return isControlRole ? <Navigate to="/branch-management/monitoring" replace /> : <BranchFundMainPage />;
 }

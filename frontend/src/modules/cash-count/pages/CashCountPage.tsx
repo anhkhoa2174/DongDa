@@ -125,7 +125,7 @@ function OpenShiftPanel() {
               className="m-0!"
               style={{ color: vndTotal === vndExpected ? '#16a34a' : vndTotal > vndExpected ? '#d97706' : '#dc2626' }}
             >
-              {vndTotal - vndExpected === 0 ? '0 ₫' : formatVnd(vndTotal - vndExpected)}
+              {vndTotal - vndExpected === 0 ? '0 VND' : formatVnd(vndTotal - vndExpected)}
             </Typography.Title>
           </Card>
         </Col>

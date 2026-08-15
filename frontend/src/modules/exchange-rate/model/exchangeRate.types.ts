@@ -1,19 +1,21 @@
 export type PrimaryRateForm = {
   paidSell: number;
-  paidSellAdjustment: string;
+  paidSellAdjustment: number;
   paidBuy: number;
-  paidBuyAdjustment: string;
-  sell: number;
-  sellAdjustment: string;
-  buy: number;
-  buyAdjustment: string;
+  paidBuyAdjustment: number;
+  bankRate: number;
+  bankRateAdjustment: number;
+  fxSell: number;
+  fxSellAdjustment: number;
+  fxBuy: number;
+  fxBuyAdjustment: number;
   note?: string;
 };
 
 export type FundARateForm = {
   buyRate: number;
   sellRate: number;
-  adjustment: string;
+  adjustment: number;
 };
 
 export type FundARate = {
@@ -22,7 +24,7 @@ export type FundARate = {
   name: string;
   buyRate: number;
   sellRate: number;
-  adjustment: string;
+  adjustment: number;
   updatedAt: string;
 };
 

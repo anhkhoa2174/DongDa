@@ -7,6 +7,10 @@ export const dashboardRoutes: RouteObject[] = [
     element: <DashboardPage />,
   },
   {
+    path: 'dashboard/live',
+    element: <Navigate to="/dashboard" replace />,
+  },
+  {
     path: 'dashboard/company',
     element: <Navigate to="/dashboard" replace />,
   },
