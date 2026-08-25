@@ -42,7 +42,7 @@ export interface ListFundMovementHistoryFilter {
 }
 
 export interface ConvertCentralFundInput {
-  items: Array<{ currencyCode: CurrencyCode; amount: number }>;
+  items: Array<{ currencyCode: CurrencyCode; amount: number; rate: number; deduction: number }>;
   note?: string;
   createdByUserId: string;
 }

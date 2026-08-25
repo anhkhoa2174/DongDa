@@ -10,7 +10,7 @@ import {
 } from '../../../domain/repositories/fund.repository';
 import {
   FundTransfer, FundTransferStatus, FundAccountBalance, CurrencyCode, CentralFundSummary,
-  CentralFundMovement, FundMovementHistoryItem, CentralFundConversion,
+  CentralFundMovement, FundMovementHistoryItem, CentralFundConversion, calculateCentralFundConversionValue,
 } from '../../../domain/entities/fund.entity';
 import type { CreateFundMovementInput } from '../../../domain/repositories/fund.repository';
 import { canonicalFundAccount } from '../../../domain/entities/fund-account';
@@ -488,17 +488,30 @@ export class PrismaFundRepository implements IFundRepository {
           throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
         }
 
-        const rate = await this.activeConversionRate(tx, item.currencyCode);
-        const vndAmount = Math.round(item.amount * rate);
+        if (!Number.isFinite(item.rate) || item.rate <= 0) {
+          throw new BadRequestException(`Tỷ giá ${item.currencyCode} phải lớn hơn 0`);
+        }
+        if (!Number.isFinite(item.deduction) || item.deduction < 0) {
+          throw new BadRequestException(`Khấu trừ ${item.currencyCode} không được âm`);
+        }
+        const rate = item.rate;
+        const { grossVndAmount, deduction, vndAmount } = calculateCentralFundConversionValue(
+          item.amount,
+          rate,
+          item.deduction,
+        );
+        if (deduction >= grossVndAmount) {
+          throw new BadRequestException(`Khấu trừ ${item.currencyCode} phải nhỏ hơn thành tiền trước khấu trừ`);
+        }
         const description = input.note
-          ? `Quy đổi Quỹ A ${item.currencyCode} sang VND - ${input.note}`
-          : `Quy đổi Quỹ A ${item.currencyCode} sang VND`;
+          ? `Bán Quỹ A ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, thực thu ${vndAmount} VND - ${input.note}`
+          : `Bán Quỹ A ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, thực thu ${vndAmount} VND`;
         const foreignMovement = await tx.cash_movements.create({
           data: {
             movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}-OUT`,
             branch_id: headOffice.id, fund_account_id: foreignAccount.id,
             movement_type: 'CASH_OUT', business_date: businessDate, amount: item.amount,
-            currency_code: item.currencyCode, source_name: 'Quy đổi Quỹ A', description,
+            currency_code: item.currencyCode, source_name: 'Bán ngoại tệ Quỹ A', description,
             status: 'POSTED', created_by_user_id: input.createdByUserId,
             approved_by_user_id: input.createdByUserId, posted_at: now,
           },
@@ -516,16 +529,23 @@ export class PrismaFundRepository implements IFundRepository {
             }] },
           },
         });
-        resultItems.push({ currencyCode: item.currencyCode, amount: item.amount, rate, vndAmount });
+        resultItems.push({
+          currencyCode: item.currencyCode,
+          amount: item.amount,
+          rate,
+          grossVndAmount,
+          deduction,
+          vndAmount,
+        });
       }
 
       const totalVndAmount = resultItems.reduce((sum, item) => sum + item.vndAmount, 0);
-      const description = input.note ? `Thu VND từ quy đổi Quỹ A - ${input.note}` : 'Thu VND từ quy đổi Quỹ A';
+      const description = input.note ? `Thu VND từ bán ngoại tệ Quỹ A - ${input.note}` : 'Thu VND từ bán ngoại tệ Quỹ A';
       const vndMovement = await tx.cash_movements.create({
         data: {
           movement_no: `${voucherNo}-IN`, branch_id: headOffice.id, fund_account_id: vndAccount.id,
           movement_type: 'CASH_IN', business_date: businessDate, amount: totalVndAmount,
-          currency_code: 'VND', source_name: 'Quy đổi Quỹ A', description,
+          currency_code: 'VND', source_name: 'Bán ngoại tệ Quỹ A', description,
           status: 'POSTED', created_by_user_id: input.createdByUserId,
           approved_by_user_id: input.createdByUserId, posted_at: now,
         },
@@ -542,8 +562,8 @@ export class PrismaFundRepository implements IFundRepository {
         },
       });
       await this.notifications.notifyUsers({
-        title: `Phiếu quy đổi Quỹ A ${voucherNo} đã ghi sổ`,
-        body: `${resultItems.map((item) => `${item.amount} ${item.currencyCode}`).join(', ')} = ${totalVndAmount} VND`,
+        title: `Phiếu bán ngoại tệ Quỹ A ${voucherNo} đã ghi sổ`,
+        body: `${resultItems.map((item) => `${item.amount} ${item.currencyCode} x ${item.rate} - ${item.deduction} VND`).join('; ')} = ${totalVndAmount} VND`,
         sourceType: 'CENTRAL_FUND_CONVERSION',
         sourceId: firstMovementId,
       }, { userIds: [input.createdByUserId], roles: ['ADMIN', 'MANAGER'] }, tx);

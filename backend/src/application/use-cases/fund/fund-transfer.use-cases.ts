@@ -139,6 +139,8 @@ export class ConvertCentralFundUseCase {
       items: dto.items.map((item) => ({
         currencyCode: item.currencyCode as CurrencyCode,
         amount: item.amount,
+        rate: item.rate,
+        deduction: item.deduction,
       })),
       note: dto.note?.trim() || undefined,
       createdByUserId: userId,

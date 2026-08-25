@@ -3,7 +3,7 @@
 
 import {
   ArrayMaxSize, ArrayMinSize, ArrayUnique, IsEnum, IsOptional, IsNumber, IsPositive,
-  IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString,
+  IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString, Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
@@ -94,6 +94,14 @@ export class ConvertCentralFundItemDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
+
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @IsPositive()
+  rate: number;
+
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(0)
+  deduction: number;
 }
 
 export class ConvertCentralFundDto {

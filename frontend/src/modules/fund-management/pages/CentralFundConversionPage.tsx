@@ -4,17 +4,25 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import {
+  exchangeRateInputFormatter,
+  exchangeRateInputParser,
   formatCurrency,
+  formatExchangeRate,
   formatVnd,
   numberInputFormatter,
   numberInputParser,
 } from '@/shared/utils/formatters';
 import { useCentralFundSummary, useConvertCentralFundA } from '../hooks/useCentralFund';
 
-type ConversionItem = { currencyCode?: string; amount?: number };
+type ConversionItem = { currencyCode?: string; amount?: number; rate?: number; deduction?: number };
 type ConversionForm = { items: ConversionItem[]; note?: string };
 
-const EMPTY_ITEM: ConversionItem = { currencyCode: undefined, amount: undefined };
+const EMPTY_ITEM: ConversionItem = {
+  currencyCode: undefined,
+  amount: undefined,
+  rate: undefined,
+  deduction: 0,
+};
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -45,8 +53,8 @@ export function CentralFundConversionPage() {
     (fund) => fund.currency === watchedItems[index]?.currencyCode,
   );
   const estimatedTotalVnd = watchedItems.reduce((sum, item) => {
-    const fund = availableFunds.find((candidate) => candidate.currency === item?.currencyCode);
-    return sum + Math.round(Number(item?.amount ?? 0) * (fund?.buyRate ?? 0));
+    const grossVnd = Math.round(Number(item?.amount ?? 0) * Number(item?.rate ?? 0));
+    return sum + Math.max(0, grossVnd - Math.round(Number(item?.deduction ?? 0)));
   }, 0);
 
   const submit = async (values: ConversionForm) => {
@@ -55,10 +63,12 @@ export function CentralFundConversionPage() {
         items: values.items.map((item) => ({
           currencyCode: item.currencyCode!,
           amount: Number(item.amount),
+          rate: Number(item.rate),
+          deduction: Number(item.deduction ?? 0),
         })),
         note: values.note?.trim() || undefined,
       });
-      message.success(`Đã quy đổi ${result.items.length} loại ngoại tệ thành ${formatVnd(result.totalVndAmount)}`);
+      message.success(`Đã bán ${result.items.length} loại ngoại tệ, thực thu ${formatVnd(result.totalVndAmount)}`);
       form.resetFields();
     } catch (error) {
       message.error(errorMessage(error));
@@ -78,13 +88,13 @@ export function CentralFundConversionPage() {
     >
       <Row justify="center">
         <Col xs={24} xl={18}>
-          <Card title={<Space><SwapOutlined />Phiếu quy đổi ngoại tệ tại Hội sở</Space>} loading={isLoading}>
+          <Card title={<Space><SwapOutlined />Phiếu bán ngoại tệ tại Hội sở</Space>} loading={isLoading}>
             <Alert
               type="info"
               showIcon
               className="mb-5"
               message="Nghiệp vụ không yêu cầu mở ca"
-              description="Toàn bộ ngoại tệ trong phiếu được kiểm tra và ghi sổ đồng thời; một khoản lỗi sẽ hủy toàn bộ phiếu."
+              description="Nhập tỷ giá và khấu trừ riêng cho từng ngoại tệ. Hệ thống không dùng tỷ giá ACTIVE; toàn bộ phiếu được kiểm tra và ghi sổ đồng thời."
             />
             <Form form={form} layout="vertical" initialValues={{ items: [EMPTY_ITEM] }} onFinish={submit}>
               <Form.List name="items">
@@ -93,7 +103,10 @@ export function CentralFundConversionPage() {
                     {fields.map((field, index) => {
                       const fund = itemFund(index);
                       const amount = Number(watchedItems[index]?.amount ?? 0);
-                      const estimatedVnd = Math.round(amount * (fund?.buyRate ?? 0));
+                      const rate = Number(watchedItems[index]?.rate ?? 0);
+                      const deduction = Math.round(Number(watchedItems[index]?.deduction ?? 0));
+                      const grossVnd = Math.round(amount * rate);
+                      const estimatedVnd = Math.max(0, grossVnd - deduction);
                       return (
                         <div key={field.key} className="fund-transfer-line w-full">
                           <div className="mb-3 flex items-center justify-between gap-3">
@@ -113,7 +126,7 @@ export function CentralFundConversionPage() {
                             />
                           </div>
                           <Row gutter={[12, 12]} align="top">
-                            <Col xs={24} md={8}>
+                            <Col xs={24} md={12} xl={5}>
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'currencyCode']}
@@ -126,11 +139,15 @@ export function CentralFundConversionPage() {
                                   showSearch
                                   placeholder="Chọn loại tiền"
                                   options={currencyOptionsFor(index)}
-                                  onChange={() => form.setFieldValue(['items', field.name, 'amount'], undefined)}
+                                  onChange={() => {
+                                    form.setFieldValue(['items', field.name, 'amount'], undefined);
+                                    form.setFieldValue(['items', field.name, 'rate'], undefined);
+                                    form.setFieldValue(['items', field.name, 'deduction'], 0);
+                                  }}
                                 />
                               </Form.Item>
                             </Col>
-                            <Col xs={24} md={8}>
+                            <Col xs={24} md={12} xl={5}>
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'amount']}
@@ -159,11 +176,72 @@ export function CentralFundConversionPage() {
                                 />
                               </Form.Item>
                             </Col>
-                            <Col xs={24} md={8}>
+                            <Col xs={24} md={8} xl={5}>
+                              <Form.Item
+                                {...field}
+                                name={[field.name, 'rate']}
+                                label="Tỷ giá"
+                                className="mb-0"
+                                rules={[
+                                  { required: true, message: 'Nhập tỷ giá bán' },
+                                  { type: 'number', min: 0.000001, message: 'Tỷ giá phải lớn hơn 0' },
+                                ]}
+                              >
+                                <InputNumber
+                                  className="w-full"
+                                  size="large"
+                                  min={0.000001}
+                                  precision={6}
+                                  controls={false}
+                                  addonAfter={`VND/${fund?.currency ?? 'NT'}`}
+                                  formatter={exchangeRateInputFormatter}
+                                  parser={exchangeRateInputParser}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={8} xl={4}>
+                              <Form.Item
+                                {...field}
+                                name={[field.name, 'deduction']}
+                                label="Khấu trừ"
+                                className="mb-0"
+                                dependencies={[
+                                  ['items', field.name, 'amount'],
+                                  ['items', field.name, 'rate'],
+                                ]}
+                                rules={[
+                                  { required: true, message: 'Nhập khấu trừ, có thể bằng 0' },
+                                  {
+                                    validator: (_, value) => {
+                                      const deductionValue = Number(value ?? 0);
+                                      if (deductionValue < 0) return Promise.reject(new Error('Khấu trừ không được âm'));
+                                      if (grossVnd > 0 && deductionValue >= grossVnd) {
+                                        return Promise.reject(new Error('Phải nhỏ hơn giá trị gộp'));
+                                      }
+                                      return Promise.resolve();
+                                    },
+                                  },
+                                ]}
+                              >
+                                <InputNumber
+                                  className="w-full"
+                                  size="large"
+                                  min={0}
+                                  precision={0}
+                                  controls={false}
+                                  addonAfter="VND"
+                                  formatter={numberInputFormatter}
+                                  parser={numberInputParser}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={8} xl={5}>
                               <div className="fund-conversion-line-result">
-                                <span>Tỷ giá FX mua</span>
-                                <strong>{fund ? formatVnd(fund.buyRate) : '---'}</strong>
-                                <small>Thu về {formatVnd(estimatedVnd)}</small>
+                                <span>Thành tiền VND</span>
+                                <strong>{formatVnd(estimatedVnd)}</strong>
+                                <small>
+                                  {formatCurrency(amount, fund?.currency ?? 'NT')} × {formatExchangeRate(rate, 6)} − {formatVnd(deduction)}
+                                </small>
                               </div>
                             </Col>
                           </Row>
