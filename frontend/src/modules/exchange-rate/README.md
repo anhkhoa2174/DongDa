@@ -5,7 +5,7 @@ Module tỷ giá quản lý toàn bộ tỷ giá nghiệp vụ của Đống Đa
 ## Mục Tiêu
 
 - KTTH/Giám đốc tạo tỷ giá mới ở trạng thái `DRAFT`.
-- KTTH/Giám đốc duyệt để tỷ giá mới thành `ACTIVE`.
+- KTTH/Giám đốc duyệt theo cặp mua/bán để tỷ giá mới cùng thành `ACTIVE`.
 - Khi duyệt tỷ giá mới cùng loại, bản `ACTIVE` cũ tự chuyển `SUPERSEDED`.
 - Nhân viên chi nhánh chỉ dùng tỷ giá `ACTIVE` khi tạo WU, MG, mua/bán ngoại tệ.
 - Công nợ USD dùng `BANK_RATE` để quy đổi phần lẻ USD sang VND.
@@ -33,7 +33,7 @@ Các rate type legacy `WU_SYSTEM`, `WU_PROVIDER`, `MG_SYSTEM` vẫn còn trong e
 
 ## Biên Độ Giao Dịch
 
-Biên độ được nhập một lần cho cặp mua/bán cùng ngoại tệ và không được âm:
+Biên độ được nhập một lần cho cặp mua/bán cùng ngoại tệ và không được âm. Khi tạo cặp FX mới, form mặc định lấy lại biên độ của cặp `ACTIVE` cùng ngoại tệ; nếu chưa có lịch sử thì dùng `0`:
 
 ```txt
 Mua ngoại tệ: giá giao dịch nằm từ (FX_BUY - margin) đến FX_BUY.
@@ -84,10 +84,11 @@ Tại một thời điểm chỉ nên có 1 bản `ACTIVE` cho cùng identity.
 4. Nhập tỷ giá VND.
 5. Nhập một biên độ dùng chung cho cặp mua/bán ngoại tệ; Paid/Ngân hàng mặc định `0`.
 6. Tạo bản thay thế ở trạng thái `DRAFT`.
-7. Người có quyền duyệt hoặc từ chối.
+7. Người có quyền tích chọn một hoặc tất cả các cặp để duyệt hàng loạt; cũng có thể duyệt/từ chối từng cặp.
 8. Khi duyệt:
-   - bản mới chuyển `ACTIVE`;
-   - bản active cũ cùng identity chuyển `SUPERSEDED`.
+   - cả giá mua và giá bán cùng chuyển `ACTIVE` trong một DB transaction;
+   - các bản active cũ tương ứng cùng chuyển `SUPERSEDED`;
+   - nếu một phía lỗi hoặc cặp chưa đầy đủ thì toàn bộ thao tác rollback.
 
 ## API
 
@@ -106,6 +107,8 @@ GET    /api/v1/exchange-rates/active
 GET    /api/v1/exchange-rates/history
 PATCH  /api/v1/exchange-rates/:id/approve
 PATCH  /api/v1/exchange-rates/:id/reject
+PATCH  /api/v1/exchange-rates/approve-batch  duyệt nhiều cặp trong một transaction
+PATCH  /api/v1/exchange-rates/reject-batch   từ chối các cặp đã chọn
 POST   /api/v1/exchange-rates/parse-image   multipart field `image`
 POST   /api/v1/exchange-rates/batch         tạo nhiều DRAFT trong một transaction
 ```

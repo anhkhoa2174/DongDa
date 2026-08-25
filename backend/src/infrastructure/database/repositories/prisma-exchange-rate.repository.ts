@@ -1,7 +1,7 @@
 // Prisma ExchangeRate Repository Implementation
 // Layer: Infrastructure
 
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
   IExchangeRateRepository,
@@ -189,49 +189,82 @@ export class PrismaExchangeRateRepository implements IExchangeRateRepository {
   }
 
   async approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate> {
-    const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM exchange_rates WHERE id = ${id}::uuid FOR UPDATE`;
-      const target = await tx.exchange_rates.findUnique({ where: { id } });
-      if (!target) throw new Error('Tỷ giá không tồn tại');
-      if (target.status !== 'DRAFT') throw new Error(`Chỉ duyệt được tỷ giá DRAFT (hiện tại: ${target.status})`);
-      if (target.effective_from.getTime() > now.getTime()) {
-        throw new Error('Chưa thể kích hoạt tỷ giá trước thời điểm hiệu lực');
-      }
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${target.rate_type}:${target.provider ?? ''}:${target.from_currency}:${target.to_currency}`}))`;
-      // 1. Supersede bản ACTIVE cùng identity (BR-F2.3-01: chỉ 1 active/identity)
-      await tx.exchange_rates.updateMany({
-        where: {
-          status: 'ACTIVE',
-          rate_type: target.rate_type,
-          provider: target.provider,
-          from_currency: target.from_currency,
-          to_currency: target.to_currency,
-          id: { not: id },
-        },
-        data: { status: 'SUPERSEDED', effective_to: now },
-      });
+    const approved = await this.approveAndSupersedeMany([id], approverUserId);
+    return approved[0];
+  }
 
-      // 2. Set bản này ACTIVE
-      return tx.exchange_rates.update({
-        where: { id },
+  async approveAndSupersedeMany(ids: string[], approverUserId: string): Promise<ExchangeRate[]> {
+    const now = new Date();
+    const uniqueIds = [...new Set(ids)].sort();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      for (const id of uniqueIds) {
+        await tx.$queryRaw`SELECT id FROM exchange_rates WHERE id = ${id}::uuid FOR UPDATE`;
+      }
+      const targets = await tx.exchange_rates.findMany({ where: { id: { in: uniqueIds } } });
+      if (targets.length !== uniqueIds.length) throw new NotFoundException('Một hoặc nhiều tỷ giá không tồn tại');
+      const invalid = targets.find((target) => target.status !== 'DRAFT');
+      if (invalid) throw new ConflictException(`Chỉ duyệt được tỷ giá DRAFT (hiện tại: ${invalid.status})`);
+      if (targets.some((target) => target.effective_from.getTime() > now.getTime())) {
+        throw new ConflictException('Chưa thể kích hoạt tỷ giá trước thời điểm hiệu lực');
+      }
+
+      const identities = targets
+        .map((target) => `${target.rate_type}:${target.provider ?? ''}:${target.from_currency}:${target.to_currency}`)
+        .sort();
+      for (const identity of identities) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${identity}))`;
+      }
+      for (const target of targets) {
+        await tx.exchange_rates.updateMany({
+          where: {
+            status: 'ACTIVE',
+            rate_type: target.rate_type,
+            provider: target.provider,
+            from_currency: target.from_currency,
+            to_currency: target.to_currency,
+            id: { not: target.id },
+          },
+          data: { status: 'SUPERSEDED', effective_to: now },
+        });
+      }
+      await tx.exchange_rates.updateMany({
+        where: { id: { in: uniqueIds }, status: 'DRAFT' },
         data: {
           status: 'ACTIVE',
           approved_by_user_id: approverUserId,
           approved_at: now,
         },
       });
+      return tx.exchange_rates.findMany({ where: { id: { in: uniqueIds } } });
     });
 
-    return toDomain(updated);
+    const byId = new Map(updated.map((row) => [row.id, toDomain(row)]));
+    return ids.map((id) => byId.get(id)).filter(Boolean) as ExchangeRate[];
   }
 
   async reject(id: string): Promise<ExchangeRate> {
-    const row = await this.prisma.exchange_rates.update({
-      where: { id },
-      data: { status: 'REJECTED' },
+    const rejected = await this.rejectMany([id]);
+    return rejected[0];
+  }
+
+  async rejectMany(ids: string[]): Promise<ExchangeRate[]> {
+    const uniqueIds = [...new Set(ids)].sort();
+    const rows = await this.prisma.$transaction(async (tx) => {
+      for (const id of uniqueIds) {
+        await tx.$queryRaw`SELECT id FROM exchange_rates WHERE id = ${id}::uuid FOR UPDATE`;
+      }
+      const targets = await tx.exchange_rates.findMany({ where: { id: { in: uniqueIds } } });
+      if (targets.length !== uniqueIds.length) throw new NotFoundException('Một hoặc nhiều tỷ giá không tồn tại');
+      const invalid = targets.find((target) => target.status !== 'DRAFT');
+      if (invalid) throw new ConflictException(`Chỉ từ chối được tỷ giá DRAFT (hiện tại: ${invalid.status})`);
+      await tx.exchange_rates.updateMany({
+        where: { id: { in: uniqueIds }, status: 'DRAFT' },
+        data: { status: 'REJECTED' },
+      });
+      return tx.exchange_rates.findMany({ where: { id: { in: uniqueIds } } });
     });
-    return toDomain(row);
+    const byId = new Map(rows.map((row) => [row.id, toDomain(row)]));
+    return ids.map((id) => byId.get(id)).filter(Boolean) as ExchangeRate[];
   }
 }
 

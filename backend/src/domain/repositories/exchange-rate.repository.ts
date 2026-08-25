@@ -77,6 +77,8 @@ export interface IExchangeRateRepository {
 
   // Duyệt: trong 1 transaction — supersede bản ACTIVE cùng identity rồi set bản này ACTIVE
   approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate>;
+  approveAndSupersedeMany(ids: string[], approverUserId: string): Promise<ExchangeRate[]>;
 
   reject(id: string): Promise<ExchangeRate>;
+  rejectMany(ids: string[]): Promise<ExchangeRate[]>;
 }

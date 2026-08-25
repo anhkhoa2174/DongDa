@@ -441,6 +441,8 @@ GET   /api/v1/exchange-rates/active
 GET   /api/v1/exchange-rates/history
 POST  /api/v1/exchange-rates
 PATCH /api/v1/exchange-rates/:id/approve
+PATCH /api/v1/exchange-rates/approve-batch
+PATCH /api/v1/exchange-rates/reject-batch
 PATCH /api/v1/exchange-rates/:id/reject
 ```
 

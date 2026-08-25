@@ -115,6 +115,12 @@ export const exchangeRateApi = {
   approve: (id: string) =>
     httpClient.patch<ExchangeRateDto>(`/exchange-rates/${id}/approve`).then((r) => r.data),
 
+  approveBatch: (ids: string[]) =>
+    httpClient.patch<ExchangeRateDto[]>('/exchange-rates/approve-batch', { ids }).then((r) => r.data),
+
   reject: (id: string) =>
     httpClient.patch<ExchangeRateDto>(`/exchange-rates/${id}/reject`).then((r) => r.data),
+
+  rejectBatch: (ids: string[]) =>
+    httpClient.patch<ExchangeRateDto[]>('/exchange-rates/reject-batch', { ids }).then((r) => r.data),
 };

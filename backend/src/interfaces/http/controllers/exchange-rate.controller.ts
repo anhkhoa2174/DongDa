@@ -23,6 +23,7 @@ import { ListExchangeRatesUseCase } from '../../../application/use-cases/exchang
 import { ParseExchangeRateImageUseCase } from '../../../application/use-cases/exchange-rate/parse-exchange-rate-image.use-case';
 import {
   CreateExchangeRateBatchDto, CreateExchangeRateDto, ExchangeRateHistoryQueryDto, ListRatesQueryDto,
+  ReviewExchangeRateBatchDto,
 } from '../../../application/dtos/exchange-rate/exchange-rate.dto';
 
 @Controller('exchange-rates')
@@ -77,6 +78,20 @@ export class ExchangeRateController {
   @Get('active')
   active() {
     return this.listRates.active();
+  }
+
+  @Patch('approve-batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  approveBatch(@Request() req: any, @Body() dto: ReviewExchangeRateBatchDto) {
+    return this.approveRate.executeMany(dto.ids, req.user.id);
+  }
+
+  @Patch('reject-batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  rejectBatch(@Body() dto: ReviewExchangeRateBatchDto) {
+    return this.rejectRate.executeMany(dto.ids);
   }
 
   // Duyệt — KTTH/GĐ

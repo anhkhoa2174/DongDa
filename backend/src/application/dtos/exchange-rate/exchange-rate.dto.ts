@@ -5,7 +5,7 @@ import {
   IsEnum, IsOptional, IsNumber, IsPositive, IsISO8601,
   IsInt, Min, Max, IsString, MaxLength,
   IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested,
-  IsIn,
+  IsIn, IsUUID, ArrayUnique,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -61,6 +61,15 @@ export class CreateExchangeRateBatchDto {
   @ValidateNested({ each: true })
   @Type(() => CreateExchangeRateDto)
   rates: CreateExchangeRateDto[];
+}
+
+export class ReviewExchangeRateBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  ids: string[];
 }
 
 export class ListRatesQueryDto {

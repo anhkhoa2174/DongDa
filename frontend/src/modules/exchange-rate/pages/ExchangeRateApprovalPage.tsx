@@ -1,10 +1,10 @@
 // Flow 1 — Duyệt tỷ giá (nối API thật)
-import { Alert, App, Button, Card, Col, Form, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography, Upload } from 'antd';
+import { Alert, App, Button, Card, Checkbox, Col, Form, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd';
 import { CheckOutlined, CloseOutlined, DeleteOutlined, HistoryOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { CURRENCIES, currencyOptions, getCurrencyMetadata } from '@/shared/constants/currencies';
@@ -17,7 +17,7 @@ import {
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
-  useActiveRates, useApproveRate, useCreateRateBatch, useExchangeRates, useParseRateImage, useRejectRate,
+  useActiveRates, useApproveRates, useCreateRateBatch, useExchangeRates, useParseRateImage, useRejectRates,
 } from '../hooks/useExchangeRates';
 import type { CreateRatePayload, ExchangeRateDto, ExchangeRateType, ParsedRateCandidate, RateStatus, ServiceProvider } from '../api/exchangeRate.api';
 
@@ -77,15 +77,27 @@ export function ExchangeRateApprovalPage() {
 
   const { data: activeRates = [], isLoading: isLoadingActive } = useActiveRates();
   const { data: pendingRates = [], isLoading: isLoadingPending } = useExchangeRates({ status: 'DRAFT' });
-  const approveRate = useApproveRate();
-  const rejectRate = useRejectRate();
+  const approveRates = useApproveRates();
+  const rejectRates = useRejectRates();
   const parseRateImage = useParseRateImage();
   const createRateBatch = useCreateRateBatch();
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [imageFiles, setImageFiles] = useState<UploadFile[]>([]);
   const [parsedRates, setParsedRates] = useState<ParsedRateCandidate[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [form] = Form.useForm<CreateRatesForm>();
   const watchedRates = Form.useWatch('rates', form) ?? [];
+
+  useEffect(() => {
+    const entries: CreateRateEntry[] = form.getFieldValue('rates') ?? [];
+    entries.forEach((entry, index) => {
+      if (entry?.category !== 'FX' || form.isFieldTouched(['rates', index, 'margin'])) return;
+      form.setFieldValue(
+        ['rates', index, 'margin'],
+        activeMargin(activeRates, normalizeCurrencyCode(entry.fromCurrency)),
+      );
+    });
+  }, [activeRates, form]);
 
   const onCreate = async (values: CreateRatesForm) => {
     const identities = values.rates.map((rate) => `${rate.category}:${normalizeCurrencyCode(rate.fromCurrency)}`);
@@ -119,25 +131,31 @@ export function ExchangeRateApprovalPage() {
     try {
       await createRateBatch.mutateAsync(payloads);
       message.success(`Đã tạo ${values.rates.length} dòng tỷ giá chờ duyệt`);
-      form.setFieldsValue({ rates: [{ ...EMPTY_RATE }] });
+      form.setFieldsValue({ rates: [{ ...EMPTY_RATE, margin: activeMargin(activeRates, 'USD') }] });
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Tạo danh sách tỷ giá thất bại'));
     }
   };
 
-  const onApprove = async (id: string) => {
+  const onApproveRows = async (rows: PairedRateRow[]) => {
+    const ids = rows.flatMap(rowRateIds);
+    if (ids.length === 0) return;
     try {
-      await approveRate.mutateAsync(id);
-      message.success('Đã duyệt — tỷ giá ACTIVE, bản cũ đã bị thay');
+      await approveRates.mutateAsync(ids);
+      setSelectedRowKeys([]);
+      message.success(`Đã duyệt ${rows.length} cặp tỷ giá — bản ACTIVE cũ đã được thay thế`);
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Duyệt thất bại'));
     }
   };
 
-  const onReject = async (id: string) => {
+  const onRejectRow = async (row: PairedRateRow) => {
+    const ids = rowRateIds(row);
+    if (ids.length === 0) return;
     try {
-      await rejectRate.mutateAsync(id);
-      message.success('Đã từ chối tỷ giá');
+      await rejectRates.mutateAsync(ids);
+      setSelectedRowKeys((current) => current.filter((key) => key !== row.key));
+      message.success('Đã từ chối cặp tỷ giá');
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Từ chối thất bại'));
     }
@@ -148,7 +166,12 @@ export function ExchangeRateApprovalPage() {
     if (!file) return message.warning('Chọn một ảnh bảng tỷ giá');
     try {
       const result = await parseRateImage.mutateAsync(file as File);
-      setParsedRates(result.rates);
+      setParsedRates(result.rates.map((rate) => ({
+        ...rate,
+        margin: rate.rateType === 'FX_BUY' || rate.rateType === 'FX_SELL'
+          ? activeMargin(activeRates, rate.fromCurrency)
+          : 0,
+      })));
       message.success(`Đã nhận dạng ${result.rates.length} tỷ giá`);
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Không thể phân tích ảnh tỷ giá'));
@@ -191,6 +214,14 @@ export function ExchangeRateApprovalPage() {
 
   const activeRows = pairRates(activeRates);
   const pendingRows = pairRates(pendingRates);
+  const approvableRows = pendingRows.filter(isCompleteRatePair);
+  const selectedRows = approvableRows.filter((row) => selectedRowKeys.includes(row.key));
+  const allRowsSelected = approvableRows.length > 0 && selectedRows.length === approvableRows.length;
+
+  useEffect(() => {
+    const validKeys = new Set(pairRates(pendingRates).filter(isCompleteRatePair).map((row) => row.key));
+    setSelectedRowKeys((current) => current.filter((key) => validKeys.has(key)));
+  }, [pendingRates]);
 
   const pairedColumns: ColumnsType<PairedRateRow> = [
     {
@@ -237,26 +268,30 @@ export function ExchangeRateApprovalPage() {
   ];
 
   const renderPendingActions = (row: PairedRateRow) => {
-    const rates = [
-      row.buy && { label: 'Mua', rate: row.buy },
-      row.sell && { label: 'Bán', rate: row.sell },
-      row.bank && { label: 'Ngân hàng', rate: row.bank },
-    ].filter(Boolean) as Array<{ label: string; rate: ExchangeRateDto }>;
-    if (!canApprove || rates.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+    if (!canApprove || rowRateIds(row).length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
+    const complete = isCompleteRatePair(row);
 
     return (
-      <Space direction="vertical" size={4}>
-        {rates.map(({ label, rate }) => (
-          <Space key={rate.id} size={2}>
-            <Typography.Text className="w-11 text-xs!" type="secondary">{label}</Typography.Text>
-            <Popconfirm title={`Duyệt giá ${label.toLowerCase()}?`} onConfirm={() => onApprove(rate.id)}>
-              <Tooltip title={`Duyệt giá ${label.toLowerCase()}`}><Button type="primary" size="small" aria-label={`Duyệt giá ${label}`} icon={<CheckOutlined />} /></Tooltip>
-            </Popconfirm>
-            <Popconfirm title={`Từ chối giá ${label.toLowerCase()}?`} onConfirm={() => onReject(rate.id)}>
-              <Tooltip title={`Từ chối giá ${label.toLowerCase()}`}><Button danger size="small" aria-label={`Từ chối giá ${label}`} icon={<CloseOutlined />} /></Tooltip>
-            </Popconfirm>
-          </Space>
-        ))}
+      <Space direction="vertical" size={6} className="w-full">
+        <Button
+          block
+          type="primary"
+          disabled={!complete}
+          loading={approveRates.isPending}
+          onClick={() => void onApproveRows([row])}
+          icon={<CheckOutlined />}
+        >
+          {complete ? 'Duyệt cặp' : 'Thiếu mua/bán'}
+        </Button>
+        <Button
+          block
+          danger
+          loading={rejectRates.isPending}
+          onClick={() => void onRejectRow(row)}
+          icon={<CloseOutlined />}
+        >
+          Từ chối
+        </Button>
       </Space>
     );
   };
@@ -270,7 +305,7 @@ export function ExchangeRateApprovalPage() {
       responsive: ['lg'],
       render: () => <Tag color={STATUS_COLOR.DRAFT}>DRAFT</Tag>,
     },
-    { title: 'Thao tác', key: 'action', fixed: 'right', width: 125, render: (_, row) => renderPendingActions(row) },
+    { title: 'Thao tác', key: 'action', fixed: 'right', width: 150, align: 'center', render: (_, row) => renderPendingActions(row) },
   ];
 
   return (
@@ -319,6 +354,11 @@ export function ExchangeRateApprovalPage() {
                                 if (category !== 'FX') {
                                   form.setFieldValue(['rates', field.name, 'fromCurrency'], 'USD');
                                   form.setFieldValue(['rates', field.name, 'margin'], 0);
+                                } else {
+                                  const currency = normalizeCurrencyCode(
+                                    form.getFieldValue(['rates', field.name, 'fromCurrency']) || 'USD',
+                                  );
+                                  form.setFieldValue(['rates', field.name, 'margin'], activeMargin(activeRates, currency));
                                 }
                               }}
                             />
@@ -327,7 +367,12 @@ export function ExchangeRateApprovalPage() {
                         <Col xs={24} md={5}>
                           <Form.Item {...field} name={[field.name, 'fromCurrency']} label="Ngoại tệ" className="mb-0"
                             rules={[{ required: true, message: 'Chọn ngoại tệ' }]}>
-                            <CurrencyCodeSelect disabled={watchedRates[index]?.category !== 'FX'} />
+                            <CurrencyCodeSelect
+                              disabled={watchedRates[index]?.category !== 'FX'}
+                              onCurrencyChange={(currency) => {
+                                form.setFieldValue(['rates', field.name, 'margin'], activeMargin(activeRates, currency));
+                              }}
+                            />
                           </Form.Item>
                         </Col>
                         <Col xs={24} md={5}>
@@ -341,6 +386,9 @@ export function ExchangeRateApprovalPage() {
                             name={[field.name, 'margin']}
                             label="Biên độ"
                             className="mb-0"
+                            extra={watchedRates[index]?.category === 'FX'
+                              ? `Mặc định từ tỷ giá ACTIVE ${normalizeCurrencyCode(watchedRates[index]?.fromCurrency || 'USD')}: ${formatExchangeRate(activeMargin(activeRates, watchedRates[index]?.fromCurrency || 'USD'), 6)} VND`
+                              : 'Paid và Ngân hàng mặc định 0 VND'}
                             rules={[{ type: 'number', min: 0, message: 'Biên độ không được âm' }]}
                           >
                             <InputNumber
@@ -361,7 +409,8 @@ export function ExchangeRateApprovalPage() {
                     </div>
                   ))}
                   <Button type="dashed" block className="h-11!" icon={<PlusOutlined />}
-                    disabled={fields.length >= 50} onClick={() => add({ ...EMPTY_RATE })}>
+                    disabled={fields.length >= 50}
+                    onClick={() => add({ ...EMPTY_RATE, margin: activeMargin(activeRates, 'USD') })}>
                     Thêm tỷ giá
                   </Button>
                 </Space>
@@ -382,13 +431,48 @@ export function ExchangeRateApprovalPage() {
           dataSource={activeRows} scroll={{ x: 720 }} pagination={false} size="small" tableLayout="fixed" />
       </Card>
 
-      <Card title="Tỷ giá thay thế chờ duyệt" size="small">
+      <Card
+        title="Tỷ giá thay thế chờ duyệt"
+        size="small"
+        extra={canApprove && (
+          <Space wrap>
+            <Checkbox
+              checked={allRowsSelected}
+              indeterminate={selectedRows.length > 0 && !allRowsSelected}
+              disabled={approvableRows.length === 0 || approveRates.isPending}
+              onChange={(event) => setSelectedRowKeys(event.target.checked ? approvableRows.map((row) => row.key) : [])}
+            >
+              Chọn tất cả
+            </Checkbox>
+            <Typography.Text type="secondary">Đã chọn {selectedRows.length}/{approvableRows.length} cặp</Typography.Text>
+            <Button
+              type="primary"
+              size="large"
+              icon={<CheckOutlined />}
+              disabled={selectedRows.length === 0}
+              loading={approveRates.isPending}
+              onClick={() => void onApproveRows(selectedRows)}
+            >
+              Duyệt đã chọn
+            </Button>
+          </Space>
+        )}
+      >
         <Table<PairedRateRow>
           className="exchange-rate-table"
           rowKey="key"
           loading={isLoadingPending}
           columns={pendingColumns}
           dataSource={pendingRows}
+          rowSelection={canApprove ? {
+            selectedRowKeys,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedRowKeys(keys.map(String)),
+            getCheckboxProps: (row) => ({
+              disabled: !isCompleteRatePair(row),
+              name: `${rateCategoryLabel(row.category)} ${row.fromCurrency}`,
+            }),
+          } : undefined}
           scroll={{ x: 860 }}
           size="small"
           tableLayout="fixed"
@@ -512,7 +596,17 @@ function normalizeCurrencyCode(value?: string) {
   return String(value ?? '').replace(/[^a-z]/gi, '').toUpperCase().slice(0, 3);
 }
 
-function CurrencyCodeSelect({ value, onChange, disabled }: { value?: string; onChange?: (value: string) => void; disabled?: boolean }) {
+function CurrencyCodeSelect({
+  value,
+  onChange,
+  onCurrencyChange,
+  disabled,
+}: {
+  value?: string;
+  onChange?: (value: string) => void;
+  onCurrencyChange?: (value: string) => void;
+  disabled?: boolean;
+}) {
   return (
     <Select
       mode="tags"
@@ -525,7 +619,11 @@ function CurrencyCodeSelect({ value, onChange, disabled }: { value?: string; onC
       options={RATE_CURRENCY_OPTIONS}
       placeholder="Chọn hoặc nhập mã"
       disabled={disabled}
-      onChange={(values) => onChange?.(normalizeCurrencyCode(values[values.length - 1]))}
+      onChange={(values) => {
+        const currency = normalizeCurrencyCode(values[values.length - 1]);
+        onChange?.(currency);
+        onCurrencyChange?.(currency);
+      }}
     />
   );
 }
@@ -569,6 +667,26 @@ function buildRatePayload(rateType: ExchangeRateType, fromCurrency: string, rate
 
 function rateMargin(row: PairedRateRow) {
   return row.buy?.margin ?? row.sell?.margin ?? row.bank?.margin ?? 0;
+}
+
+function activeMargin(rates: ExchangeRateDto[], currency: string) {
+  const normalizedCurrency = normalizeCurrencyCode(currency);
+  return rates.find((rate) => (
+    (rate.rateType === 'FX_BUY' || rate.rateType === 'FX_SELL')
+    && rate.fromCurrency === normalizedCurrency
+    && rate.toCurrency === 'VND'
+  ))?.margin ?? 0;
+}
+
+function rowRateIds(row: PairedRateRow) {
+  return [row.buy?.id, row.sell?.id, row.bank?.id].filter(Boolean) as string[];
+}
+
+function isCompleteRatePair(row: PairedRateRow) {
+  if (row.category === 'BANK') {
+    return Boolean(row.bank && (row.bank.buyRate ?? row.bank.rate) && row.bank.sellRate);
+  }
+  return Boolean(row.buy && row.sell);
 }
 
 function rateCategoryLabel(category: RateCategory) {
