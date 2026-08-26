@@ -147,6 +147,13 @@
   padding: 22px;
 }
 
+.transaction-form-card .ant-input-number,
+.transaction-form-card .ant-input-number-affix-wrapper,
+.transaction-form-card .ant-input-number-group-wrapper,
+.transaction-form-card .ant-input-number-group-wrapper .ant-input-number {
+  width: 100%;
+}
+
 .transaction-step {
   border: 1px solid #e5e7eb;
   border-radius: 999px;

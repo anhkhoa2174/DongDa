@@ -661,6 +661,7 @@ model domestic_transfer_details {
   fee                   Decimal               @default(0) @db.Decimal(20, 2)
   counterparty_bank     String?               @db.VarChar(150)
   counterparty_account  String?               @db.VarChar(100)
+  transfer_reference    String?               @db.VarChar(100)
   beneficiary_name      String                @db.VarChar(255)
   beneficiary_phone     String?               @db.VarChar(30)
   transfer_note         String?
@@ -1158,6 +1159,27 @@ model user_roles {
 model wu_transaction_details {
   transaction_id        String                @id @db.Uuid
   mtcn                  String                @db.VarChar(50)
+  sending_country       String?               @db.VarChar(100)
+  sender_state          String?               @db.VarChar(100)
+  receiver_date_of_birth DateTime?            @db.Date
+  current_address       String?
+  identity_address      String?
+  identity_document_type String?              @db.VarChar(50)
+  identity_document_number String?            @db.VarChar(100)
+  identity_issuing_country String?             @db.VarChar(100)
+  identity_issue_date   DateTime?             @db.Date
+  identity_expiry_date  DateTime?             @db.Date
+  has_visa              Boolean               @default(false)
+  visa_type             String?               @db.VarChar(100)
+  visa_number           String?               @db.VarChar(100)
+  visa_issue_date       DateTime?             @db.Date
+  visa_expiry_date      DateTime?             @db.Date
+  employment_status     String?               @db.VarChar(100)
+  country_of_birth      String?               @db.VarChar(100)
+  sender_relationship   String?               @db.VarChar(100)
+  receive_purpose       String?               @db.VarChar(150)
+  sender_name           String?               @db.VarChar(150)
+  received_date         DateTime?             @db.Date
   paid_currency         currency_code         @default(USD)
   payout_currency       currency_code         @default(USD)
   wu_usd_amount         Decimal               @default(0) @db.Decimal(20, 2)

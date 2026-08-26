@@ -18,6 +18,8 @@ describe('CreateDomesticTransferUseCase', () => {
       branchId: 'branch-id',
       transferType: 'CASH_TO_BANK' as const,
       bankAccountId: 'bank-account-id',
+      customerName: 'NGUYEN VAN A', counterpartyBank: 'ACB', counterpartyAccount: '123456789',
+      transferReference: 'CK-001', transferNote: 'Thanh toan',
       amount: 1_000_000,
       fee: 10_000,
     };
@@ -31,6 +33,8 @@ describe('CreateDomesticTransferUseCase', () => {
       branchId: 'branch-id',
       transferType: 'BANK_TO_CASH' as const,
       bankAccountId: 'bank-account-id',
+      customerName: 'NGUYEN VAN A', counterpartyBank: 'ACB', counterpartyAccount: '123456789',
+      transferReference: 'CK-002', transferNote: 'Thanh toan',
       amount: 100_000,
       fee: 100_000,
     };

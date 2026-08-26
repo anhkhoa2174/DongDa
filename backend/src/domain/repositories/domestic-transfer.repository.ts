@@ -8,6 +8,7 @@ export interface CreateDomesticTransferInput {
   customerPhone?: string;
   counterpartyBank?: string;
   counterpartyAccount?: string;
+  transferReference: string;
   amount: number;
   fee: number;
   transferNote?: string;

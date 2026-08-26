@@ -40,6 +40,7 @@ export interface CreateDomesticTransferPayload {
   customerPhone?: string;
   counterpartyBank?: string;
   counterpartyAccount?: string;
+  transferReference: string;
   amount: number;
   fee: number;
   transferNote?: string;
@@ -52,4 +53,6 @@ export const domesticTransferApi = {
     httpClient.get<DomesticTransferBankAccountDto[]>('/domestic-transfers/bank-accounts').then((response) => response.data),
   create: (payload: CreateDomesticTransferPayload) =>
     httpClient.post<DomesticTransferDto>('/domestic-transfers', payload).then((response) => response.data),
+  exportForm: (payload: CreateDomesticTransferPayload) =>
+    httpClient.post<Blob>('/domestic-transfers/form', payload, { responseType: 'blob' }).then((response) => response.data),
 };

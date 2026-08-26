@@ -12,7 +12,6 @@ export class CreateDomesticTransferDto {
   @IsUUID()
   bankAccountId: string;
 
-  @IsOptional()
   @IsString()
   @MaxLength(150)
   customerName?: string;
@@ -22,15 +21,17 @@ export class CreateDomesticTransferDto {
   @MaxLength(30)
   customerPhone?: string;
 
-  @IsOptional()
   @IsString()
   @MaxLength(150)
   counterpartyBank?: string;
 
-  @IsOptional()
   @IsString()
   @MaxLength(100)
   counterpartyAccount?: string;
+
+  @IsString()
+  @MaxLength(100)
+  transferReference: string;
 
   @IsInt({ message: 'Số tiền chuyển phải là số nguyên VND' })
   @IsPositive()
@@ -40,7 +41,6 @@ export class CreateDomesticTransferDto {
   @Min(0)
   fee: number;
 
-  @IsOptional()
   @IsString()
   @MaxLength(500)
   transferNote?: string;

@@ -1,8 +1,8 @@
-import { BankOutlined } from '@ant-design/icons';
-import { Alert, Col, Row, Tag, Typography } from 'antd';
+import { BankOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Col, Row, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import {
   TransactionWorkspacePage,
@@ -43,6 +43,8 @@ type DomesticTransferTransactionsPageProps = {
 };
 
 export function DomesticTransferTransactionsPage({ createOnly, onCreated }: DomesticTransferTransactionsPageProps = {}) {
+  const { message } = App.useApp();
+  const [isExporting, setIsExporting] = useState(false);
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const { data: branches = [] } = useBranches();
@@ -75,26 +77,29 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       name: 'branchId', label: 'Chi nhánh', kind: 'select', required: true,
       placeholder: 'Chọn chi nhánh thực hiện', options: branchOptions, readOnly: isBranchUser, span: 12,
     },
-    { name: 'customerName', label: 'Tên khách hàng (không bắt buộc)', kind: 'text', span: 12, maxLength: 150 },
-    {
-      name: 'customerPhone', label: 'Số điện thoại (không bắt buộc)', kind: 'text', span: 12,
-      maxLength: 11, pattern: /^0\d{9,10}$/, patternMessage: 'Số điện thoại phải gồm 10-11 chữ số và bắt đầu bằng 0',
-    },
     {
       name: 'bankAccountId', label: 'Tài khoản ngân hàng công ty', kind: 'select', required: true,
-      placeholder: 'Chọn tài khoản nhận/chuyển tiền', options: bankAccountOptions, span: 24,
+      placeholder: 'Chọn tài khoản nhận/chuyển tiền', options: bankAccountOptions, span: 12,
     },
-    { name: 'counterpartyBank', label: 'Ngân hàng của khách/đối tác', kind: 'text', span: 12, maxLength: 150 },
-    { name: 'counterpartyAccount', label: 'Số tài khoản của khách/đối tác', kind: 'text', span: 12, maxLength: 100 },
+    { name: 'customerName', label: 'Họ tên chủ tài khoản', kind: 'text', required: true, span: 12, maxLength: 150 },
+    {
+      name: 'customerPhone', label: 'Số điện thoại người gửi (không bắt buộc)', kind: 'text', span: 12,
+      maxLength: 11, pattern: /^0\d{9,10}$/, patternMessage: 'Số điện thoại phải gồm 10-11 chữ số và bắt đầu bằng 0',
+    },
+    { name: 'counterpartyBank', label: 'Ngân hàng', kind: 'text', required: true, span: 12, maxLength: 150 },
+    { name: 'counterpartyAccount', label: 'Số tài khoản', kind: 'text', required: true, span: 12, maxLength: 100 },
     {
       name: 'amount', label: 'Số tiền giao dịch', kind: 'number', required: true,
       min: 0, positive: true, precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
+      placeholder: 'Ví dụ: 1,000,000',
     },
     {
       name: 'fee', label: 'Phí giao dịch', kind: 'number', min: 0,
       precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
+      placeholder: 'Ví dụ: 10,000',
     },
-    { name: 'transferNote', label: 'Nội dung chuyển tiền (không bắt buộc)', kind: 'text', span: 24, maxLength: 500 },
+    { name: 'transferNote', label: 'Nội dung chuyển tiền', kind: 'text', required: true, span: 16, maxLength: 500 },
+    { name: 'transferReference', label: 'Giao dịch số', kind: 'text', required: true, span: 8, maxLength: 100 },
   ], [bankAccountOptions, branchOptions, isBranchUser]);
 
   const summaryRenderer = (values: TransactionFormValues) => {
@@ -191,6 +196,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
           customerPhone: values.customerPhone ? String(values.customerPhone) : undefined,
           counterpartyBank: values.counterpartyBank ? String(values.counterpartyBank) : undefined,
           counterpartyAccount: values.counterpartyAccount ? String(values.counterpartyAccount) : undefined,
+          transferReference: String(values.transferReference),
           amount: Number(values.amount),
           fee: Number(values.fee ?? 0),
           transferNote: values.transferNote ? String(values.transferNote) : undefined,
@@ -204,8 +210,58 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
         ]);
       }}
       summaryRenderer={summaryRenderer}
+      createFormActions={(form) => (
+        <Button
+          icon={<DownloadOutlined />}
+          loading={isExporting}
+          onClick={async () => {
+            try {
+              const values = await form.validateFields();
+              setIsExporting(true);
+              const payload = toDomesticTransferPayload(values, isBranchUser && user?.branchId ? user.branchId : undefined);
+              const blob = await domesticTransferApi.exportForm(payload);
+              downloadBlob(blob, `GIAY-CHUYEN-KHOAN-${payload.transferReference}.xlsx`);
+              message.success('Đã xuất giấy chuyển khoản');
+            } catch (error: unknown) {
+              if (error && typeof error === 'object' && 'errorFields' in error) return;
+              message.error('Không thể xuất giấy chuyển khoản');
+            } finally {
+              setIsExporting(false);
+            }
+          }}
+        >
+          Xuất giấy chuyển khoản
+        </Button>
+      )}
       canCreateOverride={bankAccounts.length === 0 ? false : isControlUser ? true : undefined}
       onCreated={onCreated}
     />
   );
+}
+
+function toDomesticTransferPayload(values: TransactionFormValues, branchId?: string): CreateDomesticTransferPayload {
+  return {
+    branchId: branchId ?? String(values.branchId),
+    transferType: values.transactionType as DomesticTransferType,
+    bankAccountId: String(values.bankAccountId),
+    customerName: String(values.customerName),
+    customerPhone: values.customerPhone ? String(values.customerPhone) : undefined,
+    counterpartyBank: String(values.counterpartyBank),
+    counterpartyAccount: String(values.counterpartyAccount),
+    transferReference: String(values.transferReference),
+    amount: Number(values.amount),
+    fee: Number(values.fee ?? 0),
+    transferNote: String(values.transferNote),
+  };
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

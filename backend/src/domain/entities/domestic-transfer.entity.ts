@@ -21,6 +21,7 @@ export interface DomesticTransferTransaction {
   bankAccountLabel: string;
   counterpartyBank?: string | null;
   counterpartyAccount?: string | null;
+  transferReference?: string | null;
   amount: number;
   fee: number;
   cashAmount: number;

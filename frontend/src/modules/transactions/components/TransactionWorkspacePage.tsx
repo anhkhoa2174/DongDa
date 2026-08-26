@@ -105,6 +105,7 @@ type TransactionWorkspacePageProps = {
   showShiftHeader?: boolean;
   canCreateOverride?: boolean;
   onCreated?: () => void;
+  createFormActions?: (form: FormInstance<TransactionFormValues>) => ReactNode;
 };
 
 const statusMeta: Record<TransactionStatus, { color: string; label: string }> = {
@@ -139,6 +140,7 @@ export function TransactionWorkspacePage({
   showShiftHeader = true,
   canCreateOverride,
   onCreated,
+  createFormActions,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
@@ -362,6 +364,7 @@ export function TransactionWorkspacePage({
             <TransactionFields fields={fields} form={createForm} />
             {summaryRenderer && <TransactionFormSummary form={createForm} renderer={summaryRenderer} />}
             <div className="flex justify-end gap-2">
+              {createFormActions?.(createForm)}
               <Button onClick={() => createForm.resetFields()}>Nhập lại</Button>
               <Button type="primary" htmlType="submit" loading={isCreating}>
                 {createLabel}
@@ -630,7 +633,7 @@ function renderField(
   disabled = false,
   values: TransactionFormValues = {},
 ) {
-  const controlClassName = "h-10! w-full";
+  const controlClassName = 'h-10! w-full';
 
   if (field.kind === 'segmented') {
     return <Segmented className={controlClassName} block disabled={disabled || field.readOnly} options={field.options ?? []} />;
