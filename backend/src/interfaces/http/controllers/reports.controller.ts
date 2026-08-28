@@ -12,6 +12,7 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { GetSummaryUseCase } from '../../../application/use-cases/reports/get-summary.use-case';
 import { buildReportModel } from '../../../application/use-cases/reports/report-model';
+import { buildPdfBuffer } from '../../../application/use-cases/reports/build-pdf';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 
 class GenerateReportDto {
@@ -45,9 +46,6 @@ export class ReportsController {
 
   @Post('generate')
   async generate(@Request() req: any, @Body() dto: GenerateReportDto, @Res({ passthrough: true }) res: Response) {
-    if (dto.format === 'PDF') {
-      throw new BadRequestException('Xuất PDF chưa được hỗ trợ. Vui lòng dùng Excel hoặc Xem trước.');
-    }
     const generatedAt = new Date();
     const data = await this.getSummary.execute(this.reportFilter(dto.branchId, dto.dateFrom, dto.dateTo));
     const model = buildReportModel(dto.reportType, data, {
@@ -63,6 +61,17 @@ export class ReportsController {
       sourceType: 'REPORT_GENERATED',
       sourceId: req.user.id,
     }, { userIds: [req.user.id] });
+
+    // PDF: dùng jsPDF + autoTable
+    if (dto.format === 'PDF') {
+      const pdfBuffer = buildPdfBuffer(model);
+      const fileName = `bao-cao-${dto.reportType}-${generatedAt.toISOString().slice(0, 10)}.pdf`;
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+      });
+      return new StreamableFile(pdfBuffer);
+    }
 
     // EXCEL: dựng workbook thật và trả file tải về.
     if (dto.format === 'EXCEL') {

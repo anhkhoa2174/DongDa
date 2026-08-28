@@ -104,8 +104,9 @@ export interface CentralFundConversion {
   items: Array<{
     currencyCode: CurrencyCode;
     amount: number;
-    rate: number;
-    vndAmount: number;
+    rate: number;        // Tỷ giá áp dụng
+    deduction: number;  // Khấu trừ (VNĐ), mặc định 0
+    vndAmount: number;  // = amount × rate - deduction
   }>;
   totalVndAmount: number;
   note?: string | null;

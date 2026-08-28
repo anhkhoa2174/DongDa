@@ -30,7 +30,7 @@ export class PrismaFundRepository implements IFundRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
-  ) {}
+  ) { }
 
   async listBalances(branchId?: string): Promise<FundAccountBalance[]> {
     const accounts = await this.prisma.fund_accounts.findMany({
@@ -488,8 +488,10 @@ export class PrismaFundRepository implements IFundRepository {
           throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
         }
 
-        const rate = await this.activeConversionRate(tx, item.currencyCode);
-        const vndAmount = Math.round(item.amount * rate);
+        // Dùng tỷ giá và khấu trừ do người dùng nhập (theo yêu cầu DongDav6)
+        const rate = item.rate;
+        const deduction = item.deduction ?? 0;
+        const vndAmount = Math.max(0, Math.round(item.amount * rate) - deduction);
         const description = input.note
           ? `Quy đổi Quỹ A ${item.currencyCode} sang VND - ${input.note}`
           : `Quy đổi Quỹ A ${item.currencyCode} sang VND`;
@@ -510,13 +512,15 @@ export class PrismaFundRepository implements IFundRepository {
             business_date: businessDate, branch_id: headOffice.id,
             source_type: 'CASH_MOVEMENT', source_id: foreignMovement.id, status: 'POSTED', posted_at: now,
             description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
-            ledger_lines: { create: [{
-              fund_account_id: foreignAccount.id, direction: 'CREDIT', amount: item.amount,
-              currency_code: item.currencyCode, exchange_rate: rate, base_amount_vnd: vndAmount,
-            }] },
+            ledger_lines: {
+              create: [{
+                fund_account_id: foreignAccount.id, direction: 'CREDIT', amount: item.amount,
+                currency_code: item.currencyCode, exchange_rate: rate, base_amount_vnd: vndAmount,
+              }]
+            },
           },
         });
-        resultItems.push({ currencyCode: item.currencyCode, amount: item.amount, rate, vndAmount });
+        resultItems.push({ currencyCode: item.currencyCode, amount: item.amount, rate, deduction, vndAmount });
       }
 
       const totalVndAmount = resultItems.reduce((sum, item) => sum + item.vndAmount, 0);
@@ -535,10 +539,12 @@ export class PrismaFundRepository implements IFundRepository {
           entry_no: `LE-${voucherNo}-IN`, business_date: businessDate, branch_id: headOffice.id,
           source_type: 'CASH_MOVEMENT', source_id: vndMovement.id, status: 'POSTED', posted_at: now,
           description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
-          ledger_lines: { create: [{
-            fund_account_id: vndAccount.id, direction: 'DEBIT', amount: totalVndAmount,
-            currency_code: 'VND', exchange_rate: 1, base_amount_vnd: totalVndAmount,
-          }] },
+          ledger_lines: {
+            create: [{
+              fund_account_id: vndAccount.id, direction: 'DEBIT', amount: totalVndAmount,
+              currency_code: 'VND', exchange_rate: 1, base_amount_vnd: totalVndAmount,
+            }]
+          },
         },
       });
       await this.notifications.notifyUsers({

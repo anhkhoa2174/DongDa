@@ -26,6 +26,7 @@ export class PrismaDebtRepository implements IDebtRepository {
     private readonly notifications: NotificationService,
   ) {}
 
+  // Updated: tách công nợ theo giao dịch — mỗi giao dịch tạo 1 debt_movements riêng (source_type/source_id)
   async recordDebt(input: RecordDebtInput): Promise<DebtMovement> {
     const businessDate = toVietnamBusinessDate(input.businessDate ?? new Date());
     const now = new Date();
@@ -515,6 +516,7 @@ export class PrismaDebtRepository implements IDebtRepository {
 
   // ── helpers ──────────────────────────────────────────────
 
+  // Updated: gom công nợ theo List (Chi nhánh, Ngày) — 1 sổ nợ / (chi nhánh, provider, loại tiền, ngày)
   private async ensureAccount(
     db: any, branchId: string, providerCode: string, currencyCode: CurrencyCode, businessDate: Date,
   ) {

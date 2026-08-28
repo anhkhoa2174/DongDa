@@ -62,6 +62,9 @@ export class ListWuUseCase {
   execute(filter?: ListWuFilter): Promise<WuTransaction[]> {
     return this.wuRepo.list(filter);
   }
+  findById(id: string): Promise<WuTransaction | null> {
+    return this.wuRepo.findById(id);
+  }
 }
 
 export function validateAppliedRate(value: number, firstRate: number, secondRate: number) {

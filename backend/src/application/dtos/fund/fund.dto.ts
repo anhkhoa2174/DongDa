@@ -2,7 +2,7 @@
 // Layer: Application
 
 import {
-  ArrayMaxSize, ArrayMinSize, IsEnum, IsOptional, IsNumber, IsPositive,
+  ArrayMaxSize, ArrayMinSize, IsEnum, IsOptional, IsNumber, IsPositive, Min,
   IsUUID, ValidateNested, IsIn, IsString, MaxLength, IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -85,6 +85,7 @@ export class CreateCentralFundMovementDto {
   note?: string;
 }
 
+// Updated: bán ngoại tệ Quỹ A thêm ô Tỷ giá và Khấu trừ, sau đó mới tính thành tiền VNĐ
 export class ConvertCentralFundItemDto {
   @IsIn(CURRENCIES.filter((currency) => currency !== 'VND' && currency !== 'USD'))
   currencyCode: string;
@@ -92,6 +93,17 @@ export class ConvertCentralFundItemDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
+
+  // Tỷ giá áp dụng khi bán ngoại tệ Quỹ A
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  rate: number;
+
+  // Khấu trừ (VNĐ) — tính sau: vndAmount = amount × rate - deduction
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(0)
+  deduction?: number;
 }
 
 export class ConvertCentralFundDto {

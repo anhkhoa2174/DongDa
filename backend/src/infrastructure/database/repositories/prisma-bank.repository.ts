@@ -163,6 +163,102 @@ export class PrismaBankRepository implements IBankRepository {
     await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${bankAccountId}::uuid FOR UPDATE`;
   }
 
+  // Ghi nhận tạm ứng CK hằng ngày tại chi nhánh
+  async recordAdvanceCk(input: import('../../../domain/repositories/bank.repository').RecordAdvanceCkInput): Promise<BankMovement> {
+    const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockBankAccount(tx, input.bankAccountId);
+      const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
+      if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
+      const before = Number(bankAcc.current_balance);
+      const after = before - input.amount; // CK ra → số dư giảm
+      const movement = await tx.bank_balance_movements.create({
+        data: {
+          movement_no: `ADV-CK-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          bank_account_id: input.bankAccountId,
+          branch_id: input.branchId,
+          movement_type: 'ADVANCE_CK' as any,
+          business_date: businessDate,
+          amount: input.amount,
+          currency_code: bankAcc.currency_code,
+          balance_before: before,
+          balance_after: after,
+          description: input.description,
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.createdByUserId,
+        },
+      });
+      await tx.bank_accounts.update({
+        where: { id: input.bankAccountId },
+        data: { current_balance: after, available_balance: after },
+      });
+      return toMovement(movement);
+    });
+  }
+
+  // Hoàn lại tạm ứng CK cuối ngày
+  async settleAdvanceCk(input: import('../../../domain/repositories/bank.repository').SettleAdvanceCkInput): Promise<BankMovement> {
+    const now = new Date();
+    const businessDate = toVietnamBusinessDate(now);
+    return this.prisma.$transaction(async (tx) => {
+      const advance = await tx.bank_balance_movements.findUnique({ where: { id: input.advanceMovementId } });
+      if (!advance || advance.movement_type !== 'ADVANCE_CK') {
+        throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
+      }
+      await this.lockBankAccount(tx, input.bankAccountId);
+      const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
+      if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
+      const before = Number(bankAcc.current_balance);
+      const after = before + Number(advance.amount); // hoàn lại → số dư tăng
+      const movement = await tx.bank_balance_movements.create({
+        data: {
+          movement_no: `ADV-SETTLE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          bank_account_id: input.bankAccountId,
+          branch_id: advance.branch_id,
+          movement_type: 'ADVANCE_SETTLE' as any,
+          business_date: businessDate,
+          amount: Number(advance.amount),
+          currency_code: bankAcc.currency_code,
+          balance_before: before,
+          balance_after: after,
+          description: input.note ?? `Hoàn lại CK ${advance.movement_no}`,
+          bank_reference: input.advanceMovementId, // liên kết tới phiếu gốc
+          status: 'POSTED',
+          posted_at: now,
+          created_by_user_id: input.settledByUserId,
+        },
+      });
+      await tx.bank_accounts.update({
+        where: { id: input.bankAccountId },
+        data: { current_balance: after, available_balance: after },
+      });
+      return toMovement(movement);
+    });
+  }
+
+  // Liệt kê tạm ứng CK theo filter
+  async listAdvances(filter?: import('../../../domain/repositories/bank.repository').ListAdvancesFilter): Promise<BankMovement[]> {
+    const types = (filter?.status === 'SETTLED'
+      ? ['ADVANCE_SETTLE']
+      : filter?.status === 'ADVANCE_CK'
+        ? ['ADVANCE_CK']
+        : ['ADVANCE_CK', 'ADVANCE_SETTLE']) as any[];
+    const rows = await this.prisma.bank_balance_movements.findMany({
+      where: {
+        movement_type: { in: types },
+        ...(filter?.bankAccountId && { bank_account_id: filter.bankAccountId }),
+        ...(filter?.branchId && { branch_id: filter.branchId }),
+        ...(filter?.businessDate && { business_date: filter.businessDate }),
+      },
+      orderBy: { occurred_at: 'desc' },
+      take: 200,
+    });
+    return rows.map(toMovement);
+  }
+
+
   private async lockDebtAccount(tx: any, debtAccountId: string) {
     await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${debtAccountId}::uuid FOR UPDATE`;
   }

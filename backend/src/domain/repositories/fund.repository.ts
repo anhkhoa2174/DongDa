@@ -42,7 +42,12 @@ export interface ListFundMovementHistoryFilter {
 }
 
 export interface ConvertCentralFundInput {
-  items: Array<{ currencyCode: CurrencyCode; amount: number }>;
+  items: Array<{
+    currencyCode: CurrencyCode;
+    amount: number;
+    rate: number;       // tỷ giá áp dụng
+    deduction?: number; // khấu trừ VNĐ (mặc định 0)
+  }>;
   note?: string;
   createdByUserId: string;
 }

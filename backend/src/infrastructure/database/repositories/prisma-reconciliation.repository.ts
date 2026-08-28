@@ -347,4 +347,117 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       }});
     }
   }
+
+  // ─── PENDING JOURNAL (STAFF upload → KTTH duyệt) ────────────────────────────
+  // Dùng bảng reconciliation_runs với status=PENDING_REVIEW (không cần migrate DB).
+  // Rows đã parse được lưu vào reconciliation_items với status=JOURNAL_ONLY.
+
+  async savePendingJournal(
+    input: import('../../../domain/repositories/reconciliation.repository').SavePendingJournalInput,
+  ): Promise<import('../../../domain/repositories/reconciliation.repository').PendingJournalSummary> {
+    const runNo = `PEND-${input.provider}-${Date.now()}`;
+    const journalTotal = input.rows.reduce((s, r) => s + r.amount, 0);
+    const run = await this.prisma.reconciliation_runs.create({
+      data: {
+        run_no: runNo,
+        provider: input.provider as any,
+        business_date: input.businessDate,
+        scope: input.provider === 'WU' ? 'BRANCH' : 'COMPANY',
+        branch_id: input.branchId ?? null,
+        currency_code: 'USD',
+        status: 'PENDING_REVIEW',
+        system_total_amount: 0,
+        journal_total_amount: journalTotal,
+        variance_amount: 0,
+        created_by_user_id: input.createdByUserId,
+        // Lưu rows đã parse thành reconciliation_items (JOURNAL_ONLY)
+        reconciliation_items: {
+          create: input.rows.map((row) => ({
+            status: 'JOURNAL_ONLY',
+            code: row.code,
+            currency_code: row.currencyCode as any,
+            branch_id: row.branchId ?? input.branchId ?? null,
+            system_amount: 0,
+            journal_amount: row.amount,
+            variance_amount: row.amount,
+            note: null,
+          })),
+        },
+      },
+    });
+    const branch = run.branch_id
+      ? await this.prisma.branch.findUnique({ where: { id: run.branch_id }, select: { name: true } })
+      : null;
+    return {
+      id: run.id,
+      runNo: run.run_no,
+      provider: run.provider,
+      businessDate: run.business_date,
+      branchId: run.branch_id ?? null,
+      branchName: branch?.name ?? null,
+      parsedRowCount: input.rows.length,
+      uploadedByUserId: input.createdByUserId,
+      uploadedAt: run.created_at,
+      status: 'PENDING_REVIEW',
+    };
+  }
+
+  async listPendingJournals(branchId?: string): Promise<import('../../../domain/repositories/reconciliation.repository').PendingJournalSummary[]> {
+    const runs = await this.prisma.reconciliation_runs.findMany({
+      where: { status: 'PENDING_REVIEW', ...(branchId && { branch_id: branchId }) },
+      include: {
+        branches: { select: { name: true } },
+        reconciliation_items: { select: { id: true } },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+    return runs.map((run: any) => ({
+      id: run.id,
+      runNo: run.run_no,
+      provider: run.provider,
+      businessDate: run.business_date,
+      branchId: run.branch_id ?? null,
+      branchName: run.branches?.name ?? null,
+      parsedRowCount: run.reconciliation_items?.length ?? 0,
+      uploadedByUserId: run.created_by_user_id,
+      uploadedAt: run.created_at,
+      status: 'PENDING_REVIEW' as const,
+    }));
+  }
+
+  async getPendingJournal(id: string): Promise<{ summary: import('../../../domain/repositories/reconciliation.repository').PendingJournalSummary; rows: any[] } | null> {
+    const run = await this.prisma.reconciliation_runs.findUnique({
+      where: { id },
+      include: {
+        branches: { select: { name: true } },
+        reconciliation_items: {
+          select: { code: true, currency_code: true, branch_id: true, journal_amount: true },
+        },
+      },
+    });
+    if (!run || run.status !== 'PENDING_REVIEW') return null;
+    const rows = (run as any).reconciliation_items ?? [];
+    return {
+      summary: {
+        id: run.id,
+        runNo: run.run_no,
+        provider: run.provider,
+        businessDate: run.business_date,
+        branchId: run.branch_id ?? null,
+        branchName: (run as any).branches?.name ?? null,
+        parsedRowCount: rows.length,
+        uploadedByUserId: run.created_by_user_id,
+        uploadedAt: run.created_at,
+        status: 'PENDING_REVIEW' as const,
+      },
+      rows: rows.map((item: any) => ({
+        code: item.code,
+        amount: Number(item.journal_amount),
+        currencyCode: item.currency_code,
+        branchId: item.branch_id,
+      })),
+    };
+  }
 }
+

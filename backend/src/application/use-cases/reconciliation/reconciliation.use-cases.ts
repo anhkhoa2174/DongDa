@@ -6,6 +6,7 @@ import { IReconciliationRepository } from '../../../domain/repositories/reconcil
 import { reconcile } from '../../../domain/entities/reconciliation.entity';
 import type { RunReconciliationDto } from '../../dtos/reconciliation/reconciliation.dto';
 import { toVietnamBusinessDate } from '../../../infrastructure/database/business-date';
+import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 
 @Injectable()
 export class RunReconciliationUseCase {
@@ -46,7 +47,8 @@ export class RunReconciliationUseCase {
       provider: dto.provider,
       businessDate,
       scope,
-      branchId: dto.branchId,
+      // scope COMPANY yêu cầu branch_id NULL (chk_journal_file_scope) — chỉ gán khi scope BRANCH
+      branchId: scope === 'BRANCH' ? dto.branchId : undefined,
       currencyCode,
       result,
       createdByUserId,
@@ -70,3 +72,64 @@ export class ListReconciliationUseCase {
     return this.repo.fundReconciliation(branchId);
   }
 }
+
+// STAFF upload journal WU/MG tại chi nhánh → lưu PENDING_REVIEW, thông báo KTTH
+@Injectable()
+export class UploadJournalUseCase {
+  constructor(
+    @Inject('IReconciliationRepository') private readonly repo: IReconciliationRepository,
+    private readonly notifications: NotificationService,
+  ) {}
+
+  async execute(
+    parsedRows: Array<{ code: string; amount: number; currencyCode?: string; branchId?: string }>,
+    provider: 'WU' | 'MG',
+    businessDateStr: string,
+    branchId: string | undefined,
+    uploadedByUserId: string,
+  ) {
+    if (!businessDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(businessDateStr)) {
+      throw new BadRequestException('businessDate phải có định dạng YYYY-MM-DD');
+    }
+    const businessDate = toVietnamBusinessDate(new Date(`${businessDateStr}T00:00:00+07:00`));
+    const rows = parsedRows.map((row) => ({
+      code: row.code.trim().toUpperCase(),
+      amount: row.amount,
+      currencyCode: row.currencyCode ?? 'USD',
+      branchId: provider === 'WU' ? branchId : row.branchId,
+    }));
+
+    const pending = await this.repo.savePendingJournal({
+      provider,
+      businessDate,
+      branchId,
+      rows,
+      createdByUserId: uploadedByUserId,
+    });
+
+    // Thông báo cho KTTH/GĐ
+    await this.notifications.notifyUsers({
+      title: `Journal ${provider} chờ đối chiếu`,
+      body: `Chi nhánh đã upload ${rows.length} dòng Journal ${provider} ngày ${businessDateStr}. Vui lòng vào Đối chiếu để duyệt.`,
+      sourceType: 'JOURNAL_PENDING_REVIEW',
+      sourceId: pending.id,
+    }, { roles: ['ADMIN', 'MANAGER'] });
+
+    return pending;
+  }
+}
+
+// KTTH/GĐ xem danh sách journal chờ duyệt
+@Injectable()
+export class ListPendingJournalsUseCase {
+  constructor(
+    @Inject('IReconciliationRepository') private readonly repo: IReconciliationRepository,
+  ) {}
+  list(branchId?: string) {
+    return this.repo.listPendingJournals(branchId);
+  }
+  getDetail(id: string) {
+    return this.repo.getPendingJournal(id);
+  }
+}
+

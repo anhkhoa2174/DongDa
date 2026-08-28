@@ -46,6 +46,7 @@ export function buildReportModel(
 
   const sheets: ReportSheet[] = [];
   switch (reportType) {
+    // Updated: Báo cáo Vốn và Quỹ
     case 'fund':
       sheets.push({
         name: 'Tiền mặt',
@@ -56,6 +57,7 @@ export function buildReportModel(
         aoa: [['Loại tiền', 'Số dư'], ...(data.fundA ?? []).map((f: any) => [f.currency, f.balance])],
       });
       break;
+    // Updated: Báo cáo theo dõi chi trả Western Union / thu chi MoneyGram
     case 'wu':
     case 'mg': {
       const s = data.transactions?.[reportType] ?? {};
@@ -71,6 +73,7 @@ export function buildReportModel(
       });
       break;
     }
+    // Updated: Báo cáo Ngoại tệ
     case 'fx': {
       const s = data.transactions?.fx ?? {};
       sheets.push({
@@ -85,6 +88,7 @@ export function buildReportModel(
       });
       break;
     }
+    // Updated: Báo cáo Công nợ (WU/MG chờ thanh toán từ Ngân hàng)
     case 'debt':
       sheets.push({
         name: 'Công nợ',
@@ -102,6 +106,7 @@ export function buildReportModel(
         ],
       });
       break;
+    // Updated: Báo cáo Ngân hàng (sao kê, tồn đầu/cuối theo tài khoản)
     case 'bank':
       sheets.push({
         name: 'Tài khoản ngân hàng',
@@ -114,6 +119,7 @@ export function buildReportModel(
         ],
       });
       break;
+    // Updated: Báo cáo Sai lệch và Rủi ro
     case 'gap':
       sheets.push({
         name: 'Sai lệch / Cảnh báo',
@@ -123,6 +129,7 @@ export function buildReportModel(
         ],
       });
       break;
+    // Updated: Báo cáo Điều động Vốn (lịch sử luân chuyển vốn)
     case 'transfer':
       sheets.push({
         name: 'Điều động vốn',
