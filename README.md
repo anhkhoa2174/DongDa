@@ -308,13 +308,13 @@ Số endpoint được đếm từ các decorator HTTP trong `backend/src/interf
 | Chi nhánh | GĐ tạo chi nhánh; hệ thống tự tạo sổ CASH VND, CASH USD và Quỹ A; theo dõi nhân viên, quỹ, ca, giao dịch, tiền vào/ra | **API THẬT** |
 | Dashboard công ty | Tổng vốn, tiền mặt, ngân hàng, công nợ, KPI vận hành, xu hướng 7 ngày, cơ cấu giao dịch, hiệu quả chi nhánh, tỷ giá active | **API THẬT** |
 | Dashboard chi nhánh | Tổng quan quỹ, KPI, cảnh báo và tồn ngoại tệ của Staff | **MOCK DATA** |
-| Tổng quan giao dịch | Gộp WU, MG, FX; lọc chi nhánh/loại/trạng thái/thời gian; sửa metadata; lập và duyệt phiếu điều chỉnh | **API THẬT** cho WU/MG/FX và phiếu điều chỉnh; chuyển tiền trong nước chưa có dữ liệu API |
+| Tổng quan giao dịch | Gộp WU, MG, FX và chuyển tiền; lọc chi nhánh/loại/trạng thái/thời gian; sửa metadata; lập và duyệt phiếu điều chỉnh | **API THẬT** |
 | Western Union | Tạo và liệt kê WU; áp tỷ giá theo tiền khách nhận; tách USD chẵn và phần lẻ VND; ghi ledger và công nợ | **API THẬT** |
 | MoneyGram | Tạo và liệt kê MG; Reference 8 ký tự duy nhất; quy đổi theo Paid Currency/Payout Currency; ghi ledger và công nợ | **API THẬT** |
 | Mua/Bán ngoại tệ | Tạo giao dịch FX, lấy tỷ giá mua/bán active, cập nhật quỹ VND và tồn Quỹ A, không bán vượt tồn | **API THẬT** |
-| Chuyển tiền trong nước | Form tạo và danh sách giao dịch chuyển tiền khách hàng | **MOCK DATA**, chưa có controller/API backend |
+| Chuyển tiền trong nước | Nhận tiền mặt để chuyển khoản hoặc nhận chuyển khoản để trả tiền mặt; cập nhật quỹ chi nhánh và số dư ngân hàng trong một DB transaction | **API THẬT**; cần có tài khoản ngân hàng VND và ca chi nhánh đang mở |
 | Ca làm việc | Staff kiểm tiền đầu ca để mở ca; WU/MG/FX yêu cầu ca mở; kiểm tiền cuối ca để đóng và lưu sai lệch | Một page `active-shift` dùng **API THẬT**; route mở/đóng ca cũ redirect về page này |
-| Kiểm quỹ | Nhập mệnh giá, so sánh số thực đếm với ledger, theo dõi kiểm quỹ chi nhánh/toàn công ty | Kiểm đầu/cuối ca đã có trong API ca; hai page kiểm quỹ độc lập còn **MOCK DATA** |
+| Kiểm quỹ | VND/USD kiểm theo từng mệnh giá và số tờ; ngoại tệ kiểm tổng số lượng; so sánh thực đếm với ledger và lưu sai lệch | Kiểm đầu/cuối ca và lịch sử trong ca dùng **API THẬT**; loại tiền số dư 0 không đưa vào phiếu |
 | Quỹ chung | Tổng hợp tiền mặt HO, Quỹ A, ngân hàng, công nợ phải thu và quỹ chi nhánh; tạo phiếu thu/chi không cần mở ca | **API THẬT** |
 | Quỹ chi nhánh | Staff xem số dư ledger VND, USD, Quỹ A và trạng thái ca; tạo phiếu thu/chi tiền mặt theo đúng chi nhánh | **API THẬT**, branch scope lấy từ JWT |
 | Tiếp quỹ | Một phiếu có nhiều loại tiền; nguồn cố định theo tài khoản; chờ duyệt, xác nhận hoặc từ chối; xác nhận mới post ledger | **API THẬT** |
@@ -380,7 +380,7 @@ GET  /api/v1/fund/balances?branchId=:branchId
 
 Ràng buộc ca đã được kiểm tra lại tại backend khi tạo WU/MG/FX; không chỉ dựa vào trạng thái UI. Tiếp quỹ, thu/chi ngân hàng và nghiệp vụ tiền mặt ngoài giao dịch khách hàng không bắt buộc mở ca.
 
-Chưa có API riêng cho lịch sử kiểm quỹ, kiểm quỹ trung tâm và bảng mệnh giá ngoài luồng mở/đóng ca. Các route `/cash-count/branch` và `/cash-count/central` còn dùng mock data. Module Ca làm việc chỉ còn page `/shift-management/active-shift`; `/open-shift` và `/close-shift` redirect về page này.
+Chưa có API kiểm quỹ trung tâm hoặc kiểm quỹ độc lập ngoài ca. Chi tiết mệnh giá VND/USD được lưu cùng phiếu mở/đóng ca; ngoại tệ lưu tổng số lượng. Các route cũ `/cash-count/branch`, `/cash-count/central`, `/open-shift` và `/close-shift` đều redirect về `/shift-management/active-shift`.
 
 ### 4. Giao dịch khách hàng
 
@@ -396,6 +396,10 @@ POST /api/v1/mg/transactions
 GET  /api/v1/fx/transactions?branchId=:branchId
 GET  /api/v1/fx/stock?branchId=:branchId
 POST /api/v1/fx/transactions
+
+GET  /api/v1/domestic-transfers?branchId=:branchId
+GET  /api/v1/domestic-transfers/bank-accounts
+POST /api/v1/domestic-transfers
 ```
 
 Quản trị giao dịch đã post:
@@ -420,7 +424,12 @@ POST  /api/v1/transactions/adjustment-requests/:requestId/reject
 - Khi duyệt, backend yêu cầu chi nhánh có ca mở, ghi bút toán đảo vào ca hiện tại, đảo công nợ chưa tất toán, đổi giao dịch thành `VOIDED`, gửi thông báo và ghi Audit Log.
 - Giao dịch đã giải quyết công nợ hoặc đã chốt Journal không được duyệt theo luồng này; phải xử lý bằng điều chỉnh đối chiếu.
 
-Chưa có API cho chuyển tiền trong nước. Route `/domestic-transfer/transactions` và dữ liệu `domesticTransferTransactionsMock` chỉ là UI demo.
+Chuyển tiền trong nước có hai loại:
+
+- `CASH_TO_BANK`: quỹ tiền mặt chi nhánh tăng `amount + fee`, tài khoản ngân hàng công ty giảm `amount`.
+- `BANK_TO_CASH`: tài khoản ngân hàng công ty tăng `amount`, quỹ tiền mặt chi nhánh giảm `amount - fee`.
+
+Backend khóa quỹ và tài khoản ngân hàng khi ghi sổ, kiểm tra số dư nguồn chi và bắt buộc chi nhánh có ca mở. Hủy giao dịch sẽ tạo bút toán đảo cho cả quỹ tiền mặt lẫn ngân hàng; giao dịch chuyển tiền không hỗ trợ `REPLACE`, cần hủy rồi tạo lại.
 
 ### 5. Tỷ giá
 
@@ -432,6 +441,8 @@ GET   /api/v1/exchange-rates/active
 GET   /api/v1/exchange-rates/history
 POST  /api/v1/exchange-rates
 PATCH /api/v1/exchange-rates/:id/approve
+PATCH /api/v1/exchange-rates/approve-batch
+PATCH /api/v1/exchange-rates/reject-batch
 PATCH /api/v1/exchange-rates/:id/reject
 ```
 
@@ -474,9 +485,13 @@ Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành
 Màn hình vẫn giữ chi tiết từng chi nhánh để đối chiếu, đồng thời tổng hợp các khoản đang mở theo `business_date + provider_code + currency_code`. Khi tổng ngân hàng khớp, GĐ/KTTH dùng một nút **Xử lý toàn bộ**. Backend khóa tất cả khoản thuộc nhóm, tính lại số còn nợ, yêu cầu số tiền đối chiếu khớp chính xác tổng, ghi một biến động ngân hàng hoặc phiếu thu tiền mặt và phân bổ `SETTLEMENT` về từng chi nhánh trong cùng database transaction. Nếu một khoản đã thay đổi hoặc tổng không khớp, toàn bộ thao tác rollback.
 
 ```txt
-GET  /api/v1/bank/accounts
-GET  /api/v1/bank/movements?bankAccountId=:id
-POST /api/v1/bank/receive
+GET   /api/v1/bank/banks
+GET   /api/v1/bank/accounts?branchId=:branchId
+POST  /api/v1/bank/accounts
+PATCH /api/v1/bank/accounts/:id/deactivate
+GET   /api/v1/bank/movements?bankAccountId=:id
+POST  /api/v1/bank/accounts/:id/movements
+POST  /api/v1/bank/receive
 
 GET  /api/v1/debts?branchId=:branchId&providerCode=WU&currencyCode=USD
 GET  /api/v1/debts?businessDate=YYYY-MM-DD
@@ -490,7 +505,7 @@ POST /api/v1/debts/record
 
 `POST /debts/record` hiện được giữ để test/ghi nhận công nợ thủ công và nhận `businessDate` tùy chọn. Luồng production chính để WU/MG hoặc kết quả đối chiếu Journal sinh công nợ.
 
-Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có bảng tổng hợp để xử lý một lần và bảng chi tiết theo chi nhánh để kiểm tra lịch sử. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng. Diễn giải mặc định là `Đã nhận thanh khoản từ Ngân hàng` và chỉ cần sửa khi phát sinh nội dung khác.
+Mỗi chi nhánh có tài khoản ngân hàng riêng (`bank_accounts.branch_id`); Hội sở giữ tài khoản chung. ADMIN/MANAGER khai báo tài khoản (`POST /bank/accounts`, ngân hàng chưa có sẽ tạo theo mã; số dư đầu kỳ > 0 được ghi thành một biến động DEPOSIT để truy vết) và ngưng tài khoản khi số dư = 0. Chuyển khoản/nộp/rút thủ công ghi qua `POST /bank/accounts/:id/movements` với `movementType` DEPOSIT/TRANSFER_IN (tăng) hoặc WITHDRAW/TRANSFER_OUT (giảm), kèm đối tác và mã tham chiếu; STAFF chỉ ghi được trên tài khoản của chi nhánh mình (backend kiểm tra theo JWT). Các page tài khoản ngân hàng, biến động và nhận tiền dùng API thật. `/debt-management/debt-list` là màn hình chính dùng API thật, có bảng tổng hợp để xử lý một lần và bảng chi tiết theo chi nhánh để kiểm tra lịch sử. Route `/debt-management/settlement` được chuyển về màn hình này để tránh trùng luồng. Diễn giải mặc định là `Đã nhận thanh khoản từ Ngân hàng` và chỉ cần sửa khi phát sinh nội dung khác.
 
 - Nguồn ngân hàng: chọn tài khoản cùng loại tiền, tăng số dư đúng một lần theo tổng và phân bổ giảm công nợ từng chi nhánh.
 - Nguồn tiền mặt VND: tăng quỹ tiền mặt VND Hội sở theo tổng và phân bổ giảm công nợ từng chi nhánh.
@@ -506,7 +521,7 @@ GET  /api/v1/reconciliation/runs/:id/items
 POST /api/v1/reconciliation/run
 ```
 
-Workspace `/reconciliation/journal` dùng API thật. Trang `/reconciliation` hiện vẫn hiển thị `journalUploadsMock` và `wuReconciliationRowsMock`. Chưa có API upload/lưu file gốc vào storage; API hiện nhận các dòng đã parse từ frontend.
+Workspace `/reconciliation/journal` dùng API thật. Chi nhánh (STAFF) tự upload Journal và chạy đối chiếu cho chính chi nhánh mình (backend ép `branchId` từ JWT cho cả WU lẫn MG); GĐ/KTTH chạy MG toàn công ty (bỏ trống chi nhánh) hoặc riêng từng chi nhánh, và lọc lịch sử theo `?branchId`. Dòng Journal gồm mã, tên khách hàng, số tiền, loại tiền; tên khách được lưu vào `journal_rows.customer_name` và hiển thị ở chi tiết đối chiếu. Trang `/reconciliation` hiện vẫn hiển thị `journalUploadsMock` và `wuReconciliationRowsMock`. Chưa có API upload/lưu file gốc vào storage; API hiện nhận các dòng đã parse từ frontend.
 
 ### 9. Báo cáo và Audit Log
 
@@ -517,6 +532,8 @@ GET /api/v1/reports/company-dashboard
 GET /api/v1/audit-logs?action=:action&entityType=:type&userId=:userId
 ```
 
+`POST /reports/generate` với `reportType=cashbook` xuất **Sổ theo dõi thu chi hằng ngày** theo mẫu Excel sổ quỹ chi nhánh: bắt buộc `branchId`, tối đa 62 ngày; mỗi ngày một sheet (`ddMMyy`) gồm tồn đầu kỳ, từng bút toán chạm sổ tiền mặt VND/USD của chi nhánh (WU/MG/FX, tiếp quỹ, phiếu thu/chi, công nợ về, bút toán đảo) với cột Nhận/Chi/Tồn chạy dần, tổng cộng và tồn cuối kỳ; sheet `Tổng hợp` theo ngày. Tham số `columns` chọn cột hiển thị (`stt,date,time,kind,code,name,inUsd,inVnd,outUsd,outVnd,balanceUsd,balanceVnd,description`). Trang Báo cáo có ô chọn cột và xem trước từng sheet.
+
 `/reports/summary` và `/audit-log/live` dùng dữ liệu thật. Trang `/reports` hiện là UI demo với KPI, biểu đồ và leaderboard hard-code; các nút xem trước, xuất Excel và PDF chưa có API. Trang `/audit-log` cũ dùng `auditRecordsMock`; nhật ký thật nằm ở `/audit-log/live`.
 
 Audit log được thiết kế append-only: thao tác quan trọng ghi actor, action, entity, dữ liệu trước/sau, IP và thời gian. Không cung cấp endpoint update/delete audit log.
@@ -525,9 +542,8 @@ Audit log được thiết kế append-only: thao tác quan trọng ghi actor, a
 
 | Chức năng | Dữ liệu hiện tại | API cần bổ sung |
 | --- | --- | --- |
-| Chuyển tiền trong nước | `domesticTransferTransactionsMock` | CRUD giao dịch, kiểm ca, ledger, danh sách/lọc |
 | Dashboard Staff | `branchDashboard.mock.tsx` | Snapshot dashboard có branch scope |
-| Kiểm quỹ độc lập | `cashCount.mock.ts` | Danh sách lần kiểm, chi tiết mệnh giá, duyệt sai lệch |
+| Kiểm quỹ độc lập ngoài ca | Chưa có màn hình | Danh sách lần kiểm độc lập và quy trình duyệt sai lệch |
 | Tổng quan đối chiếu cũ | `reconciliation.mock.ts` | Nên thay page bằng `/reconciliation/runs` và items |
 | Tạo/xuất báo cáo | Dữ liệu hard-code | API preview, export Excel/PDF, lưu lịch sử export |
 | Tổng quan Audit cũ | `auditLog.mock.ts` | Nên hợp nhất vào `/audit-logs` |
@@ -708,7 +724,7 @@ API quỹ tính số dư từ ledger `POSTED`, quy đổi USD tiền mặt theo 
 
 API `dashboard-operations` cấp bốn KPI đầu trang Dashboard Công Ty: số giao dịch, giá trị giao dịch hoàn tất, sai lệch đối soát chưa xử lý và số chi nhánh đang mở ca. Sai lệch từ 1,000,000 VND trở lên được phân loại là sai lệch lớn.
 
-API `company-dashboard` cấp toàn bộ snapshot Dashboard Công Ty trong một response: tổng vốn và thành phần quỹ, bốn KPI vận hành, giá trị giao dịch/lợi nhuận WU-MG trong 7 ngày, cơ cấu giao dịch, hiệu quả chi nhánh và tỷ giá active. Tổng vốn quy đổi gồm tiền mặt, Quỹ A, ngân hàng và công nợ; tỷ giá quy đổi lấy `PAID_BUY` cho USD và `FX_BUY` cho các ngoại tệ khác.
+API `company-dashboard` cấp toàn bộ snapshot Dashboard Công Ty trong một response: tổng vốn và thành phần quỹ, bốn KPI vận hành, giá trị giao dịch quy đổi VND trong 7 ngày, cơ cấu giao dịch, hoạt động chi nhánh và tỷ giá active. Giao dịch không ghi nhận lợi nhuận; WU/MG có giá trị giao dịch bằng `receivedUsd × appliedRate + receivedVnd`, còn FX/chuyển tiền dùng thành tiền VND. Công nợ phát sinh được tổng hợp riêng theo `paid_currency` và số tiền gốc đối tác hoàn. Tổng vốn quy đổi gồm tiền mặt, Quỹ A, ngân hàng và công nợ; tỷ giá quy đổi lấy `PAID_BUY` cho USD và `FX_BUY` cho các ngoại tệ khác.
 
 ## Database Design
 

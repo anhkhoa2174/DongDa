@@ -31,6 +31,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -97,12 +98,14 @@ type TransactionWorkspacePageProps = {
     form: FormInstance<TransactionFormValues>,
   ) => void;
   transformFormValues?: (values: TransactionFormValues) => TransactionFormValues;
+  createTransaction?: (values: TransactionFormValues) => Promise<unknown>;
   createOnly?: boolean;
   showHistory?: boolean;
   showBackButton?: boolean;
   showShiftHeader?: boolean;
   canCreateOverride?: boolean;
   onCreated?: () => void;
+  createFormActions?: (form: FormInstance<TransactionFormValues>) => ReactNode;
 };
 
 const statusMeta: Record<TransactionStatus, { color: string; label: string }> = {
@@ -130,12 +133,14 @@ export function TransactionWorkspacePage({
   initialFormValues,
   onFormValuesChange,
   transformFormValues,
+  createTransaction,
   createOnly = false,
   showHistory = true,
   showBackButton = false,
   showShiftHeader = true,
   canCreateOverride,
   onCreated,
+  createFormActions,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
@@ -149,6 +154,7 @@ export function TransactionWorkspacePage({
   const canVoid = access.canVoid || isUiTestMode;
   const canAdjustClosed = access.canAdjustClosed || isUiTestMode;
   const [records, setRecords] = useState(initialRecords);
+  const [isCreating, setIsCreating] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
   const [editor, setEditor] = useState<{
@@ -181,6 +187,20 @@ export function TransactionWorkspacePage({
     }
 
     const normalizedValues = transformFormValues?.(values) ?? values;
+    if (createTransaction) {
+      setIsCreating(true);
+      try {
+        await createTransaction(normalizedValues);
+        createForm.resetFields();
+        await message.success('Đã tạo giao dịch và ghi nhận biến động quỹ/ngân hàng');
+        onCreated?.();
+      } catch (error: unknown) {
+        await message.error(getApiErrorMessage(error, 'Không thể tạo giao dịch'));
+      } finally {
+        setIsCreating(false);
+      }
+      return;
+    }
     const now = new Date();
     const newRecord: TransactionRecord = {
       key: `${codePrefix}-${Date.now()}`,
@@ -328,14 +348,14 @@ export function TransactionWorkspacePage({
             </div>
           }
     >
-          {!createOnly && formNotice}
+          {formNotice}
           {showShiftHeader && <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />}
           <Form<TransactionFormValues>
             form={createForm}
             layout="vertical"
             onFinish={submitCreateTransaction}
             onKeyDownCapture={preventNumberInputEnter}
-            disabled={!canCreate}
+            disabled={!canCreate || isCreating}
             initialValues={initialFormValues}
             onValuesChange={(changedValues, allValues) =>
               onFormValuesChange?.(changedValues, allValues, createForm)
@@ -344,8 +364,9 @@ export function TransactionWorkspacePage({
             <TransactionFields fields={fields} form={createForm} />
             {summaryRenderer && <TransactionFormSummary form={createForm} renderer={summaryRenderer} />}
             <div className="flex justify-end gap-2">
+              {createFormActions?.(createForm)}
               <Button onClick={() => createForm.resetFields()}>Nhập lại</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={isCreating}>
                 {createLabel}
               </Button>
             </div>
@@ -612,7 +633,7 @@ function renderField(
   disabled = false,
   values: TransactionFormValues = {},
 ) {
-  const controlClassName = "h-10! w-full";
+  const controlClassName = 'h-10! w-full';
 
   if (field.kind === 'segmented') {
     return <Segmented className={controlClassName} block disabled={disabled || field.readOnly} options={field.options ?? []} />;

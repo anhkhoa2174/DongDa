@@ -5,7 +5,9 @@ export interface ProviderStat {
   count: number;
   totalUsd: number;
   totalVnd: number;
-  profit: number;
+  transactionValueVnd: number;
+  debtGeneratedUsd: number;
+  debtGeneratedVnd: number;
 }
 
 export interface FxStat {
@@ -19,6 +21,50 @@ export interface TxStats {
   wu: ProviderStat;
   mg: ProviderStat;
   fx: FxStat;
+}
+
+// ---- Sổ theo dõi thu chi hằng ngày (theo mẫu Excel sổ quỹ chi nhánh) ----
+// Mỗi dòng = 1 bút toán POSTED chạm sổ tiền mặt VND/USD của chi nhánh; tồn chạy dần.
+export type CashBookRowKind =
+  | 'WU' | 'MG' | 'FX' | 'DOMESTIC_TRANSFER'
+  | 'FUND_IN' | 'FUND_OUT'      // tiếp quỹ nhận / gửi đi
+  | 'CASH_IN' | 'CASH_OUT'      // phiếu thu / phiếu chi
+  | 'DEBT_SETTLEMENT'           // công nợ về bằng tiền mặt
+  | 'REVERSAL'                  // bút toán đảo (hủy/điều chỉnh)
+  | 'OTHER';
+
+export interface CashBookRow {
+  time: Date;              // posted_at
+  kind: CashBookRowKind;
+  code: string;            // MTCN / Reference / số phiếu
+  name: string;            // tên khách / nguồn tiền / đối tác
+  description: string;
+  inUsd: number;
+  inVnd: number;
+  outUsd: number;
+  outVnd: number;
+  balanceUsd: number;      // tồn sau dòng này
+  balanceVnd: number;
+}
+
+export interface CashBookDay {
+  date: string;            // YYYY-MM-DD
+  openingUsd: number;
+  openingVnd: number;
+  rows: CashBookRow[];
+  totalInUsd: number;
+  totalInVnd: number;
+  totalOutUsd: number;
+  totalOutVnd: number;
+  closingUsd: number;
+  closingVnd: number;
+}
+
+export interface CashBook {
+  branch: { id: string; code: string; name: string; address?: string | null };
+  dateFrom: string;
+  dateTo: string;
+  days: CashBookDay[];
 }
 
 export interface ReportFilter {
@@ -55,7 +101,7 @@ export interface CompanyDashboard {
     capitalTrend: Array<{ date: string; valueVnd: number }>;
   };
   operations: DashboardOperations;
-  revenueTrend: Array<{ date: string; label: string; revenueVnd: number; profitVnd: number }>;
+  transactionValueTrend: Array<{ date: string; label: string; valueVnd: number }>;
   transactionMix: Array<{ source: 'WU' | 'MG' | 'FX' | 'DOMESTIC'; count: number }>;
   branches: Array<{
     id: string;
@@ -66,8 +112,7 @@ export interface CompanyDashboard {
     vndBalance: number;
     usdBalance: number;
     todayTransactions: number;
-    revenueToday: number;
-    profitToday: number;
+    transactionValueTodayVnd: number;
     discrepancy: 'matched' | 'warning' | 'danger' | 'none';
     discrepancyValueVnd: number;
     riskLevel: 'normal' | 'watch' | 'risk';
@@ -79,6 +124,9 @@ export interface CompanyDashboard {
     fromCurrency: string;
     toCurrency: string;
     rate: number;
+    buyRate: number | null;
+    sellRate: number | null;
+    margin: number;
     effectiveFrom: Date;
     approvedAt: Date | null;
   }>;
@@ -86,6 +134,8 @@ export interface CompanyDashboard {
 }
 
 export interface IReportsRepository {
+  // Sổ thu chi hằng ngày của 1 chi nhánh trong khoảng ngày (mỗi ngày 1 nhóm, tồn chạy dần).
+  dailyCashBook(branchId: string, dateFrom: Date, dateToExclusive: Date): Promise<CashBook>;
   txStats(filter?: ReportFilter): Promise<TxStats>;
   dashboardOperations(businessDate: Date): Promise<DashboardOperations>;
   companyDashboard(businessDate: Date): Promise<CompanyDashboard>;

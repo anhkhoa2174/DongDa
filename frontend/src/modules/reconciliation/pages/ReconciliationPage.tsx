@@ -7,7 +7,7 @@ import { PageScaffold } from '@/shared/components/PageScaffold';
 import { formatDateTime, formatNumber } from '@/shared/utils/formatters';
 import { useFundReconciliation } from '../hooks/useReconciliation';
 import type { FundReconItemDto } from '../api/reconciliation.api';
-import { useBranches } from '@/modules/western-union/hooks/useWu';
+import { useBranches } from '@/shared/hooks/useBranches';
 
 const money = (n: number) => formatNumber(n, 2);
 

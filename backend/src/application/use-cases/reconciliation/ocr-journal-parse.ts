@@ -13,6 +13,16 @@ function parseVnAmount(raw: string): number | null {
 }
 
 // "200.00" hoặc "1,000.00" (US: ',' phân nghìn, '.' thập phân) -> 200 / 1000
+// Đoạn text giữa mã và số tiền -> tên khách: bỏ số/ký tự lạ, bỏ token tiền tệ OCR lẫn vào (USD/VND/VNĐ).
+function cleanCustomerName(raw: string): string | undefined {
+  const name = raw
+    .replace(/[^A-Za-zÀ-ỹ\s]/g, ' ')
+    .replace(/\b(USD|VND|VN[DĐ]|EUR)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return name || undefined;
+}
+
 function parseUsAmount(raw: string): number | null {
   const cleaned = raw.replace(/[^\d.,]/g, '').replace(/,/g, '');
   const n = Number.parseFloat(cleaned);
@@ -52,7 +62,7 @@ function extractWuLine(line: string): Extracted | null {
   if (amount === null || !Number.isFinite(amount) || amount <= 0) return null;
 
   const between = amtIndex >= 0 ? after.slice(0, amtIndex) : after;
-  const customerName = between.replace(/[^A-Za-zÀ-ỹ\s]/g, '').replace(/\s+/g, ' ').trim() || undefined;
+  const customerName = cleanCustomerName(between);
   return { code, amount, currencyCode, customerName };
 }
 
@@ -72,7 +82,7 @@ function extractMgLine(line: string): Extracted | null {
   const currencyCode = /VND/i.test(line) && !/USD/i.test(line) ? 'VND' : 'USD';
 
   const between = line.slice(codeMatch.index! + 8, amtMatch.index).trim();
-  const customerName = between.replace(/[^A-Za-zÀ-ỹ\s]/g, '').replace(/\s+/g, ' ').trim() || undefined;
+  const customerName = cleanCustomerName(between);
   return { code, amount, currencyCode, customerName };
 }
 

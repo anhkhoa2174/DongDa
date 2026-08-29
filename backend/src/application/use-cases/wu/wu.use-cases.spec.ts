@@ -3,6 +3,13 @@ import { CreateWuUseCase, assertWuPayoutMatches, validateAppliedRate } from './w
 
 const base = {
   branchId: '00000000-0000-0000-0000-000000000001', mtcn: '1234567890',
+  customerName: 'ALEX ROBERTS', customerPhone: '0783269349', sendingCountry: 'AUSTRALIA',
+  receiverDateOfBirth: '1983-06-21', currentAddress: '97 DUONG 66, THAO DIEN, Q2',
+  identityDocumentType: 'PASSPORT', identityDocumentNumber: '146171983',
+  identityIssuingCountry: 'UNITED KINGDOM', identityIssueDate: '2024-04-11', identityExpiryDate: '2034-04-11',
+  hasVisa: true, visaNumber: 'F-146171983', visaIssueDate: '2025-05-17', visaExpiryDate: '2025-06-30',
+  employmentStatus: 'FREELANCER', countryOfBirth: 'UNITED KINGDOM', senderRelationship: 'FAMILY',
+  receivePurpose: 'TRAVEL_EXPENSE', senderName: 'JAY ROBERTS', receivedDate: '2025-06-20',
   wuUsdAmount: 100.25, wuVndAmount: 2_600_000, receivedUsd: 0, receivedVnd: 2_606_500,
   appliedRate: 26_000, payoutCurrency: 'VND', paidCurrency: 'USD',
 };

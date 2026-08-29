@@ -4,6 +4,7 @@
 import type {
   ExchangeRate,
   ExchangeRateType,
+  RateIdentity,
   RateStatus,
   ServiceProvider,
   CurrencyCode,
@@ -17,6 +18,7 @@ export interface CreateExchangeRateData {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: Date;
   createdByUserId: string;
 }
@@ -68,12 +70,15 @@ export interface IExchangeRateRepository {
   create(data: CreateExchangeRateData): Promise<ExchangeRate>;
   createMany(data: CreateExchangeRateData[]): Promise<ExchangeRate[]>;
   findById(id: string): Promise<ExchangeRate | null>;
+  findDraftByIdentity(identity: RateIdentity): Promise<ExchangeRate | null>;
   findMany(filter?: ListRatesFilter): Promise<ExchangeRate[]>;
   findActive(filter?: Omit<ListRatesFilter, 'status'>): Promise<ExchangeRate[]>;
   findHistory(filter: ExchangeRateHistoryFilter): Promise<ExchangeRateHistoryResult>;
 
   // Duyệt: trong 1 transaction — supersede bản ACTIVE cùng identity rồi set bản này ACTIVE
   approveAndSupersede(id: string, approverUserId: string): Promise<ExchangeRate>;
+  approveAndSupersedeMany(ids: string[], approverUserId: string): Promise<ExchangeRate[]>;
 
   reject(id: string): Promise<ExchangeRate>;
+  rejectMany(ids: string[]): Promise<ExchangeRate[]>;
 }

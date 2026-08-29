@@ -17,7 +17,6 @@ export interface FxTransactionDto {
 }
 
 export interface FxStockDto { branchId: string; currency: string; balance: number; }
-export interface BranchRef { id: string; code: string; name: string; type: string; }
 
 export interface CreateFxPayload {
   branchId: string;
@@ -35,5 +34,4 @@ export const fxApi = {
     httpClient.get<FxStockDto[]>('/fx/stock', { params: { branchId } }).then((r) => r.data),
   create: (payload: CreateFxPayload) =>
     httpClient.post<FxTransactionDto>('/fx/transactions', payload).then((r) => r.data),
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };

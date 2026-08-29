@@ -14,9 +14,6 @@ export function useFxStock(branchId?: string) {
     refetchIntervalInBackground: true,
   });
 }
-export function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => fxApi.branches() });
-}
 export function useCreateFx() {
   const qc = useQueryClient();
   return useMutation({

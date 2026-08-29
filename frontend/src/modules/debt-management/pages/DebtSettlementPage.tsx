@@ -32,8 +32,9 @@ import {
 } from '@/shared/utils/formatters';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
+import { useBranches } from '@/shared/hooks/useBranches';
 import {
-  useBranches, useDebtMovements, useDebts, useSettleDebtBatch,
+  useDebtMovements, useDebts, useSettleDebtBatch,
 } from '../hooks/useDebts';
 import type { DebtAccountSummaryDto, DebtMovementDto, DebtStatus, ListDebtsParams } from '../api/debt.api';
 

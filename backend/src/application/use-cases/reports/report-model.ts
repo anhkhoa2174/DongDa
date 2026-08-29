@@ -66,9 +66,9 @@ export function buildReportModel(
         aoa: [
           ['Chỉ tiêu', 'Giá trị'],
           ['Số giao dịch', s.count ?? 0],
-          ['Tổng USD', s.totalUsd ?? 0],
-          ['Tổng VND', s.totalVnd ?? 0],
-          ['Lợi nhuận (VND)', s.profit ?? 0],
+          ['Giá trị giao dịch quy đổi (VND)', s.transactionValueVnd ?? 0],
+          ['Công nợ phát sinh (USD)', s.debtGeneratedUsd ?? 0],
+          ['Công nợ phát sinh (VND)', s.debtGeneratedVnd ?? 0],
         ],
       });
       break;

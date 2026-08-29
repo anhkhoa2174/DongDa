@@ -42,12 +42,7 @@ export interface ListFundMovementHistoryFilter {
 }
 
 export interface ConvertCentralFundInput {
-  items: Array<{
-    currencyCode: CurrencyCode;
-    amount: number;
-    rate: number;       // tỷ giá áp dụng
-    deduction?: number; // khấu trừ VNĐ (mặc định 0)
-  }>;
+  items: Array<{ currencyCode: CurrencyCode; amount: number; rate: number; deduction: number }>;
   note?: string;
   createdByUserId: string;
 }
@@ -73,4 +68,5 @@ export interface IFundRepository {
   // Xác nhận: post ledger (CREDIT nguồn + DEBIT đích) trong 1 transaction
   confirmTransfer(id: string, confirmedByUserId: string): Promise<FundTransfer>;
   rejectTransfer(id: string, userId: string): Promise<FundTransfer>;
+  cancelTransfer(id: string, createdByUserId: string): Promise<FundTransfer>;
 }

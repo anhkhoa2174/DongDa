@@ -21,7 +21,8 @@ import { OperationalOverviewCard } from '@/shared/components/OperationalOverview
 import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { formatCurrency, formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import { useBranches as useFundBranches, useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
+import { useBranches } from '@/shared/hooks/useBranches';
+import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
 import { useCurrentShift } from '@/modules/shift-management/hooks/useShift';
 import type { FundACurrencyBalance } from '../model/fund.types';
 import type { FundMovementHistoryDto } from '../api/centralFund.api';
@@ -171,7 +172,7 @@ function BranchFundMainPage() {
   const branchId = user?.branchId;
   const { data: balances = [], isLoading, isFetching, isError, refetch } = useFundBalances(branchId);
   const { data: currentShift, isFetching: isFetchingShift, refetch: refetchShift } = useCurrentShift(branchId);
-  const { data: branches = [] } = useFundBranches();
+  const { data: branches = [] } = useBranches();
   const { data: movementHistory = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useFundMovementHistory(branchId);
   const branch = branches.find((item) => item.id === branchId);
   const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
@@ -236,7 +237,7 @@ function BranchFundMainPage() {
 
         <FundActionBar description="Ghi nhận biến động và đối chiếu tiền mặt tại chi nhánh">
           <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
-          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/branch')}>Kiểm Quỹ</Button>
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/shift-management/active-shift')}>Kiểm Quỹ</Button>
           <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/receipts')}>Tạo Phiếu Thu</Button>
           <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/branch-funds/expenses')}>Tạo Phiếu Chi</Button>
         </FundActionBar>
@@ -261,7 +262,7 @@ export function CentralFundPage() {
   const canTransfer = role === 'director' || role === 'accountant';
   const canCreateCashMovement = role === 'director' || role === 'accountant';
   const { data: summary, isLoading, isError, isFetching, refetch } = useCentralFundSummary();
-  const { data: branches = [] } = useFundBranches();
+  const { data: branches = [] } = useBranches();
   const headOffice = branches.find((item) => item.type === 'HEAD_OFFICE');
   const { data: movementHistory = [], isLoading: isLoadingHistory } = useFundMovementHistory(headOffice?.id);
   const branchNames = Object.fromEntries(branches.map((item) => [item.id, `${item.code} - ${item.name}`]));
@@ -302,7 +303,7 @@ export function CentralFundPage() {
           {canTransfer && (
             <Button className="fund-action--primary" icon={<InboxOutlined />} onClick={() => navigate('/fund-transfer')}>Tiếp Quỹ</Button>
           )}
-          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/cash-count/central')}>Kiểm Quỹ Tổng</Button>
+          <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/shift-management/active-shift')}>Kiểm Quỹ Tổng</Button>
           {canCreateCashMovement && (
             <>
               <Button className="fund-action--conversion" icon={<SwapOutlined />} onClick={() => navigate('/fund-management/central-fund/convert-fund-a')}>Bán ngoại tệ Quỹ A</Button>

@@ -784,6 +784,29 @@ export class TransactionAdminController {
         }
       }
 
+      const domesticBankMovement = txn.operation_code === 'DOMESTIC_TRANSFER'
+        ? await tx.bank_balance_movements.findFirst({
+            where: {
+              bank_reference: `DOMESTIC:${transactionId}`,
+              status: 'POSTED',
+            },
+          })
+        : null;
+      let domesticBankBalance: number | null = null;
+      if (txn.operation_code === 'DOMESTIC_TRANSFER') {
+        if (!domesticBankMovement) {
+          throw new BadRequestException('Không tìm thấy biến động ngân hàng của giao dịch chuyển tiền');
+        }
+        await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${domesticBankMovement.bank_account_id}::uuid FOR UPDATE`;
+        const account = await tx.bank_accounts.findUnique({ where: { id: domesticBankMovement.bank_account_id } });
+        if (!account) throw new BadRequestException('Không tìm thấy tài khoản ngân hàng của giao dịch');
+        domesticBankBalance = Number(account.current_balance);
+        if (domesticBankMovement.movement_type === 'TRANSFER_IN'
+          && Number(domesticBankMovement.amount) > domesticBankBalance) {
+          throw new BadRequestException('Không đủ số dư ngân hàng để đảo giao dịch chuyển tiền');
+        }
+      }
+
       const claimed = await tx.customer_transactions.updateMany({
         where: { id: transactionId, status: 'COMPLETED' },
         data: {
@@ -830,6 +853,36 @@ export class TransactionAdminController {
               })),
             },
           },
+        });
+      }
+
+      if (domesticBankMovement && domesticBankBalance !== null) {
+        const amount = Number(domesticBankMovement.amount);
+        const reversesTransferOut = domesticBankMovement.movement_type === 'TRANSFER_OUT';
+        const balanceAfter = reversesTransferOut
+          ? domesticBankBalance + amount
+          : domesticBankBalance - amount;
+        await tx.bank_balance_movements.create({
+          data: {
+            movement_no: `REV-DT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            bank_account_id: domesticBankMovement.bank_account_id,
+            branch_id: txn.branch_id,
+            movement_type: reversesTransferOut ? 'TRANSFER_IN' : 'TRANSFER_OUT',
+            business_date: businessDate,
+            amount,
+            currency_code: domesticBankMovement.currency_code,
+            balance_before: domesticBankBalance,
+            balance_after: balanceAfter,
+            bank_reference: `DOMESTIC_VOID:${transactionId}`,
+            description: `Đảo giao dịch ${txn.transaction_no}: ${reason}`,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: userId,
+          },
+        });
+        await tx.bank_accounts.update({
+          where: { id: domesticBankMovement.bank_account_id },
+          data: { current_balance: balanceAfter, available_balance: balanceAfter },
         });
       }
 

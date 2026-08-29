@@ -1,7 +1,7 @@
-import { AuditLogPage } from './pages/AuditLogPage';
+import { Navigate } from 'react-router-dom';
 import { AuditLogLivePage } from './pages/AuditLogLivePage';
 
 export const auditLogRoutes = [
-  { path: 'audit-log', element: <AuditLogPage /> },
-  { path: 'audit-log/live', element: <AuditLogLivePage /> },
+  { path: 'audit-log', element: <AuditLogLivePage /> },
+  { path: 'audit-log/live', element: <Navigate to="/audit-log" replace /> },
 ];

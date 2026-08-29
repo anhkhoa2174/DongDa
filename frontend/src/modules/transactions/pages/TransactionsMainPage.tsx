@@ -36,6 +36,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   formatDateTime,
   formatExchangeRate,
@@ -48,9 +49,11 @@ import {
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useBranches as useWuBranches, useWuTransactions } from '@/modules/western-union/hooks/useWu';
+import { useBranches } from '@/shared/hooks/useBranches';
+import { useWuTransactions } from '@/modules/western-union/hooks/useWu';
 import { useMgTransactions } from '@/modules/moneygram/hooks/useMg';
 import { useFxTransactions } from '@/modules/foreign-exchange/hooks/useFx';
+import { domesticTransferApi } from '@/modules/domestic-transfer/api/domesticTransfer.api';
 import { transactionAdminApi } from '../api/transactionAdmin.api';
 import type { TransactionAdjustmentRequest } from '../api/transactionAdmin.api';
 import { useTransactionShift } from '../hooks/useTransactionShift';
@@ -112,12 +115,16 @@ export function TransactionsMainPage() {
   const role = user?.role;
   const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(role, currentShift);
-  const { data: branches = [] } = useWuBranches();
+  const { data: branches = [] } = useBranches();
   const isControlUser = role === 'director' || role === 'accountant';
   const scopedBranchId = isControlUser ? undefined : user?.branchId;
   const { data: wuTransactions = [], isLoading: isWuLoading } = useWuTransactions(scopedBranchId);
   const { data: mgTransactions = [], isLoading: isMgLoading } = useMgTransactions(scopedBranchId);
   const { data: fxTransactions = [], isLoading: isFxLoading } = useFxTransactions(scopedBranchId);
+  const { data: domesticTransfers = [], isLoading: isDomesticLoading } = useQuery({
+    queryKey: ['domestic-transfers', scopedBranchId ?? 'all'],
+    queryFn: () => domesticTransferApi.list(scopedBranchId),
+  });
   const [keyword, setKeyword] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'ALL' | TransactionSource>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
@@ -135,7 +142,7 @@ export function TransactionsMainPage() {
   const adjustmentAction = Form.useWatch('action', deactivateForm) ?? 'REPLACE';
   const replacementFxAmount = Form.useWatch('fxAmount', deactivateForm) ?? 0;
   const [reviewForm] = Form.useForm<ReviewValues>();
-  const isLoading = isWuLoading || isMgLoading || isFxLoading;
+  const isLoading = isWuLoading || isMgLoading || isFxLoading || isDomesticLoading;
   const canControlTransactions = isControlUser || isUiTestMode;
   const canRequestAdjustment = canControlTransactions || role === 'branch';
   const { data: adjustmentRequests = [], isLoading: isAdjustmentLoading } = useQuery({
@@ -149,6 +156,7 @@ export function TransactionsMainPage() {
       queryClient.invalidateQueries({ queryKey: ['wu'] }),
       queryClient.invalidateQueries({ queryKey: ['mg'] }),
       queryClient.invalidateQueries({ queryKey: ['fx-trading'] }),
+      queryClient.invalidateQueries({ queryKey: ['domestic-transfers'] }),
       queryClient.invalidateQueries({ queryKey: ['fund'] }),
       queryClient.invalidateQueries({ queryKey: ['debts'] }),
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] }),
@@ -163,8 +171,8 @@ export function TransactionsMainPage() {
       editForm.resetFields();
       void message.success('Đã cập nhật thông tin giao dịch và ghi Audit Log');
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể sửa giao dịch');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể sửa giao dịch'));
     },
   });
   const adjustmentMutation = useMutation({
@@ -185,8 +193,8 @@ export function TransactionsMainPage() {
           : 'Đã lập phiếu điều chỉnh và gửi duyệt',
       );
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể lập phiếu điều chỉnh');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể lập phiếu điều chỉnh'));
     },
   });
   const reviewMutation = useMutation({
@@ -203,8 +211,8 @@ export function TransactionsMainPage() {
       reviewForm.resetFields();
       void message.success(variables.action === 'APPROVE' ? 'Đã duyệt và ghi sổ phiếu điều chỉnh' : 'Đã từ chối phiếu điều chỉnh');
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể xử lý phiếu điều chỉnh');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể xử lý phiếu điều chỉnh'));
     },
   });
 
@@ -233,7 +241,10 @@ export function TransactionsMainPage() {
         amountLabel: transaction.payoutCurrency === 'USD'
           ? `${formatUsd(transaction.receivedUsd)} + ${formatVnd(transaction.receivedVnd)}`
           : formatVnd(transaction.receivedVnd),
-        vndAmount: transaction.receivedUsd * transaction.appliedRate + transaction.receivedVnd,
+        vndAmount: transaction.transactionValueVnd,
+        debtLabel: transaction.paidCurrency === 'USD'
+          ? formatUsd(transaction.wuUsdAmount)
+          : formatVnd(transaction.wuVndAmount),
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
@@ -256,12 +267,13 @@ export function TransactionsMainPage() {
         type: `MG trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.payoutCurrency === 'USD'
-          ? formatUsd(transaction.payoutAmount)
-          : formatVnd(transaction.payoutAmount),
-        vndAmount: transaction.payoutCurrency === 'USD'
-          ? transaction.payoutAmount * transaction.appliedRate
-          : transaction.payoutAmount,
+        amountLabel: transaction.receivedUsd > 0
+          ? `${formatUsd(transaction.receivedUsd)}${transaction.receivedVnd > 0 ? ` + ${formatVnd(transaction.receivedVnd)}` : ''}`
+          : formatVnd(transaction.receivedVnd),
+        vndAmount: transaction.transactionValueVnd,
+        debtLabel: transaction.paidCurrency === 'USD'
+          ? formatUsd(transaction.mgUsdAmount)
+          : formatVnd(transaction.mgVndAmount),
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
@@ -286,6 +298,7 @@ export function TransactionsMainPage() {
         customerPhone: transaction.customerPhone ?? '',
         amountLabel: `${formatExchangeRate(transaction.fxAmount)} ${transaction.fxCurrency}`,
         vndAmount: transaction.vndAmount,
+        debtLabel: undefined,
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
@@ -299,12 +312,36 @@ export function TransactionsMainPage() {
         },
         };
       }),
+      ...domesticTransfers.map((transaction) => {
+        const branchId = transaction.branchId;
+        return {
+          key: transaction.id,
+          code: transaction.transactionNo,
+          source: 'DOMESTIC' as const,
+          type: transaction.transferType === 'CASH_TO_BANK'
+            ? 'Nhận tiền mặt, chuyển khoản'
+            : 'Nhận chuyển khoản, trả tiền mặt',
+          customerName: transaction.customerName ?? '',
+          customerPhone: transaction.customerPhone ?? '',
+          amountLabel: transaction.transferType === 'CASH_TO_BANK'
+            ? `Tiền mặt vào ${formatVnd(transaction.cashAmount)}`
+            : `Tiền mặt ra ${formatVnd(transaction.cashAmount)}`,
+          vndAmount: transaction.transactionValueVnd,
+          debtLabel: undefined,
+          branchId,
+          branch: branchNameById.get(branchId) ?? branchId,
+          shiftCode: transaction.shiftCode ?? '',
+          createdAt: formatDateTime(transaction.createdAt),
+          status: normalizeTransactionStatus(transaction.status),
+          createdAtRaw: transaction.createdAt,
+        };
+      }),
     ];
 
     return rows
       .sort((a, b) => Date.parse(b.createdAtRaw) - Date.parse(a.createdAtRaw))
       .map((transaction) => transaction);
-  }, [branchNameById, fxTransactions, mgTransactions, wuTransactions]);
+  }, [branchNameById, domesticTransfers, fxTransactions, mgTransactions, wuTransactions]);
 
   const openEditModal = (transaction: AggregatedTransaction) => {
     setEditTarget(transaction);
@@ -323,7 +360,7 @@ export function TransactionsMainPage() {
   const openDeactivateModal = (transaction: AggregatedTransaction) => {
     setDeactivateTarget(transaction);
     deactivateForm.setFieldsValue({
-      action: 'REPLACE',
+      action: transaction.source === 'DOMESTIC' ? 'VOID' : 'REPLACE',
       reason: undefined,
       proposedCorrection: undefined,
       wuUsdAmount: transaction.financialData?.wuUsdAmount,
@@ -383,16 +420,23 @@ export function TransactionsMainPage() {
 
   const columns: ColumnsType<AggregatedTransaction> = [
     {
-      title: 'Mã GD',
-      dataIndex: 'code',
-      fixed: 'left',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      title: 'Giao dịch',
+      key: 'transaction',
+      width: 210,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>{record.code}</Typography.Text>
+          <Space size={4} wrap>
+            <Tag color={sourceMeta[record.source].color}>{sourceMeta[record.source].label}</Tag>
+            <Typography.Text type="secondary" className="text-xs!">{record.type}</Typography.Text>
+          </Space>
+        </Space>
+      ),
     },
-    { title: 'Nhóm GD', dataIndex: 'source', render: (value: TransactionSource) => <Tag color={sourceMeta[value].color}>{sourceMeta[value].label}</Tag> },
-    { title: 'Loại giao dịch', dataIndex: 'type' },
     {
       title: 'Khách hàng',
       dataIndex: 'customerName',
+      width: 170,
       render: (value: string, record) => (
         <div>
           <Typography.Text strong className="block!">{value || 'Chưa nhập'}</Typography.Text>
@@ -400,17 +444,53 @@ export function TransactionsMainPage() {
         </div>
       ),
     },
-    { title: 'Số tiền', dataIndex: 'amountLabel', align: 'right' },
-    { title: 'Quy đổi VND', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatVnd(value) },
-    { title: 'Chi nhánh', dataIndex: 'branch' },
-    { title: 'Ca', dataIndex: 'shiftCode', render: (value?: string) => value || <Typography.Text type="secondary">Chưa gắn ca</Typography.Text> },
-    { title: 'Thời gian', dataIndex: 'createdAt' },
-    { title: 'Trạng thái', dataIndex: 'status', render: (value: TransactionStatus) => <Tag color={statusMeta[value].color}>{statusMeta[value].label}</Tag> },
+    {
+      title: 'Giá trị giao dịch',
+      key: 'transactionValue',
+      align: 'right',
+      width: 180,
+      render: (_, record) => (
+        <Space direction="vertical" size={0} align="end">
+          <Typography.Text strong>{formatVnd(record.vndAmount)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">{record.amountLabel}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Công nợ phát sinh',
+      dataIndex: 'debtLabel',
+      align: 'right',
+      width: 160,
+      render: (value?: string) => value
+        ? <Typography.Text strong>{value}</Typography.Text>
+        : <Typography.Text type="secondary">Không phát sinh</Typography.Text>,
+    },
+    {
+      title: 'Chi nhánh / ca',
+      key: 'branchShift',
+      width: 210,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{record.branch}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">{record.shiftCode || 'Chưa gắn ca'}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Thời gian / trạng thái',
+      key: 'timeStatus',
+      width: 170,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text>{record.createdAt}</Typography.Text>
+          <Tag color={statusMeta[record.status].color}>{statusMeta[record.status].label}</Tag>
+        </Space>
+      ),
+    },
     {
       title: '',
       key: 'actions',
-      fixed: 'right',
-      width: 170,
+      width: 150,
       render: (_, record) => {
         const isInactive = ['VOID', 'VOIDED', 'DEACTIVATED'].includes(record.status);
         if ((!canControlTransactions && !canRequestAdjustment) || isInactive) {
@@ -682,7 +762,7 @@ export function TransactionsMainPage() {
             columns={columns}
             dataSource={filteredTransactions}
             loading={isLoading}
-            scroll={{ x: 1400 }}
+            scroll={{ x: 1200 }}
             pagination={{ pageSize: 10 }}
           />
         </Card>
@@ -757,7 +837,9 @@ export function TransactionsMainPage() {
             <Segmented
               block
               options={[
-                { label: 'Thay thế giao dịch', value: 'REPLACE' },
+                ...(deactivateTarget?.source === 'DOMESTIC'
+                  ? []
+                  : [{ label: 'Thay thế giao dịch', value: 'REPLACE' }]),
                 { label: 'Hủy giao dịch', value: 'VOID' },
               ]}
             />

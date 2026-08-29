@@ -56,7 +56,14 @@ export interface CentralFundMovementDto extends CreateCentralFundMovementPayload
 
 export interface CentralFundConversionDto {
   voucherNo: string;
-  items: Array<{ currencyCode: string; amount: number; rate: number; vndAmount: number }>;
+  items: Array<{
+    currencyCode: string;
+    amount: number;
+    rate: number;
+    grossVndAmount: number;
+    deduction: number;
+    vndAmount: number;
+  }>;
   totalVndAmount: number;
   note?: string | null;
   postedAt: string;
@@ -86,7 +93,10 @@ export const centralFundApi = {
   createBranchMovement: (payload: CreateCentralFundMovementPayload) => httpClient
     .post<CentralFundMovementDto>('/fund/branch-movements', payload)
     .then((response) => response.data),
-  convertFundA: (payload: { items: Array<{ currencyCode: string; amount: number }>; note?: string }) => httpClient
+  convertFundA: (payload: {
+    items: Array<{ currencyCode: string; amount: number; rate: number; deduction: number }>;
+    note?: string;
+  }) => httpClient
     .post<CentralFundConversionDto>('/fund/central-conversions', payload)
     .then((response) => response.data),
   getMovementHistory: (branchId?: string) => httpClient

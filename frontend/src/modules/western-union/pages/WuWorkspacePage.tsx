@@ -1,12 +1,11 @@
 // Flow WU — Tạo giao dịch Western Union (nối API thật)
-import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
-import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { useEffect, useMemo, useRef } from 'react';
+import { App, Alert, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
+import { DownloadOutlined, SendOutlined } from '@ant-design/icons';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PageScaffold } from '@/shared/components/PageScaffold';
+import type { Dayjs } from 'dayjs';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
-import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
@@ -21,55 +20,29 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useBranches, useCreateWu } from '../hooks/useWu';
+import { useCreateWu } from '../hooks/useWu';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
-
-const RATE_STEP = 5;
-const positiveNumberRule = (label: string) => ({
-  validator: (_: unknown, value: unknown) => {
-    const numberValue = Number(value);
-    if (value === undefined || value === null || value === '' || !Number.isFinite(numberValue)) {
-      return Promise.reject(new Error(`Vui lòng nhập ${label.toLowerCase()} hợp lệ`));
-    }
-    if (numberValue <= 0) return Promise.reject(new Error(`${label} phải lớn hơn 0`));
-    return Promise.resolve();
-  },
-});
+import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/transactions/utils/paidRateSlider';
+import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
+import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
+import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
+import { wuApi } from '../api/wu.api';
+import type { CreateWuPayload } from '../api/wu.api';
 
 export function WuWorkspacePage() {
   const { message } = App.useApp();
-  const navigate = useNavigate();
-  const { data: branches = [] } = useBranches();
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateWu();
+  const [exportingBank, setExportingBank] = useState<'ACB' | 'MSB' | null>(null);
   const [form] = Form.useForm();
   const previousPayoutCurrency = useRef<string | undefined>(undefined);
   const previousRateSelectionKey = useRef<string | undefined>(undefined);
   const previousWuUsd = useRef<number | undefined>(undefined);
-  const user = useAuthStore((state) => state.user);
-  const isBranchUser = user?.role === 'branch';
-  const isControlUser = user?.role === 'director' || user?.role === 'accountant';
-  const canCreateTransaction = (isBranchUser && Boolean(user?.branchId)) || isControlUser;
-  const branchOptions = useMemo(
-    () =>
-      branches
-        .filter((branch) => branch.type !== 'HEAD_OFFICE')
-        .filter((branch) => !isBranchUser || branch.id === user?.branchId)
-        .map((branch) => ({ value: branch.id, label: `${branch.code} — ${branch.name}` })),
-    [branches, isBranchUser, user?.branchId],
-  );
-
-  useEffect(() => {
-    if (isBranchUser && user?.branchId) {
-      form.setFieldsValue({ branchId: user.branchId });
-    }
-  }, [form, isBranchUser, user?.branchId]);
+  const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
 
   const resetTransactionForm = () => {
     form.resetFields();
-    if (isBranchUser && user?.branchId) {
-      form.setFieldValue('branchId', user.branchId);
-    }
+    resetBranchField();
   };
 
   // Theo dõi để tính WU implied rate, tỷ giá giao dịch và số tiền khách nhận.
@@ -81,9 +54,10 @@ export function WuWorkspacePage() {
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
   const rateSelectionKey = `${rateType}:${systemRate ?? 0}`;
   const implied = wuUsd > 0 ? wuVnd / wuUsd : 0;
-  const rateBounds = getRateBounds(implied, systemRate);
+  const rateBounds = getPaidRateBounds(implied, systemRate);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
+  const hasVisa = Form.useWatch('hasVisa', form) ?? false;
   const payoutEquivalent = payoutCurrency === 'USD'
     ? receivedUsd * transactionRate + receivedVnd
     : receivedVnd;
@@ -98,7 +72,7 @@ export function WuWorkspacePage() {
     if (!wuUsd || !wuVnd || !transactionRate) return;
 
     const rateSelectionChanged = previousRateSelectionKey.current !== rateSelectionKey;
-    const nextRate = clampRate(
+    const nextRate = clampPaidRate(
       rateSelectionChanged && systemRate ? systemRate : transactionRate,
       implied,
       systemRate,
@@ -121,41 +95,82 @@ export function WuWorkspacePage() {
     previousWuUsd.current = wuUsd;
   }, [form, implied, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
 
-  const onCreate = async (v: any) => {
+  useEffect(() => {
+    if (!hasVisa) form.setFieldsValue({ visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
+  }, [form, hasVisa]);
+
+  const toPayload = (v: WuFormValues): CreateWuPayload => ({
+    branchId: isBranchUser && user?.branchId ? user.branchId : v.branchId,
+    mtcn: v.mtcn,
+    customerName: v.customerName,
+    customerPhone: v.customerPhone,
+    sendingCountry: v.sendingCountry,
+    senderState: v.senderState,
+    receiverDateOfBirth: v.receiverDateOfBirth.format('YYYY-MM-DD'),
+    currentAddress: v.currentAddress,
+    identityAddress: v.identityAddress,
+    identityDocumentType: v.identityDocumentType,
+    identityDocumentNumber: v.identityDocumentNumber,
+    identityIssuingCountry: v.identityIssuingCountry,
+    identityIssueDate: v.identityIssueDate.format('YYYY-MM-DD'),
+    identityExpiryDate: v.identityExpiryDate.format('YYYY-MM-DD'),
+    hasVisa: v.hasVisa,
+    visaNumber: v.hasVisa ? v.visaNumber : undefined,
+    visaIssueDate: v.hasVisa ? v.visaIssueDate?.format('YYYY-MM-DD') : undefined,
+    visaExpiryDate: v.hasVisa ? v.visaExpiryDate?.format('YYYY-MM-DD') : undefined,
+    employmentStatus: v.employmentStatus,
+    countryOfBirth: v.countryOfBirth,
+    senderRelationship: v.senderRelationship,
+    receivePurpose: v.receivePurpose,
+    senderName: v.senderName,
+    receivedDate: v.receivedDate.format('YYYY-MM-DD'),
+    wuUsdAmount: v.wuUsdAmount,
+    wuVndAmount: v.wuVndAmount,
+    receivedUsd: v.receivedUsd ?? 0,
+    receivedVnd: v.receivedVnd ?? 0,
+    appliedRate: v.appliedRate,
+    payoutCurrency: v.payoutCurrency,
+    paidCurrency: v.paidCurrency,
+  });
+
+  const onCreate = async (v: WuFormValues) => {
     if (!canCreateTransaction) {
       await message.error('Cần có quyền chi nhánh hoặc quyền GĐ/KTTH để tạo giao dịch WU');
       return;
     }
 
     try {
-      await create.mutateAsync({
-        branchId: isBranchUser && user?.branchId ? user.branchId : v.branchId,
-        mtcn: v.mtcn,
-        customerName: v.customerName,
-        wuUsdAmount: v.wuUsdAmount,
-        wuVndAmount: v.wuVndAmount,
-        receivedUsd: v.receivedUsd ?? 0,
-        receivedVnd: v.receivedVnd ?? 0,
-        appliedRate: v.appliedRate,
-        payoutCurrency: v.payoutCurrency,
-        paidCurrency: v.paidCurrency,
-      });
+      await create.mutateAsync(toPayload(v));
       message.success('Đã tạo GD WU — quỹ giảm, công nợ WU tăng');
       resetTransactionForm();
       previousPayoutCurrency.current = undefined;
       previousRateSelectionKey.current = undefined;
       previousWuUsd.current = undefined;
-    } catch (e: any) {
-      message.error(e?.response?.data?.message ?? 'Tạo GD thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo GD thất bại'));
+    }
+  };
+
+  const onExport = async (bank: 'ACB' | 'MSB') => {
+    try {
+      const values = await form.validateFields() as WuFormValues;
+      setExportingBank(bank);
+      const blob = await wuApi.exportForm(bank, toPayload(values));
+      downloadBlob(blob, `WU-${bank}-${values.mtcn}.xlsx`);
+      message.success(`Đã xuất phiếu ${bank}`);
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
+      message.error(getApiErrorMessage(error, `Không thể xuất phiếu ${bank}`));
+    } finally {
+      setExportingBank(null);
     }
   };
 
   return (
-    <PageScaffold
+    <TransactionCreatePage
       title="Giao dịch Western Union"
       description="Tạo GD chi trả WU: nhập MSKH, số tiền WU, chọn tiền khách nhận và xác nhận lưu vào hệ thống."
       moduleName="western-union"
-      extra={<Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/transactions')}>Quay lại Giao Dịch</Button>}
     >
       <Row justify="center">
         <Col xs={24} xl={18}>
@@ -167,6 +182,7 @@ export function WuWorkspacePage() {
                 branchId: isBranchUser ? user?.branchId : undefined,
                 paidCurrency: 'USD',
                 payoutCurrency: 'USD',
+                hasVisa: false,
                 wuUsdAmount: 0,
                 wuVndAmount: 0,
                 receivedUsd: 0,
@@ -185,10 +201,58 @@ export function WuWorkspacePage() {
                   getValueProps={(value) => ({ value: formatWuMtcn(value) })}
                 >
                   <Input inputMode="numeric" maxLength={12} placeholder="633-775-1692" /></Form.Item></Col>
-                <Col span={12}><Form.Item name="customerName" label="Tên khách"><Input /></Form.Item></Col>
+                <Col span={12}><Form.Item name="customerName" label="Tên người nhận" rules={[requiredRule]}><Input /></Form.Item></Col>
+              </Row>
+              <Typography.Title level={5}>Thông tin giao dịch và người gửi</Typography.Title>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="sendingCountry" label="Nước gửi tiền" rules={[requiredRule]}><Input placeholder="AUSTRALIA" /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="senderState" label="Tiểu bang (USA, CAN, MEX)" extra="Không bắt buộc"><Input /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col span={12}><Form.Item name="wuUsdAmount" label="Amount USD (WU)" rules={[positiveNumberRule('Amount USD (WU)')]}>
+                <Col xs={24} md={12}><Form.Item name="senderName" label="Tên người gửi" rules={[requiredRule]}><Input /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receivedDate" label="Ngày nhận tiền" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><Select options={relationshipOptions} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><Select options={purposeOptions} /></Form.Item></Col>
+              </Row>
+
+              <Typography.Title level={5}>Thông tin người nhận</Typography.Title>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="receiverDateOfBirth" label="Ngày sinh" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="customerPhone" label="Số điện thoại" rules={[requiredRule]}><Input inputMode="tel" /></Form.Item></Col>
+              </Row>
+              <Form.Item name="currentAddress" label="Địa chỉ hiện tại" rules={[requiredRule]}><Input /></Form.Item>
+              <Form.Item name="identityAddress" label="Địa chỉ CCCD" extra="Không bắt buộc"><Input /></Form.Item>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="employmentStatus" label="Tình trạng việc làm" rules={[requiredRule]}><Select options={employmentOptions} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><Input /></Form.Item></Col>
+              </Row>
+
+              <Typography.Title level={5}>Giấy tờ tùy thân</Typography.Title>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="identityDocumentType" label="Loại giấy tờ tùy thân" rules={[requiredRule]}><Select options={[{ value: 'PASSPORT', label: 'Passport' }, { value: 'CCCD', label: 'CCCD' }]} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityDocumentNumber" label="Số giấy tờ / Passport" rules={[requiredRule]}><Input /></Form.Item></Col>
+              </Row>
+              <Row gutter={8}>
+                <Col xs={24} md={8}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><Input /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="identityExpiryDate" label="Ngày hết hạn" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+
+              <Typography.Title level={5}>Thông tin Visa</Typography.Title>
+              <Form.Item name="hasVisa" valuePropName="checked"><Checkbox>Có Visa</Checkbox></Form.Item>
+              {hasVisa && (
+                <Row gutter={8}>
+                  <Col xs={24} md={8}><Form.Item name="visaNumber" label="Số Visa" rules={[requiredRule]}><Input /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name="visaIssueDate" label="Ngày cấp Visa" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name="visaExpiryDate" label="Ngày hết hạn Visa" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                </Row>
+              )}
+
+              <Typography.Title level={5}>Thông tin chi trả</Typography.Title>
+              <Row gutter={8}>
+                <Col span={12}><Form.Item name="wuUsdAmount" label="Số tiền nhận (USD/WU)" rules={[positiveNumberRule('Số tiền nhận (USD/WU)')]}>
                   <InputNumber min={0} precision={2} keyboard={false} addonBefore="$" style={{ width: '100%' }} formatter={usdInputFormatter} parser={usdInputParser} /></Form.Item></Col>
                 <Col span={12}><Form.Item name="wuVndAmount" label="Amount VND (WU)" rules={[positiveNumberRule('Amount VND (WU)')]}>
                   <InputNumber min={0} precision={0} keyboard={false} addonAfter="VND" style={{ width: '100%' }} formatter={numberInputFormatter} parser={numberInputParser} /></Form.Item></Col>
@@ -227,13 +291,13 @@ export function WuWorkspacePage() {
                   <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
               </Row>
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
-                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
+                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={PAID_RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
               <Slider
                 min={rateBounds.min}
                 max={rateBounds.max}
-                step={RATE_STEP}
-                value={clampRate(transactionRate, implied, systemRate)}
+                step={PAID_RATE_STEP}
+                value={clampPaidRate(transactionRate, implied, systemRate)}
                 disabled={!systemRate || !implied}
                 tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
                 marks={{
@@ -273,6 +337,19 @@ export function WuWorkspacePage() {
                 <Alert type="warning" showIcon className="mb-3" message="Chưa có tỷ giá hệ thống ACTIVE cho WU. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch." />
               )}
 
+              <Row gutter={8} className="mb-3">
+                <Col xs={24} md={12}>
+                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'MSB'} disabled={!canCreateTransaction || exportingBank !== null} onClick={() => onExport('MSB')} block>
+                    Xuất phiếu MSB
+                  </Button>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'ACB'} disabled={!canCreateTransaction || exportingBank !== null} onClick={() => onExport('ACB')} block>
+                    Xuất phiếu ACB
+                  </Button>
+                </Col>
+              </Row>
+
               <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate} block>
                 Tạo giao dịch
               </Button>
@@ -280,10 +357,65 @@ export function WuWorkspacePage() {
           </Card>
         </Col>
       </Row>
-    </PageScaffold>
+    </TransactionCreatePage>
   );
 }
 
+interface WuFormValues {
+  branchId: string;
+  mtcn: string;
+  customerName?: string;
+  customerPhone: string;
+  sendingCountry: string;
+  senderState?: string;
+  receiverDateOfBirth: Dayjs;
+  currentAddress: string;
+  identityAddress?: string;
+  identityDocumentType: string;
+  identityDocumentNumber: string;
+  identityIssuingCountry: string;
+  identityIssueDate: Dayjs;
+  identityExpiryDate: Dayjs;
+  hasVisa: boolean;
+  visaNumber?: string;
+  visaIssueDate?: Dayjs;
+  visaExpiryDate?: Dayjs;
+  employmentStatus: string;
+  countryOfBirth: string;
+  senderRelationship: string;
+  receivePurpose: string;
+  senderName: string;
+  receivedDate: Dayjs;
+  wuUsdAmount: number;
+  wuVndAmount: number;
+  receivedUsd?: number;
+  receivedVnd?: number;
+  appliedRate: number;
+  payoutCurrency: 'USD' | 'VND';
+  paidCurrency: 'USD' | 'VND';
+}
+
+const requiredRule = { required: true, message: 'Vui lòng nhập thông tin' };
+const relationshipOptions = [
+  { value: 'FAMILY', label: 'Gia đình (FAMILY)' },
+  { value: 'FRIEND', label: 'Bạn bè (FRIEND)' },
+  { value: 'BUSINESS', label: 'Công việc (BUSINESS)' },
+  { value: 'OTHER', label: 'Khác (OTHER)' },
+];
+const purposeOptions = [
+  { value: 'TRAVEL_EXPENSE', label: 'Chi phí đi lại (TRAVEL EXPENSE)' },
+  { value: 'FAMILY_SUPPORT', label: 'Hỗ trợ gia đình (FAMILY SUPPORT)' },
+  { value: 'EDUCATION', label: 'Giáo dục (EDUCATION)' },
+  { value: 'MEDICAL', label: 'Y tế (MEDICAL)' },
+  { value: 'OTHER', label: 'Khác (OTHER)' },
+];
+const employmentOptions = [
+  { value: 'FREELANCER', label: 'Nghề tự do / Freelancer' },
+  { value: 'EMPLOYED', label: 'Đang làm việc / Employed' },
+  { value: 'SELF_EMPLOYED', label: 'Tự kinh doanh / Self-employed' },
+  { value: 'RETIRED', label: 'Nghỉ hưu / Retired' },
+  { value: 'UNEMPLOYED', label: 'Không có việc làm / Unemployed' },
+];
 function findActiveRate(
   rates: ExchangeRateDto[],
   rateType: ExchangeRateType,
@@ -298,23 +430,15 @@ function findActiveRate(
   );
 }
 
-function getRateBounds(firstRate?: number, secondRate?: number) {
-  const rates = [firstRate, secondRate].filter((rate): rate is number =>
-    typeof rate === 'number' && Number.isFinite(rate) && rate > 0,
-  );
-  if (rates.length === 0) return { min: 0, max: 100_000 };
-
-  return {
-    min: Math.ceil(Math.min(...rates) / RATE_STEP) * RATE_STEP,
-    max: Math.floor(Math.max(...rates) / RATE_STEP) * RATE_STEP,
-  };
-}
-
-function clampRate(value: number, firstRate?: number, secondRate?: number) {
-  const bounds = getRateBounds(firstRate, secondRate);
-  if (!Number.isFinite(value) || value <= 0) return bounds.min;
-  const steppedValue = Math.round(value / RATE_STEP) * RATE_STEP;
-  return Math.min(Math.max(steppedValue, bounds.min), bounds.max);
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function getWuPayout(

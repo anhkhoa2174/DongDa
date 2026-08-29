@@ -115,12 +115,15 @@ export class PrismaFxRepository implements IFxRepository {
   }
 
   async currencyStock(branchId?: string) {
-    // Tồn ngoại tệ = các sổ FUND_A + CASH_USD
+    // Tồn quỹ phục vụ form FX = Quỹ gốc VND/USD + các sổ Quỹ A.
     const accounts = await this.prisma.fund_accounts.findMany({
       where: {
         status: 'ACTIVE',
         ...(branchId && { branch_id: branchId }),
-        OR: [{ account_type: 'FUND_A' }, { account_type: 'CASH', currency_code: 'USD' }],
+        OR: [
+          { account_type: 'FUND_A' },
+          { account_type: 'CASH', currency_code: { in: ['VND', 'USD'] } },
+        ],
       },
     });
     const ledgerLines = accounts.length === 0

@@ -1,61 +1,42 @@
+// Ngân hàng — danh sách tài khoản NH theo chi nhánh (data thật /bank/accounts).
+// GĐ/KTTH: xem mọi chi nhánh, thêm tài khoản, ngưng tài khoản. Chi nhánh: chỉ tài khoản của mình.
 import {
-  AuditOutlined,
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   BankOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined,
   EyeOutlined,
-  FilterOutlined,
-  LockOutlined,
   PlusOutlined,
-  ReloadOutlined,
-  SwapOutlined,
+  ShopOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Input, Progress, Row, Select, Space, Statistic, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Select, Space, Statistic, Tag, Typography } from 'antd';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { formatNumber, formatUsd, formatVnd } from '@/shared/utils/formatters';
-import { useBankAccountsView } from '../hooks/useBankAccountsView';
-import type { BankAccount, BankAccountStatus, BankReconciliationStatus } from '../model/bank.types';
+import { formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { getApiErrorMessage } from '@/shared/utils/errors';
+import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { useBranches } from '@/shared/hooks/useBranches';
+import { useBankAccounts, useDeactivateBankAccount } from '../hooks/useBank';
+import type { BankAccountDto } from '../api/bank.api';
+import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
+import { CreateBankAccountModal } from '../components/CreateBankAccountModal';
 
-const bankOptions = [
-  { value: 'ALL', label: 'Tất cả ngân hàng' },
-  { value: 'ACB', label: 'ACB' },
-  { value: 'MSB', label: 'MSB' },
-  { value: 'TCB', label: 'TCB' },
-] as const;
-
-const statusOptions = [
-  { value: 'ALL', label: 'Tất cả trạng thái' },
-  { value: 'ACTIVE', label: 'Đang hoạt động' },
-  { value: 'RECONCILING', label: 'Đang đối chiếu' },
-  { value: 'LOCKED', label: 'Đã khóa' },
-] as const;
-
-const statusMeta: Record<BankAccountStatus, { label: string; color: string; icon: JSX.Element }> = {
-  ACTIVE: { label: 'Hoạt động', color: 'green', icon: <CheckCircleOutlined /> },
-  RECONCILING: { label: 'Đang đối chiếu', color: 'gold', icon: <ClockCircleOutlined /> },
-  LOCKED: { label: 'Đã khóa', color: 'red', icon: <LockOutlined /> },
-};
-
-const reconciliationMeta: Record<BankReconciliationStatus, { label: string; color: string; icon: JSX.Element }> = {
-  MATCHED: { label: 'Khớp sổ', color: 'green', icon: <CheckCircleOutlined /> },
-  PENDING: { label: 'Chờ đối chiếu', color: 'gold', icon: <ClockCircleOutlined /> },
-  MISMATCH: { label: 'Lệch sổ', color: 'red', icon: <ExclamationCircleOutlined /> },
-};
-
-function formatAccountMoney(account: BankAccount, value: number) {
-  return account.currency === 'VND' ? formatVnd(value) : formatUsd(value);
+function formatAccountMoney(account: BankAccountDto, value: number) {
+  return account.currencyCode === 'VND' ? formatVnd(value) : formatUsd(value);
 }
 
-function BankAccountCard({ account }: { account: BankAccount }) {
-  const liquidityPercent = Math.round((account.availableBalance / account.balance) * 100);
-  const status = statusMeta[account.status];
-  const reconciliation = reconciliationMeta[account.reconciliationStatus];
+function BankAccountCard({
+  account, canManage, canRecord, onRecord, onDeactivate,
+}: {
+  account: BankAccountDto;
+  canManage: boolean;
+  canRecord: boolean;
+  onRecord: (direction: BankMovementDirection) => void;
+  onDeactivate: () => void;
+}) {
   const navigate = useNavigate();
-  const movementsPath = `/bank-management/accounts/${account.key}/movements`;
+  const movementsPath = `/bank-management/accounts/${account.id}/movements`;
 
   return (
     <Card
@@ -69,137 +50,104 @@ function BankAccountCard({ account }: { account: BankAccount }) {
           </div>
           <div className="min-w-0">
             <Typography.Text strong className="block truncate text-base!">{account.accountName}</Typography.Text>
-            <Typography.Text type="secondary" className="block truncate text-xs!">{account.accountNumber}</Typography.Text>
+            <Typography.Text type="secondary" className="block truncate text-xs!">
+              {account.bankName} · STK {account.accountNo}
+            </Typography.Text>
           </div>
         </div>
       )}
-      extra={<Tag color={status.color} icon={status.icon}>{status.label}</Tag>}
+      extra={<Tag color="cyan" className="m-0!">{account.bankCode}</Tag>}
     >
       <div className="space-y-4 p-5">
         <div className="flex items-start justify-between gap-4">
           <Space direction="vertical" size={0}>
             <Typography.Text type="secondary" className="uppercase tracking-normal!">Số dư hiện tại</Typography.Text>
             <Typography.Title level={2} className="m-0! text-3xl! leading-tight!">
-              {formatAccountMoney(account, account.balance)}
+              {formatAccountMoney(account, account.currentBalance)}
             </Typography.Title>
           </Space>
-          <Tag className="m-0!" color="cyan">{account.bankCode}</Tag>
+          <Tag className="m-0!">{account.currencyCode}</Tag>
         </div>
-
-        <div className="grid grid-cols-2 gap-3 rounded bg-slate-50 p-3">
-          <Statistic
-            title="Khả dụng"
-            value={account.availableBalance}
-            formatter={(value) => formatAccountMoney(account, Number(value))}
-          />
-          <Statistic title="GD hôm nay" value={account.transactionCountToday} suffix="GD" />
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <Typography.Text type="secondary">Tỷ lệ khả dụng</Typography.Text>
-            <Typography.Text strong>{liquidityPercent}%</Typography.Text>
-          </div>
-          <Progress percent={liquidityPercent} showInfo={false} strokeColor="#f5b301" />
-        </div>
-
-        <Row gutter={[12, 12]}>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Tiền vào hôm nay</Typography.Text>
-              <div className="mt-1 font-semibold text-emerald-700">{formatAccountMoney(account, account.todayIn)}</div>
-            </div>
-          </Col>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Tiền ra hôm nay</Typography.Text>
-              <div className="mt-1 font-semibold text-rose-700">{formatAccountMoney(account, account.todayOut)}</div>
-            </div>
-          </Col>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Chờ vào</Typography.Text>
-              <div className="mt-1 font-semibold">{formatAccountMoney(account, account.pendingIn)}</div>
-            </div>
-          </Col>
-          <Col span={12}>
-            <div className="rounded border border-slate-100 p-3">
-              <Typography.Text type="secondary">Chờ ra</Typography.Text>
-              <div className="mt-1 font-semibold">{formatAccountMoney(account, account.pendingOut)}</div>
-            </div>
-          </Col>
-        </Row>
-
-        <div className="space-y-2 border-t border-slate-100 pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Đối chiếu</Typography.Text>
-            <Tag color={reconciliation.color} icon={reconciliation.icon}>{reconciliation.label}</Tag>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Lần cuối</Typography.Text>
-            <Typography.Text>{account.lastReconciledAt}</Typography.Text>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <Typography.Text type="secondary">Phạm vi</Typography.Text>
-            <Typography.Text className="text-right">{account.ownerScope}</Typography.Text>
-          </div>
-          <Typography.Paragraph className="mb-0! text-slate-600">{account.purpose}</Typography.Paragraph>
-          <Space wrap size={[6, 6]}>
-            {account.linkedModules.map((moduleName) => (
-              <Tag key={moduleName}>{moduleName}</Tag>
-            ))}
-          </Space>
+        <div className="flex items-center justify-between gap-3 rounded bg-slate-50 p-3">
+          <Typography.Text type="secondary"><ShopOutlined /> Chi nhánh sở hữu</Typography.Text>
+          <Typography.Text strong className="text-right">
+            {account.branchCode ? `${account.branchCode} - ${account.branchName ?? ''}` : '—'}
+          </Typography.Text>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-4">
-        <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Giao dịch</Button>
-        <Button icon={<SwapOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Nộp/Rút</Button>
-        <Button icon={<AuditOutlined />} onClick={(event) => event.stopPropagation()}>Đối chiếu</Button>
-        <Button icon={<DownloadOutlined />} onClick={(event) => event.stopPropagation()}>Sao kê</Button>
+        <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Lịch sử</Button>
+        <Button icon={<ArrowDownOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('IN'); }}>Tiền vào</Button>
+        <Button danger icon={<ArrowUpOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('OUT'); }}>Tiền ra</Button>
+        {canManage ? (
+          <Popconfirm
+            title="Ngưng tài khoản này?"
+            description="Chỉ ngưng được khi số dư = 0. Lịch sử biến động vẫn được giữ."
+            okText="Ngưng"
+            cancelText="Hủy"
+            onConfirm={onDeactivate}
+            onPopupClick={(event) => event.stopPropagation()}
+          >
+            <Button icon={<StopOutlined />} onClick={(event) => event.stopPropagation()}>Ngưng</Button>
+          </Popconfirm>
+        ) : <span />}
       </div>
     </Card>
   );
 }
 
 export function BankAccountsPage() {
-  const { data: bankAccountsMock } = useBankAccountsView();
+  const { message } = App.useApp();
+  const user = useAuthStore((state) => state.user);
+  const isBranchUser = user?.role === 'branch';
+  const canManage = user?.role === 'director' || user?.role === 'accountant';
+  const canRecord = canManage || isBranchUser;
+
+  const [branchFilter, setBranchFilter] = useState<string | undefined>(undefined);
+  const { data: branches = [] } = useBranches();
+  const { data: accounts = [], isLoading } = useBankAccounts(isBranchUser ? undefined : branchFilter);
+  const deactivate = useDeactivateBankAccount();
   const [keyword, setKeyword] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [recording, setRecording] = useState<{ account: BankAccountDto; direction: BankMovementDirection } | null>(null);
 
+  const bankOptions = useMemo(
+    () => [{ value: 'ALL', label: 'Tất cả ngân hàng' }, ...[...new Set(accounts.map((a) => a.bankCode))].map((code) => ({ value: code, label: code }))],
+    [accounts],
+  );
   const filteredAccounts = useMemo(
-    () =>
-      bankAccountsMock.filter((account) => {
-        const text = `${account.bankCode} ${account.bankName} ${account.accountName} ${account.accountNumber} ${account.ownerScope}`.toLowerCase();
-        const matchesKeyword = text.includes(keyword.toLowerCase());
-        const matchesBank = bankFilter === 'ALL' || account.bankCode === bankFilter;
-        const matchesStatus = statusFilter === 'ALL' || account.status === statusFilter;
-        return matchesKeyword && matchesBank && matchesStatus;
-      }),
-    [bankFilter, keyword, statusFilter],
+    () => accounts.filter((account) => {
+      const text = `${account.bankCode} ${account.bankName} ${account.accountName} ${account.accountNo} ${account.branchCode ?? ''} ${account.branchName ?? ''}`.toLowerCase();
+      return text.includes(keyword.toLowerCase()) && (bankFilter === 'ALL' || account.bankCode === bankFilter);
+    }),
+    [accounts, bankFilter, keyword],
   );
 
-  const totalVnd = bankAccountsMock
-    .filter((account) => account.currency === 'VND')
-    .reduce((sum, account) => sum + account.balance, 0);
-  const totalUsd = bankAccountsMock
-    .filter((account) => account.currency === 'USD')
-    .reduce((sum, account) => sum + account.balance, 0);
-  const pendingReconciliation = bankAccountsMock.filter((account) => account.reconciliationStatus !== 'MATCHED').length;
-  const todayTransactionCount = bankAccountsMock.reduce((sum, account) => sum + account.transactionCountToday, 0);
+  const totalVnd = accounts.filter((a) => a.currencyCode === 'VND').reduce((sum, a) => sum + a.currentBalance, 0);
+  const totalUsd = accounts.filter((a) => a.currencyCode === 'USD').reduce((sum, a) => sum + a.currentBalance, 0);
+  const branchCount = new Set(accounts.map((a) => a.branchId)).size;
+
+  const onDeactivate = async (account: BankAccountDto) => {
+    try {
+      await deactivate.mutateAsync(account.id);
+      message.success(`Đã ngưng tài khoản ${account.accountNo}`);
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Không ngưng được tài khoản'));
+    }
+  };
 
   return (
     <PageScaffold
       title="Ngân Hàng"
-      description="Theo dõi từng tài khoản ngân hàng, số dư, dòng tiền trong ngày và trạng thái đối chiếu."
+      description={isBranchUser
+        ? 'Tài khoản ngân hàng của chi nhánh: theo dõi số dư và ghi nhận tiền vào/ra (chuyển khoản, nộp/rút).'
+        : 'Mỗi chi nhánh có tài khoản ngân hàng riêng. Theo dõi số dư, ghi nhận chuyển khoản/nộp/rút và tiền WU/MG về.'}
       moduleName="bank-management"
-      extra={(
-        <Space wrap>
-          <Button icon={<ReloadOutlined />}>Đồng bộ sao kê</Button>
-          <Button type="primary" icon={<PlusOutlined />}>Thêm tài khoản</Button>
-        </Space>
-      )}
+      extra={canManage ? (
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Thêm tài khoản</Button>
+      ) : undefined}
     >
       <Space direction="vertical" size={16} className="w-full">
         <Row gutter={[16, 16]}>
@@ -210,43 +158,71 @@ export function BankAccountsPage() {
             <Card><Statistic title="Tổng USD ngân hàng" value={totalUsd} formatter={(value) => formatUsd(Number(value))} /></Card>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Chờ đối chiếu" value={pendingReconciliation} suffix="TK" /></Card>
+            <Card><Statistic title="Số tài khoản" value={accounts.length} suffix="TK" /></Card>
           </Col>
           <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Giao dịch hôm nay" value={formatNumber(todayTransactionCount)} /></Card>
+            <Card><Statistic title="Chi nhánh có tài khoản" value={branchCount} suffix="CN" /></Card>
           </Col>
         </Row>
 
         <Card>
           <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} lg={10}>
+            <Col xs={24} lg={isBranchUser ? 16 : 10}>
               <Input.Search
                 allowClear
-                placeholder="Tìm ngân hàng, số tài khoản, phạm vi..."
+                placeholder="Tìm ngân hàng, số tài khoản, chi nhánh..."
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
               />
             </Col>
-            <Col xs={24} sm={12} lg={5}>
-              <Select className="w-full" value={bankFilter} onChange={setBankFilter} options={[...bankOptions]} />
-            </Col>
-            <Col xs={24} sm={12} lg={5}>
-              <Select className="w-full" value={statusFilter} onChange={setStatusFilter} options={[...statusOptions]} />
-            </Col>
-            <Col xs={24} lg={4}>
-              <Button className="w-full" icon={<FilterOutlined />}>Bộ lọc nâng cao</Button>
+            {!isBranchUser && (
+              <Col xs={24} sm={12} lg={7}>
+                <Select
+                  className="w-full"
+                  allowClear
+                  placeholder="Tất cả chi nhánh"
+                  value={branchFilter}
+                  onChange={(value) => setBranchFilter(value || undefined)}
+                  options={branches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))}
+                />
+              </Col>
+            )}
+            <Col xs={24} sm={12} lg={isBranchUser ? 8 : 7}>
+              <Select className="w-full" value={bankFilter} onChange={setBankFilter} options={bankOptions} />
             </Col>
           </Row>
         </Card>
 
-        <Row gutter={[16, 16]}>
-          {filteredAccounts.map((account) => (
-            <Col xs={24} xl={12} key={account.key}>
-              <BankAccountCard account={account} />
-            </Col>
-          ))}
-        </Row>
+        {!isLoading && filteredAccounts.length === 0 ? (
+          <Card>
+            <Empty description={canManage ? 'Chưa có tài khoản ngân hàng. Bấm "Thêm tài khoản" để khai báo cho từng chi nhánh.' : 'Chi nhánh chưa được khai báo tài khoản ngân hàng. Liên hệ KTTH/GĐ.'} />
+          </Card>
+        ) : (
+          <Row gutter={[16, 16]}>
+            {filteredAccounts.map((account) => (
+              <Col xs={24} xl={12} key={account.id}>
+                <BankAccountCard
+                  account={account}
+                  canManage={canManage}
+                  canRecord={canRecord}
+                  onRecord={(direction) => setRecording({ account, direction })}
+                  onDeactivate={() => onDeactivate(account)}
+                />
+              </Col>
+            ))}
+          </Row>
+        )}
       </Space>
+
+      <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      {recording && (
+        <BankMovementModal
+          account={recording.account}
+          direction={recording.direction}
+          open
+          onClose={() => setRecording(null)}
+        />
+      )}
     </PageScaffold>
   );
 }

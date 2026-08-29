@@ -7,6 +7,7 @@ import { IExchangeRateRepository } from '../../../domain/repositories/exchange-r
 import { WuTransaction, Currency2 } from '../../../domain/entities/wu.entity';
 import { ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateWuDto } from '../../dtos/wu/wu.dto';
+import { validatePaidAppliedRate } from '../exchange-rate/validate-paid-rate';
 
 @Injectable()
 export class CreateWuUseCase {
@@ -43,6 +44,28 @@ export class CreateWuUseCase {
       branchId: dto.branchId,
       mtcn: dto.mtcn,
       customerName: dto.customerName,
+      customerPhone: dto.customerPhone,
+      sendingCountry: dto.sendingCountry,
+      senderState: dto.senderState,
+      receiverDateOfBirth: new Date(dto.receiverDateOfBirth),
+      currentAddress: dto.currentAddress,
+      identityAddress: dto.identityAddress,
+      identityDocumentType: dto.identityDocumentType,
+      identityDocumentNumber: dto.identityDocumentNumber,
+      identityIssuingCountry: dto.identityIssuingCountry,
+      identityIssueDate: new Date(dto.identityIssueDate),
+      identityExpiryDate: new Date(dto.identityExpiryDate),
+      hasVisa: dto.hasVisa,
+      visaType: dto.hasVisa ? 'TOURIST' : undefined,
+      visaNumber: dto.visaNumber,
+      visaIssueDate: dto.visaIssueDate ? new Date(dto.visaIssueDate) : undefined,
+      visaExpiryDate: dto.visaExpiryDate ? new Date(dto.visaExpiryDate) : undefined,
+      employmentStatus: dto.employmentStatus,
+      countryOfBirth: dto.countryOfBirth,
+      senderRelationship: dto.senderRelationship,
+      receivePurpose: dto.receivePurpose,
+      senderName: dto.senderName,
+      receivedDate: new Date(dto.receivedDate),
       wuUsdAmount: dto.wuUsdAmount,
       wuVndAmount: dto.wuVndAmount,
       receivedUsd: dto.receivedUsd,
@@ -68,20 +91,7 @@ export class ListWuUseCase {
 }
 
 export function validateAppliedRate(value: number, firstRate: number, secondRate: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new BadRequestException('Tỷ giá áp dụng phải là số dương hợp lệ');
-  }
-  if (!Number.isInteger(value) || value % 5 !== 0) {
-    throw new BadRequestException('Tỷ giá áp dụng WU phải là số nguyên theo bước 5 VND');
-  }
-  const rates = [firstRate, secondRate].filter((rate) => Number.isFinite(rate) && rate > 0);
-  if (rates.length === 0) return value;
-  const min = Math.min(...rates);
-  const max = Math.max(...rates);
-  if (value < min || value > max) {
-    throw new BadRequestException(`Tỷ giá áp dụng phải nằm trong biên ${min} - ${max}`);
-  }
-  return value;
+  return validatePaidAppliedRate(value, firstRate, secondRate, 'WU');
 }
 
 export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {

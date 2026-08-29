@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Card, Input, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { formatDateTime } from '@/shared/utils/formatters';
 import { useAuditLogs } from '../hooks/useAuditLogs';
 import type { AuditLogDto } from '../api/auditLog.api';
 
@@ -18,7 +19,7 @@ export function AuditLogLivePage() {
 
   const columns: ColumnsType<AuditLogDto> = [
     { title: 'Thời gian', dataIndex: 'createdAt', width: 160,
-      render: (v) => new Date(v).toLocaleString('vi-VN') },
+      render: (v) => formatDateTime(v) },
     { title: 'Hành động', dataIndex: 'action',
       render: (v) => <Tag color={methodColor(v)}>{v.replace('/api/v1', '')}</Tag> },
     { title: 'Đối tượng', dataIndex: 'entityType', render: (v) => <Tag>{v}</Tag> },

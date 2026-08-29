@@ -21,10 +21,11 @@ export class CreateFxUseCase {
       provider: ServiceProvider.INTERNAL,
       fromCurrency: dto.fxCurrency as CurrencyCode,
     });
-    const rate = active[0]?.rate;
-    if (!rate) {
+    const systemRate = active[0]?.rate;
+    if (!systemRate) {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${dto.isBuy ? 'mua' : 'bán'} cho ${dto.fxCurrency}`);
     }
+    const rate = validateFxAppliedRate(dto.rate, systemRate, active[0]?.margin ?? 0, dto.isBuy);
 
     return this.fxRepo.create({
       branchId: dto.branchId,
@@ -36,6 +37,22 @@ export class CreateFxUseCase {
       createdByUserId,
     });
   }
+}
+
+export function validateFxAppliedRate(value: number, systemRate: number, margin: number, isBuy: boolean) {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new BadRequestException('Tỷ giá giao dịch phải là số dương hợp lệ');
+  }
+  const safeMargin = Number.isFinite(margin) && margin > 0 ? margin : 0;
+  const min = isBuy ? Math.max(systemRate - safeMargin, Number.EPSILON) : systemRate;
+  const max = isBuy ? systemRate : systemRate + safeMargin;
+  const tolerance = 0.000001;
+  if (value < min - tolerance || value > max + tolerance) {
+    throw new BadRequestException(
+      `Tỷ giá ${isBuy ? 'mua' : 'bán'} phải nằm trong biên ${min} - ${max}`,
+    );
+  }
+  return value;
 }
 
 @Injectable()

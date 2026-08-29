@@ -59,10 +59,26 @@ export function useApproveRate() {
   });
 }
 
+export function useApproveRates() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (ids: string[]) => exchangeRateApi.approveBatch(ids),
+    onSuccess: invalidate,
+  });
+}
+
 export function useRejectRate() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (id: string) => exchangeRateApi.reject(id),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRejectRates() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (ids: string[]) => exchangeRateApi.rejectBatch(ids),
     onSuccess: invalidate,
   });
 }

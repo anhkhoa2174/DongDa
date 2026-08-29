@@ -104,13 +104,24 @@ export interface CentralFundConversion {
   items: Array<{
     currencyCode: CurrencyCode;
     amount: number;
-    rate: number;        // Tỷ giá áp dụng
-    deduction: number;  // Khấu trừ (VNĐ), mặc định 0
-    vndAmount: number;  // = amount × rate - deduction
+    rate: number;
+    grossVndAmount: number;
+    deduction: number;
+    vndAmount: number;
   }>;
   totalVndAmount: number;
   note?: string | null;
   postedAt: Date;
+}
+
+export function calculateCentralFundConversionValue(amount: number, rate: number, deduction: number) {
+  const grossVndAmount = Math.round(amount * rate);
+  const roundedDeduction = Math.round(deduction);
+  return {
+    grossVndAmount,
+    deduction: roundedDeduction,
+    vndAmount: grossVndAmount - roundedDeduction,
+  };
 }
 
 export type FundMovementHistoryKind = 'RECEIPT' | 'EXPENSE' | 'TRANSFER_IN' | 'TRANSFER_OUT';

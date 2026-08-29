@@ -24,12 +24,14 @@ import { PrismaBranchRepository } from './infrastructure/database/repositories/p
 import { FundController } from './interfaces/http/controllers/fund.controller';
 import { PrismaFundRepository } from './infrastructure/database/repositories/prisma-fund.repository';
 import {
-  CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, ListFundUseCase,
+  CreateTransferUseCase, ConfirmTransferUseCase, RejectTransferUseCase, CancelTransferUseCase, ListFundUseCase,
   CreateFundMovementUseCase, ConvertCentralFundUseCase,
 } from './application/use-cases/fund/fund-transfer.use-cases';
 import { WuController } from './interfaces/http/controllers/wu.controller';
 import { PrismaWuRepository } from './infrastructure/database/repositories/prisma-wu.repository';
 import { CreateWuUseCase, ListWuUseCase } from './application/use-cases/wu/wu.use-cases';
+import { ExportWuFormUseCase } from './application/use-cases/wu/export-wu-form.use-case';
+import { XlsxWuFormExporterService } from './infrastructure/spreadsheets/xlsx-wu-form-exporter.service';
 import { MgController } from './interfaces/http/controllers/mg.controller';
 import { PrismaMgRepository } from './infrastructure/database/repositories/prisma-mg.repository';
 import { CreateMgUseCase, ListMgUseCase } from './application/use-cases/mg/mg.use-cases';
@@ -38,10 +40,10 @@ import { PrismaFxRepository } from './infrastructure/database/repositories/prism
 import { CreateFxUseCase, ListFxUseCase } from './application/use-cases/fx/fx.use-cases';
 import { BankController } from './interfaces/http/controllers/bank.controller';
 import { PrismaBankRepository } from './infrastructure/database/repositories/prisma-bank.repository';
-import { ListBankUseCase, ReceiveFromProviderUseCase } from './application/use-cases/bank/bank.use-cases';
+import { ListBankUseCase, ReceiveFromProviderUseCase, ManageBankAccountUseCase, RecordBankMovementUseCase, RecordAdvanceCkUseCase, SettleAdvanceCkUseCase, ListAdvancesUseCase } from './application/use-cases/bank/bank.use-cases';
 import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
 import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
-import { RunReconciliationUseCase, ListReconciliationUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
+import { RunReconciliationUseCase, ListReconciliationUseCase, UploadJournalUseCase, ListPendingJournalsUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
 import { ParseJournalUseCase } from './application/use-cases/reconciliation/parse-journal.use-case';
 import { AuditLogController } from './interfaces/http/controllers/audit-log.controller';
 import { PrismaAuditRepository } from './infrastructure/database/repositories/prisma-audit.repository';
@@ -62,6 +64,11 @@ import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 import { NotificationController } from './interfaces/http/controllers/notification.controller';
 import { NotificationService } from './infrastructure/notifications/notification.service';
+import { DomesticTransferController } from './interfaces/http/controllers/domestic-transfer.controller';
+import { PrismaDomesticTransferRepository } from './infrastructure/database/repositories/prisma-domestic-transfer.repository';
+import { CreateDomesticTransferUseCase, ListDomesticTransferBankAccountsUseCase, ListDomesticTransferUseCase } from './application/use-cases/domestic-transfer/domestic-transfer.use-cases';
+import { ExportDomesticTransferFormUseCase } from './application/use-cases/domestic-transfer/export-domestic-transfer-form.use-case';
+import { OoxmlDomesticTransferFormExporterService } from './infrastructure/spreadsheets/ooxml-domestic-transfer-form-exporter.service';
 
 import { PrismaExchangeRateRepository } from './infrastructure/database/repositories/prisma-exchange-rate.repository';
 import { CreateExchangeRateUseCase } from './application/use-cases/exchange-rate/create-exchange-rate.use-case';
@@ -96,7 +103,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       }),
     }),
   ],
-  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController, NotificationController],
+  controllers: [AuthController, UserController, ExchangeRateController, DebtController, BranchController, FundController, WuController, MgController, FxController, DomesticTransferController, BankController, ReconciliationController, AuditLogController, ReportsController, ShiftController, OrganizationController, TransactionAdminController, BranchMonitoringController, NotificationController],
   providers: [
     PrismaService,
     NotificationService,
@@ -109,8 +116,11 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IFundRepository', useClass: PrismaFundRepository },
     { provide: 'IWuRepository', useClass: PrismaWuRepository },
+    { provide: 'IWuFormExporter', useClass: XlsxWuFormExporterService },
     { provide: 'IMgRepository', useClass: PrismaMgRepository },
     { provide: 'IFxRepository', useClass: PrismaFxRepository },
+    { provide: 'IDomesticTransferRepository', useClass: PrismaDomesticTransferRepository },
+    { provide: 'IDomesticTransferFormExporter', useClass: OoxmlDomesticTransferFormExporterService },
     { provide: 'IBankRepository', useClass: PrismaBankRepository },
     { provide: 'IReconciliationRepository', useClass: PrismaReconciliationRepository },
     { provide: 'IAuditRepository', useClass: PrismaAuditRepository },
@@ -164,12 +174,14 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     CreateTransferUseCase,
     ConfirmTransferUseCase,
     RejectTransferUseCase,
+    CancelTransferUseCase,
     ListFundUseCase,
     CreateFundMovementUseCase,
     ConvertCentralFundUseCase,
 
     CreateWuUseCase,
     ListWuUseCase,
+    ExportWuFormUseCase,
 
     CreateMgUseCase,
     ListMgUseCase,
@@ -177,11 +189,23 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     CreateFxUseCase,
     ListFxUseCase,
 
+    CreateDomesticTransferUseCase,
+    ListDomesticTransferUseCase,
+    ListDomesticTransferBankAccountsUseCase,
+    ExportDomesticTransferFormUseCase,
+
     ListBankUseCase,
     ReceiveFromProviderUseCase,
+    ManageBankAccountUseCase,
+    RecordBankMovementUseCase,
+    RecordAdvanceCkUseCase,
+    SettleAdvanceCkUseCase,
+    ListAdvancesUseCase,
 
     RunReconciliationUseCase,
     ListReconciliationUseCase,
+    UploadJournalUseCase,
+    ListPendingJournalsUseCase,
     ParseJournalUseCase,
 
     ListAuditUseCase,

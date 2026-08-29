@@ -14,11 +14,10 @@ import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import {
   Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -26,7 +25,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { formatCurrency, formatDateTime, formatExchangeRate, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { getCurrencyMetadata } from '@/shared/constants/currencies';
 import type { CompanyDashboardDto, SummaryDto } from '@/modules/reports/api/summary.api';
 import { useCompanyDashboard, useSummary } from '@/modules/reports/hooks/useSummary';
@@ -34,29 +33,32 @@ import { BalanceOverviewCard } from '../components/BalanceOverviewCard';
 import { KpiGrid } from '../components/KpiGrid';
 
 type BranchStatus = CompanyDashboardDto['branches'][number];
+type ActiveCompanyRate = CompanyDashboardDto['activeRates'][number];
+type RateCategory = 'PAID' | 'FX' | 'BANK';
 type CompanyExchangeRate = {
-  id: string;
-  label: string;
+  key: string;
+  category: RateCategory;
+  fromCurrency: string;
   country: string;
-  value: string;
+  buy?: ActiveCompanyRate;
+  sell?: ActiveCompanyRate;
+  bank?: ActiveCompanyRate;
   effectiveFrom: string;
 };
 type OperationSummaryRow = {
   key: 'WU' | 'MG' | 'FX';
   operation: string;
   transactionCount: number;
-  totalUsd: number | null;
-  totalVnd: number;
-  resultValue: number | null;
-  resultLabel: string;
-  debtUsd: number | null;
+  transactionValueVnd: number;
+  debtGeneratedUsd: number;
+  debtGeneratedVnd: number;
 };
 
 const branchColumns: ColumnsType<BranchStatus> = [
   {
     title: 'Chi nhánh',
     dataIndex: 'code',
-    fixed: 'left',
+    width: 230,
     render: (value: string, record) => (
       <Space direction="vertical" size={0}>
         <Typography.Text strong>{value} - {record.name}</Typography.Text>
@@ -65,20 +67,46 @@ const branchColumns: ColumnsType<BranchStatus> = [
     ),
   },
   {
-    title: 'Trạng thái ca',
-    dataIndex: 'shiftStatus',
-    render: (value: BranchStatus['shiftStatus']) =>
-      value === 'open' ? <Tag color="green">● Đang mở</Tag> : <Tag color="gold">○ Chưa mở ca</Tag>,
+    title: 'Ca / rủi ro',
+    key: 'operationStatus',
+    width: 150,
+    render: (_, record) => {
+      const risk = {
+        normal: { label: 'Ổn định', color: 'green' },
+        watch: { label: 'Theo dõi', color: 'gold' },
+        risk: { label: 'Rủi ro', color: 'red' },
+      }[record.riskLevel];
+      return (
+        <Space direction="vertical" size={2}>
+          {record.shiftStatus === 'open' ? <Tag color="green">Đang mở ca</Tag> : <Tag>Chưa mở ca</Tag>}
+          <Tag color={risk.color}>{risk.label}</Tag>
+        </Space>
+      );
+    },
   },
-  { title: 'Tồn VND', dataIndex: 'vndBalance', align: 'right', render: (value: number) => formatVnd(value) },
-  { title: 'Tồn USD', dataIndex: 'usdBalance', align: 'right', render: (value: number) => formatUsd(value) },
-  { title: 'GD', dataIndex: 'todayTransactions', align: 'right' },
-  { title: 'Giá trị GD', dataIndex: 'revenueToday', align: 'right', render: (value: number) => formatVnd(value) },
   {
-    title: 'LN tạm tính',
-    dataIndex: 'profitToday',
+    title: 'Tồn quỹ',
+    key: 'balances',
     align: 'right',
-    render: (value: number) => <Typography.Text className="text-emerald-600!">{formatVnd(value)}</Typography.Text>,
+    width: 190,
+    render: (_, record) => (
+      <Space direction="vertical" size={0} align="end">
+        <Typography.Text strong>{formatVnd(record.vndBalance)}</Typography.Text>
+        <Typography.Text type="secondary">{formatUsd(record.usdBalance)}</Typography.Text>
+      </Space>
+    ),
+  },
+  {
+    title: 'Giao dịch hôm nay',
+    key: 'transactions',
+    align: 'right',
+    width: 190,
+    render: (_, record) => (
+      <Space direction="vertical" size={0} align="end">
+        <Typography.Text strong>{record.todayTransactions} giao dịch</Typography.Text>
+        <Typography.Text type="secondary">{formatVnd(record.transactionValueTodayVnd)}</Typography.Text>
+      </Space>
+    ),
   },
   {
     title: 'Chênh lệch',
@@ -88,18 +116,6 @@ const branchColumns: ColumnsType<BranchStatus> = [
       return <Tag color={colorMap[record.discrepancy]}>{record.discrepancy === 'matched' ? 'Khớp' : formatVnd(value)}</Tag>;
     },
   },
-  {
-    title: 'Rủi ro',
-    dataIndex: 'riskLevel',
-    render: (value: BranchStatus['riskLevel']) => {
-      const meta = {
-        normal: { label: 'Ổn định', color: 'green' },
-        watch: { label: 'Theo dõi', color: 'gold' },
-        risk: { label: 'Rủi ro', color: 'red' },
-      }[value];
-      return <Tag color={meta.color}>{meta.label}</Tag>;
-    },
-  },
 ];
 
 const MAX_VISIBLE_RATES = 6;
@@ -107,24 +123,43 @@ const mixColors = ['#f5b301', '#2563eb', '#16a34a', '#f59e0b'];
 const sourceLabels = { WU: 'WU', MG: 'MG', FX: 'Ngoại tệ', DOMESTIC: 'Chuyển tiền' };
 
 const rateColumns: ColumnsType<CompanyExchangeRate> = [
-  { title: 'Tỷ giá', dataIndex: 'label', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
+  {
+    title: 'Loại tỷ giá',
+    dataIndex: 'category',
+    render: (value: RateCategory) => <Typography.Text strong>{rateCategoryLabel(value)}</Typography.Text>,
+  },
+  {
+    title: 'Ngoại tệ',
+    dataIndex: 'fromCurrency',
+    render: (value: string) => (
+      <Space direction="vertical" size={0}>
+        <Typography.Text className="exchange-rate-code">{value}</Typography.Text>
+        <Typography.Text type="secondary" className="text-xs!">{getCurrencyMetadata(value).name}</Typography.Text>
+      </Space>
+    ),
+  },
   { title: 'Quốc gia', dataIndex: 'country' },
   {
-    title: 'Giá trị',
-    dataIndex: 'value',
+    title: 'Giá mua',
+    key: 'buyRate',
     align: 'right',
-    render: (value: string) => <Typography.Text className="font-mono text-base! font-semibold!">{value}</Typography.Text>,
+    render: (_, row) => renderDashboardRate(row, 'buy'),
   },
+  {
+    title: 'Giá bán',
+    key: 'sellRate',
+    align: 'right',
+    render: (_, row) => renderDashboardRate(row, 'sell'),
+  },
+  { title: 'Biên độ', key: 'margin', align: 'right', render: (_, row) => formatExchangeRate(rateMargin(row), 6) },
   { title: 'Hiệu lực', dataIndex: 'effectiveFrom', align: 'right', render: (value: string) => formatDateTime(value) },
-  { title: 'Trạng thái', key: 'status', align: 'center', render: () => <Tag color="green">ACTIVE</Tag> },
 ];
 
 const operationColumns: ColumnsType<OperationSummaryRow> = [
   {
     title: 'Nghiệp vụ',
     dataIndex: 'operation',
-    fixed: 'left',
-    width: 170,
+    width: 220,
     render: (value: string, record) => (
       <Space>
         <Tag color={record.key === 'WU' ? 'gold' : record.key === 'MG' ? 'blue' : 'green'}>{record.key}</Tag>
@@ -132,64 +167,104 @@ const operationColumns: ColumnsType<OperationSummaryRow> = [
       </Space>
     ),
   },
-  { title: 'Số giao dịch', dataIndex: 'transactionCount', align: 'right', width: 110 },
+  { title: 'Số giao dịch', dataIndex: 'transactionCount', align: 'right', width: 120 },
   {
-    title: 'Giá trị USD',
-    dataIndex: 'totalUsd',
-    align: 'right',
-    width: 150,
-    render: (value: number | null) => value === null ? '—' : formatUsd(value),
-  },
-  {
-    title: 'Giá trị VND',
-    dataIndex: 'totalVnd',
-    align: 'right',
-    width: 180,
-    render: (value: number) => formatVnd(value),
-  },
-  {
-    title: 'Kết quả',
-    dataIndex: 'resultValue',
+    title: 'Giá trị giao dịch',
+    dataIndex: 'transactionValueVnd',
     align: 'right',
     width: 190,
-    render: (value: number | null, record) => value === null ? (
-      <Typography.Text type="secondary">{record.resultLabel}</Typography.Text>
-    ) : (
+    render: (value: number) => <Typography.Text strong>{formatVnd(value)}</Typography.Text>,
+  },
+  {
+    title: 'Công nợ phát sinh',
+    key: 'debtGenerated',
+    align: 'right',
+    width: 190,
+    render: (_, record) => record.debtGeneratedUsd || record.debtGeneratedVnd ? (
       <Space direction="vertical" size={0} align="end">
-        <Typography.Text className="text-emerald-700!" strong>{formatVnd(value)}</Typography.Text>
-        <Typography.Text type="secondary" className="text-xs!">{record.resultLabel}</Typography.Text>
+        {record.debtGeneratedUsd > 0 && <Typography.Text strong>{formatUsd(record.debtGeneratedUsd)}</Typography.Text>}
+        {record.debtGeneratedVnd > 0 && <Typography.Text strong>{formatVnd(record.debtGeneratedVnd)}</Typography.Text>}
+      </Space>
+    ) : <Typography.Text type="secondary">Không phát sinh</Typography.Text>,
+  },
+];
+
+const systemFundColumns: ColumnsType<SummaryDto['fundA'][number]> = [
+  {
+    title: 'Loại tiền',
+    dataIndex: 'currency',
+    render: (value: string) => (
+      <Space direction="vertical" size={0}>
+        <Typography.Text className="exchange-rate-code">{value}</Typography.Text>
+        <Typography.Text type="secondary" className="text-xs!">{getCurrencyMetadata(value).name}</Typography.Text>
       </Space>
     ),
   },
   {
-    title: 'Công nợ USD',
-    dataIndex: 'debtUsd',
+    title: 'Số dư',
+    dataIndex: 'balance',
     align: 'right',
-    width: 160,
-    render: (value: number | null) => value === null
-      ? '—'
-      : <Typography.Text className={value > 0 ? 'text-amber-700!' : ''}>{formatUsd(value)}</Typography.Text>,
+    render: (value: number, record) => <Typography.Text strong>{formatCurrency(value, record.currency)}</Typography.Text>,
   },
 ];
 
-const fundAColumns: ColumnsType<SummaryDto['fundA'][number]> = [
-  { title: 'Ngoại tệ', dataIndex: 'currency', render: (value: string) => <Tag>{value}</Tag> },
-  { title: 'Tồn quỹ', dataIndex: 'balance', align: 'right', render: (value: number, record) => `${value.toLocaleString('en-US')} ${record.currency}` },
-];
+function rateCategoryLabel(category: RateCategory) {
+  return category === 'PAID' ? 'Tỷ giá Paid' : category === 'FX' ? 'Tỷ giá mua/bán' : 'Tỷ giá Ngân hàng';
+}
 
-function rateLabel(rate: CompanyDashboardDto['activeRates'][number]) {
-  const primaryLabels: Record<string, string> = {
-    PAID_BUY: 'Paid mua WU/MG',
-    PAID_SELL: 'Paid bán WU/MG',
-    BANK_RATE: 'Tỷ giá ngân hàng',
-  };
-  return primaryLabels[rate.rateType] ?? `${rate.fromCurrency} ${rate.rateType === 'FX_BUY' ? 'mua' : rate.rateType === 'FX_SELL' ? 'bán' : rate.rateType}`;
+function pairDashboardRates(rates: ActiveCompanyRate[]): CompanyExchangeRate[] {
+  const rows = new Map<string, CompanyExchangeRate>();
+  rates.forEach((rate) => {
+    const category = rate.rateType === 'PAID_BUY' || rate.rateType === 'PAID_SELL'
+      ? 'PAID'
+      : rate.rateType === 'FX_BUY' || rate.rateType === 'FX_SELL'
+        ? 'FX'
+        : rate.rateType === 'BANK_RATE'
+          ? 'BANK'
+          : null;
+    if (!category) return;
+    const key = `${category}:${rate.fromCurrency}`;
+    const current = rows.get(key) ?? {
+      key,
+      category,
+      fromCurrency: rate.fromCurrency,
+      country: getCurrencyMetadata(rate.fromCurrency).country,
+      effectiveFrom: rate.effectiveFrom,
+    };
+    if (rate.rateType === 'PAID_BUY' || rate.rateType === 'FX_BUY') current.buy = rate;
+    else if (rate.rateType === 'PAID_SELL' || rate.rateType === 'FX_SELL') current.sell = rate;
+    else current.bank = rate;
+    if (Date.parse(rate.effectiveFrom) > Date.parse(current.effectiveFrom)) current.effectiveFrom = rate.effectiveFrom;
+    rows.set(key, current);
+  });
+  const order: Record<RateCategory, number> = { PAID: 0, FX: 1, BANK: 2 };
+  return [...rows.values()].sort((first, second) => (
+    order[first.category] - order[second.category]
+    || first.fromCurrency.localeCompare(second.fromCurrency)
+  ));
+}
+
+function renderDashboardRate(row: CompanyExchangeRate, side: 'buy' | 'sell') {
+  const rate = row.category === 'BANK' ? row.bank : side === 'buy' ? row.buy : row.sell;
+  const value = row.category === 'BANK'
+    ? side === 'buy' ? rate?.buyRate ?? rate?.rate : rate?.sellRate
+    : rate?.rate;
+  return value === null || value === undefined
+    ? <Typography.Text type="secondary">—</Typography.Text>
+    : <Typography.Text className="font-mono text-base! font-semibold!">{formatExchangeRate(value, 6)}</Typography.Text>;
+}
+
+function rateMargin(row: CompanyExchangeRate) {
+  return row.buy?.margin ?? row.sell?.margin ?? row.bank?.margin ?? 0;
 }
 
 function sparkline(values: number[]) {
   const max = Math.max(...values, 0);
   if (max <= 0) return values.map(() => 8);
-  return values.map((value) => Math.max(8, Math.round((value / max) * 100)));
+  const min = Math.min(...values);
+  const range = max - min;
+  if (range === 0) return values.map(() => 48);
+  return values.map((value) => Math.round(18 + ((value - min) / range) * 82));
 }
 
 export function CompanyDashboardPage() {
@@ -200,22 +275,23 @@ export function CompanyDashboardPage() {
   const operations = dashboard?.operations;
   const overview = dashboard?.overview;
   const branchRows = dashboard?.branches ?? [];
-  const revenueTrend = (dashboard?.revenueTrend ?? []).map((item) => ({
+  const capitalTrend = (overview?.capitalTrend ?? []).map((item) => ({
     ...item,
-    revenue: item.revenueVnd / 1_000_000_000,
-    profit: item.profitVnd / 1_000_000,
+    label: dayjs(item.date).format('DD/MM'),
   }));
+  const capitalValues = capitalTrend.map((item) => item.valueVnd);
+  const capitalMin = capitalValues.length ? Math.min(...capitalValues) : 0;
+  const capitalMax = capitalValues.length ? Math.max(...capitalValues) : 0;
+  const capitalPadding = Math.max((capitalMax - capitalMin) * 0.25, 1_000_000);
+  const capitalDomain: [number, number] = [
+    Math.max(0, capitalMin - capitalPadding),
+    capitalMax + capitalPadding,
+  ];
   const transactionMix = (dashboard?.transactionMix ?? []).map((item) => ({
     name: sourceLabels[item.source],
     value: item.count,
   }));
-  const activeRates: CompanyExchangeRate[] = (dashboard?.activeRates ?? []).map((rate) => ({
-    id: rate.id,
-    label: rateLabel(rate),
-    country: getCurrencyMetadata(rate.fromCurrency).country,
-    value: formatExchangeRate(rate.rate, 6),
-    effectiveFrom: rate.effectiveFrom,
-  }));
+  const activeRates = pairDashboardRates(dashboard?.activeRates ?? []);
   const visibleRates = activeRates.slice(0, MAX_VISIBLE_RATES);
   const hiddenRateCount = Math.max(0, activeRates.length - visibleRates.length);
   const changePercent = overview?.changePercent;
@@ -232,37 +308,46 @@ export function CompanyDashboardPage() {
   const totalCapitalUsd = usdConversionRate > 0
     ? (overview?.totalCapitalVnd ?? 0) / usdConversionRate
     : null;
+  const baseFundBalances = [
+    { currency: 'VND', balance: summary?.cash.vnd ?? 0 },
+    { currency: 'USD', balance: summary?.cash.usd ?? 0 },
+  ];
+  const fundAByCurrency = (summary?.fundA ?? []).reduce<Map<string, number>>((balances, item) => {
+    const currency = item.currency.toUpperCase();
+    if (currency === 'VND' || currency === 'USD') return balances;
+    balances.set(currency, (balances.get(currency) ?? 0) + Number(item.balance));
+    return balances;
+  }, new Map());
+  const systemFundA = [...fundAByCurrency.entries()]
+    .map(([currency, balance]) => ({ currency, balance }))
+    .filter((item) => Math.abs(item.balance) > 0.000001)
+    .sort((first, second) => Math.abs(second.balance) - Math.abs(first.balance)
+      || first.currency.localeCompare(second.currency));
   const summaryTransactions = summary?.transactions;
   const operationRows: OperationSummaryRow[] = [
     {
       key: 'WU',
       operation: 'Western Union',
       transactionCount: summaryTransactions?.wu.count ?? 0,
-      totalUsd: summaryTransactions?.wu.totalUsd ?? 0,
-      totalVnd: summaryTransactions?.wu.totalVnd ?? 0,
-      resultValue: summaryTransactions?.wu.profit ?? 0,
-      resultLabel: 'Lợi nhuận tạm tính',
-      debtUsd: summary?.debt.wuOutstandingUsd ?? 0,
+      transactionValueVnd: summaryTransactions?.wu.transactionValueVnd ?? 0,
+      debtGeneratedUsd: summaryTransactions?.wu.debtGeneratedUsd ?? 0,
+      debtGeneratedVnd: summaryTransactions?.wu.debtGeneratedVnd ?? 0,
     },
     {
       key: 'MG',
       operation: 'MoneyGram',
       transactionCount: summaryTransactions?.mg.count ?? 0,
-      totalUsd: summaryTransactions?.mg.totalUsd ?? 0,
-      totalVnd: summaryTransactions?.mg.totalVnd ?? 0,
-      resultValue: summaryTransactions?.mg.profit ?? 0,
-      resultLabel: 'Lợi nhuận tạm tính',
-      debtUsd: summary?.debt.mgOutstandingUsd ?? 0,
+      transactionValueVnd: summaryTransactions?.mg.transactionValueVnd ?? 0,
+      debtGeneratedUsd: summaryTransactions?.mg.debtGeneratedUsd ?? 0,
+      debtGeneratedVnd: summaryTransactions?.mg.debtGeneratedVnd ?? 0,
     },
     {
       key: 'FX',
       operation: 'Mua/Bán ngoại tệ',
       transactionCount: (summaryTransactions?.fx.buyCount ?? 0) + (summaryTransactions?.fx.sellCount ?? 0),
-      totalUsd: null,
-      totalVnd: (summaryTransactions?.fx.buyVnd ?? 0) + (summaryTransactions?.fx.sellVnd ?? 0),
-      resultValue: null,
-      resultLabel: `${summaryTransactions?.fx.buyCount ?? 0} mua · ${summaryTransactions?.fx.sellCount ?? 0} bán`,
-      debtUsd: null,
+      transactionValueVnd: (summaryTransactions?.fx.buyVnd ?? 0) + (summaryTransactions?.fx.sellVnd ?? 0),
+      debtGeneratedUsd: 0,
+      debtGeneratedVnd: 0,
     },
   ];
   const operationKpis = [
@@ -343,7 +428,7 @@ export function CompanyDashboardPage() {
               dataSource={operationRows}
               rowKey="key"
               pagination={false}
-              scroll={{ x: 960 }}
+              scroll={{ x: 720 }}
             />
           </Card>
         </Col>
@@ -374,19 +459,25 @@ export function CompanyDashboardPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={16}>
-          <Card loading={isDashboardLoading} title="Giá trị giao dịch và lợi nhuận 7 ngày" extra={<Typography.Text type="secondary">Đơn vị: tỷ VND / triệu VND</Typography.Text>}>
+          <Card
+            loading={isDashboardLoading}
+            title="Biến động vốn công ty 7 ngày"
+            extra={<Typography.Text type="secondary">Quy đổi theo tỷ giá áp dụng từng ngày</Typography.Text>}
+          >
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueTrend} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
+                <BarChart data={capitalTrend} margin={{ top: 16, right: 16, bottom: 0, left: 12 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="label" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="revenue" name="Giá trị giao dịch (tỷ VND)" fill="#f5b301" radius={[4, 4, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="profit" name="LN WU/MG (triệu VND)" stroke="#2563eb" strokeWidth={3} dot={{ r: 3 }} />
-                </LineChart>
+                  <YAxis
+                    width={94}
+                    domain={capitalDomain}
+                    allowDataOverflow
+                    tickFormatter={(value: number) => `${formatExchangeRate(value / 1_000_000_000, 4)} tỷ`}
+                  />
+                  <Tooltip formatter={(value: number) => [formatVnd(value), 'Tổng vốn']} />
+                  <Bar dataKey="valueVnd" name="Tổng vốn công ty" fill="#f5b301" radius={[5, 5, 0, 0]} maxBarSize={64} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>
@@ -412,17 +503,39 @@ export function CompanyDashboardPage() {
         <Col xs={24} xl={8} className="flex">
           <Card
             loading={isSummaryLoading}
-            title="Tồn Quỹ A"
-            extra={<Tag>{summary?.fundA.length ?? 0} ngoại tệ</Tag>}
+            title="Tồn quỹ toàn hệ thống"
+            extra={<Tag>{systemFundA.length} ngoại tệ có tồn</Tag>}
             className="w-full"
           >
-            <Table
-              columns={fundAColumns}
-              dataSource={summary?.fundA ?? []}
-              rowKey="currency"
-              pagination={false}
-              locale={{ emptyText: 'Chưa có tồn Quỹ A' }}
-            />
+            <Space direction="vertical" size={16} className="w-full">
+              <section className="w-full">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Typography.Text strong>Quỹ gốc</Typography.Text>
+                  <Tag color="gold">VND · USD</Tag>
+                </div>
+                <Table
+                  columns={systemFundColumns}
+                  dataSource={baseFundBalances}
+                  rowKey="currency"
+                  pagination={false}
+                  size="small"
+                />
+              </section>
+              <section className="w-full border-t border-slate-200 pt-4">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <Typography.Text strong>Quỹ A</Typography.Text>
+                  <Tag>{systemFundA.length} loại tiền</Tag>
+                </div>
+                <Table
+                  columns={systemFundColumns}
+                  dataSource={systemFundA}
+                  rowKey="currency"
+                  pagination={false}
+                  size="small"
+                  locale={{ emptyText: 'Chưa có ngoại tệ tồn Quỹ A' }}
+                />
+              </section>
+            </Space>
           </Card>
         </Col>
         <Col xs={24} xl={16} className="flex">
@@ -440,7 +553,7 @@ export function CompanyDashboardPage() {
                 </Space>
                 {hiddenRateCount > 0 && <Tag>+{hiddenRateCount} tỷ giá khác</Tag>}
               </div>
-              <Table columns={rateColumns} dataSource={visibleRates} rowKey="id" pagination={false} size="middle" />
+              <Table columns={rateColumns} dataSource={visibleRates} rowKey="key" pagination={false} size="small" scroll={{ x: 900 }} />
             </Space>
           </Card>
         </Col>
@@ -451,7 +564,7 @@ export function CompanyDashboardPage() {
         title="Danh sách quản lý chi nhánh"
         extra={<Typography.Text type="secondary">{branchRows.length} chi nhánh · {dayjs(dashboard?.businessDate).format('DD/MM/YYYY')}</Typography.Text>}
       >
-        <Table columns={branchColumns} dataSource={branchRows} rowKey="id" pagination={false} size="middle" scroll={{ x: 1280 }} />
+        <Table columns={branchColumns} dataSource={branchRows} rowKey="id" pagination={false} size="middle" scroll={{ x: 850 }} />
       </Card>
     </Space>
   );

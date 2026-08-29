@@ -19,6 +19,15 @@ về từ bước trước.
 
 ## 0. Tình trạng backend hiện tại
 
+> **Cập nhật 29/08/2026 (merge DongDav5 + hoàn thiện):** 2 lỗi "CHƯA sửa" bên dưới **đã sửa** —
+> migration `20260829140000_advance_ck_and_pending_journal` thêm enum `ADVANCE_CK`/`ADVANCE_SETTLE`,
+> `JOURNAL_ONLY` và cột `reconciliation_items.code` → Bước 5.4 và 6.3 chạy được.
+> Đã có API tạo ngân hàng/tài khoản: `POST /bank/accounts`, `GET /bank/banks` (Bước 6.1 không cần Prisma Studio).
+> `@nestjs/swagger` hạ về v7 (v11 đòi Nest 11, `npm install` bị lỗi peer). Chạy lại bằng
+> `docker compose up -d --build` hoặc `npm run start:dev` bình thường (tsc đã sạch, 79 test pass).
+> Thêm từ DongDav5: sổ thu chi hằng ngày (`reportType=cashbook`), Journal có tên KH + STAFF tự đối chiếu,
+> bán Quỹ A có tỷ giá + khấu trừ, duyệt tỷ giá theo cặp, xuất phiếu WU/chuyển khoản, Gemini đọc ảnh tỷ giá.
+
 ### Đã sửa trong lúc kiểm thử (bug thật, ảnh hưởng trực tiếp yêu cầu của anh)
 
 | Bug | File | Triệu chứng | Đã sửa |

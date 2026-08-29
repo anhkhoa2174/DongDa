@@ -81,7 +81,8 @@ export const navigationItems: AppMenuItem[] = [
     icon: <BankOutlined />,
     label: 'Ngân Hàng',
     path: '/bank-management/accounts',
-    allowedRoles: ['director', 'accountant', 'auditor'],
+    // Mỗi chi nhánh có tài khoản ngân hàng riêng -> chi nhánh cũng xem/ghi biến động tài khoản của mình.
+    allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
     requiredPermission: 'bank.view',
   },
   {
@@ -89,10 +90,11 @@ export const navigationItems: AppMenuItem[] = [
     icon: <CheckSquareOutlined />,
     label: 'Đối Chiếu',
     children: [
-      { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation' },
+      { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation', allowedRoles: ['director', 'accountant', 'auditor'] },
+      // Chi nhánh upload Journal + đối chiếu cho chính mình; GĐ/KTTH xem toàn công ty hoặc từng chi nhánh.
       { key: '/reconciliation/journal', label: 'Đối chiếu Journal', path: '/reconciliation/journal' },
     ],
-    allowedRoles: ['director', 'accountant', 'auditor'],
+    allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
   },
   {
     key: 'reports',
@@ -110,8 +112,7 @@ export const navigationItems: AppMenuItem[] = [
     icon: <AuditOutlined />,
     label: 'Audit Log',
     children: [
-      { key: '/audit-log', label: 'Tổng quan', path: '/audit-log', requiredPermission: 'audit_log.view' },
-      { key: '/audit-log/live', label: 'Nhật ký hệ thống', path: '/audit-log/live', requiredPermission: 'audit_log.view' },
+      { key: '/audit-log', label: 'Nhật ký hệ thống', path: '/audit-log', requiredPermission: 'audit_log.view' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'audit_log.view',

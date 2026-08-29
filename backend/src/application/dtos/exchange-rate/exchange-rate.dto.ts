@@ -5,7 +5,7 @@ import {
   IsEnum, IsOptional, IsNumber, IsPositive, IsISO8601,
   IsInt, Min, Max, IsString, MaxLength,
   IsArray, ArrayMinSize, ArrayMaxSize, ValidateNested,
-  IsIn,
+  IsIn, IsUUID, ArrayUnique,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
@@ -45,6 +45,11 @@ export class CreateExchangeRateDto {
   rate: number;
 
   @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(0)
+  margin?: number;
+
+  @IsOptional()
   @IsISO8601()
   effectiveFrom?: string; // ISO; mặc định now nếu bỏ trống
 }
@@ -56,6 +61,15 @@ export class CreateExchangeRateBatchDto {
   @ValidateNested({ each: true })
   @Type(() => CreateExchangeRateDto)
   rates: CreateExchangeRateDto[];
+}
+
+export class ReviewExchangeRateBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  ids: string[];
 }
 
 export class ListRatesQueryDto {
@@ -121,6 +135,7 @@ export interface RateResponseDto {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: Date;
   effectiveTo?: Date | null;
   status: RateStatus;

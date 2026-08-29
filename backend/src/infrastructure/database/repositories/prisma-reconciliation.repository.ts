@@ -95,6 +95,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
           data: {
             journal_batch_id: batch.id, row_no: rowNo++, external_reference: it.code,
             matched_branch_id: it.branchId ?? null,
+            customer_name: it.customerName?.slice(0, 255) ?? null,
             amount: it.journalAmount, currency_code: it.currencyCode, match_status: it.status as any,
             matched_transaction_id: it.transactionId ?? null,
           },
@@ -159,8 +160,10 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     return this.toSummary(run, result.matchedCount, result.totalCount, result.matchRate);
   }
 
-  async listRuns(): Promise<ReconRunSummary[]> {
+  async listRuns(branchId?: string): Promise<ReconRunSummary[]> {
     const runs = await this.prisma.reconciliation_runs.findMany({
+      where: branchId ? { branch_id: branchId } : undefined,
+      include: { branches: { select: { code: true } } },
       orderBy: { created_at: 'desc' },
       take: 50,
     });
@@ -178,10 +181,29 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     return out;
   }
 
+  async findRun(runId: string): Promise<ReconRunSummary | null> {
+    const run = await this.prisma.reconciliation_runs.findUnique({
+      where: { id: runId },
+      include: { branches: { select: { code: true } } },
+    });
+    if (!run) return null;
+    const grouped = await this.prisma.reconciliation_items.groupBy({
+      by: ['status'],
+      where: { reconciliation_run_id: run.id },
+      _count: { _all: true },
+    });
+    const total = grouped.reduce((s, g) => s + g._count._all, 0);
+    const matched = grouped.find((g) => g.status === 'MATCHED')?._count._all ?? 0;
+    return this.toSummary(run, matched, total, total > 0 ? matched / total : 1);
+  }
+
   async getItems(runId: string): Promise<ReconItem[]> {
     const rows = await this.prisma.reconciliation_items.findMany({
       where: { reconciliation_run_id: runId },
-      include: { journal_rows: { select: { currency_code: true } } },
+      include: {
+        journal_rows: { select: { currency_code: true, customer_name: true } },
+        customer_transactions: { select: { customer_name: true } },
+      },
       orderBy: { status: 'asc' },
     });
     return rows.map((r: any) => {
@@ -195,6 +217,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         journalAmount: Number(r.journal_amount),
         varianceAmount: Number(r.variance_amount),
         currencyCode: r.currency_code as 'USD' | 'VND',
+        customerName: r.journal_rows?.customer_name ?? r.customer_transactions?.customer_name ?? null,
         note: rest.join(' · ') || undefined,
       };
     });
@@ -275,6 +298,9 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       id: run.id,
       runNo: run.run_no,
       provider: run.provider,
+      scope: run.scope,
+      branchId: run.branch_id ?? null,
+      branchCode: run.branches?.code ?? null,
       currencyCode: run.currency_code,
       businessDate: run.business_date,
       status: run.status,
@@ -362,7 +388,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         run_no: runNo,
         provider: input.provider as any,
         business_date: input.businessDate,
-        scope: input.provider === 'WU' ? 'BRANCH' : 'COMPANY',
+        scope: input.branchId ? 'BRANCH' : 'COMPANY',
         branch_id: input.branchId ?? null,
         currency_code: 'USD',
         status: 'PENDING_REVIEW',

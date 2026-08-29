@@ -13,9 +13,6 @@ export function useFundBalances(branchId?: string) {
     enabled: Boolean(branchId),
   });
 }
-export function useBranches() {
-  return useQuery({ queryKey: ['branches'], queryFn: () => fundApi.branches() });
-}
 
 function useInvalidate() {
   const qc = useQueryClient();
@@ -33,4 +30,8 @@ export function useConfirmTransfer() {
 export function useRejectTransfer() {
   const invalidate = useInvalidate();
   return useMutation({ mutationFn: (id: string) => fundApi.reject(id), onSuccess: invalidate });
+}
+export function useCancelTransfer() {
+  const invalidate = useInvalidate();
+  return useMutation({ mutationFn: (id: string) => fundApi.cancel(id), onSuccess: invalidate });
 }

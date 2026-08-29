@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { ConfirmTransferUseCase, ConvertCentralFundUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
+import { CancelTransferUseCase, ConfirmTransferUseCase, ConvertCentralFundUseCase, RejectTransferUseCase } from './fund-transfer.use-cases';
 import { FundTransferStatus } from '../../../domain/entities/fund.entity';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -44,22 +44,50 @@ describe('fund transfer receiver controls', () => {
     })).resolves.toMatchObject({ status: FundTransferStatus.CONFIRMED });
     expect(repo.confirmTransfer).toHaveBeenCalledWith('transfer-1', 'staff-b');
   });
+
+  it('allows the maker to cancel a pending transfer', async () => {
+    const repo = {
+      findTransferById: jest.fn().mockResolvedValue(transfer),
+      cancelTransfer: jest.fn().mockResolvedValue({ ...transfer, status: FundTransferStatus.CANCELLED }),
+    };
+    const useCase = new CancelTransferUseCase(repo as any);
+
+    await expect(useCase.execute('transfer-1', { id: 'maker-1' }))
+      .resolves.toMatchObject({ status: FundTransferStatus.CANCELLED });
+    expect(repo.cancelTransfer).toHaveBeenCalledWith('transfer-1', 'maker-1');
+  });
+
+  it('prevents another user from cancelling the maker transfer', async () => {
+    const repo = { findTransferById: jest.fn().mockResolvedValue(transfer), cancelTransfer: jest.fn() };
+    const useCase = new CancelTransferUseCase(repo as any);
+
+    await expect(useCase.execute('transfer-1', { id: 'other-user' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(repo.cancelTransfer).not.toHaveBeenCalled();
+  });
 });
 
 describe('central Fund A conversion', () => {
   it('passes a normalized conversion request and actor to the repository', async () => {
     const converted = {
       voucherNo: 'QDA-001',
-      items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, vndAmount: 3_000_000 }],
-      totalVndAmount: 3_000_000, postedAt: new Date(),
+      items: [{
+        currencyCode: 'EUR', amount: 100, rate: 30_000,
+        grossVndAmount: 3_000_000, deduction: 50_000, vndAmount: 2_950_000,
+      }],
+      totalVndAmount: 2_950_000, postedAt: new Date(),
     };
     const repo = { convertCentralFund: jest.fn().mockResolvedValue(converted) };
     const useCase = new ConvertCentralFundUseCase(repo as any);
 
-    await expect(useCase.execute({ items: [{ currencyCode: 'EUR', amount: 100 }], note: '  Đổi tại ngân hàng  ' }, 'admin-1'))
+    await expect(useCase.execute({
+      items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, deduction: 50_000 }],
+      note: '  Đổi tại ngân hàng  ',
+    }, 'admin-1'))
       .resolves.toEqual(converted);
     expect(repo.convertCentralFund).toHaveBeenCalledWith({
-      items: [{ currencyCode: 'EUR', amount: 100 }], note: 'Đổi tại ngân hàng', createdByUserId: 'admin-1',
+      items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, deduction: 50_000 }],
+      note: 'Đổi tại ngân hàng', createdByUserId: 'admin-1',
     });
   });
 });

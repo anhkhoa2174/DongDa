@@ -25,13 +25,6 @@ export interface DebtMovementDto {
   effectiveAt: string;
 }
 
-export interface BranchRef {
-  id: string;
-  code: string;
-  name: string;
-  type: string;
-}
-
 export interface ListDebtsParams {
   branchId?: string;
   providerCode?: string;
@@ -69,5 +62,4 @@ export const debtApi = {
   record: (payload: { branchId: string; providerCode: string; currencyCode: string; amount: number; description?: string }) =>
     httpClient.post('/debts/record', payload).then((r) => r.data),
 
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };
