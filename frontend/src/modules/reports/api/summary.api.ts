@@ -100,6 +100,7 @@ export const summaryApi = {
   generate: async (input: {
     reportType: string; format: 'PREVIEW' | 'EXCEL' | 'PDF'; branchId?: string; dateFrom?: string; dateTo?: string;
     columns?: string[]; // cashbook: cột hiển thị
+    currencyCode?: 'USD' | 'VND'; // wu_usd / mg_usd: loại quỹ
   }) => {
     if (input.format === 'EXCEL') {
       // Nhận file nhị phân và tải về.

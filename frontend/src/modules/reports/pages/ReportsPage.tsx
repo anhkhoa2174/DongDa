@@ -42,25 +42,31 @@ const CASHBOOK_COLUMNS: { value: string; label: string }[] = [
 ];
 const CASHBOOK_DEFAULT_COLUMNS = ['stt', 'date', 'kind', 'code', 'name', 'inUsd', 'inVnd', 'outUsd', 'outVnd', 'balanceUsd', 'balanceVnd'];
 
+// 10 loại báo cáo, đặt đúng tên anh Kiển đưa (DongDav6). Nhóm "theo sổ quỹ" bắt buộc chọn chi nhánh.
+const LEDGER_TYPES = ['cashbook', 'wu_payout', 'wu_usd', 'mg_usd'];
 const reportCards = [
-  { key: 'cashbook', title: 'Sổ thu chi hằng ngày', desc: 'Từng giao dịch + tồn chạy dần theo chi nhánh (mẫu sổ quỹ)', icon: <BookOutlined />, color: '#0f766e' },
-  { key: 'fund',     title: 'Báo cáo Vốn & Quỹ',    desc: 'Tổng vốn, biến động, tồn quỹ',     icon: <WalletOutlined />,        color: '#2563eb' },
-  { key: 'wu',       title: 'Báo cáo WU',           desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#2563eb' },
-  { key: 'mg',       title: 'Báo cáo MoneyGram',    desc: 'Giá trị giao dịch và công nợ',      icon: <SwapOutlined />,         color: '#7c3aed' },
-  { key: 'fx',       title: 'Báo cáo Ngoại tệ',     desc: 'Giá trị mua bán và tồn kho',        icon: <DollarOutlined />,       color: '#16a34a' },
-  { key: 'transfer', title: 'Báo cáo Điều động',    desc: 'Lịch sử luân chuyển vốn',          icon: <UsergroupAddOutlined />,  color: '#0891b2' },
-  { key: 'gap',      title: 'Báo cáo Sai lệch',     desc: 'Chênh lệch quỹ, đối chiếu',        icon: <WarningOutlined />,       color: '#d97706' },
-  { key: 'debt',     title: 'Báo cáo Công nợ',      desc: 'WU/MG chờ thanh toán',             icon: <FileSearchOutlined />,    color: '#dc2626' },
-  { key: 'bank',     title: 'Báo cáo Ngân hàng',    desc: 'Sao kê, đối chiếu ACB/MSB',        icon: <BankOutlined />,          color: '#f5b301' },
+  { key: 'cashbook',  title: '1. Sổ theo dõi thu chi hằng ngày',           desc: 'Từng giao dịch, tồn chạy dần theo chi nhánh (mẫu sổ quỹ)', icon: <BookOutlined />,   color: '#0f766e' },
+  { key: 'wu_payout', title: '2. Báo cáo theo dõi chi trả Western Union',  desc: 'Mỗi ngày 1 sheet: MTCN, người nhận, nhận/chi/tồn USD-VND',  icon: <SwapOutlined />,   color: '#2563eb' },
+  { key: 'wu_usd',    title: '3. Báo cáo theo dõi thu chi USD',            desc: 'Sổ quỹ WU theo tháng, 1 loại tiền, THU/CHI/TỒN chạy dần',   icon: <DollarOutlined />, color: '#0891b2' },
+  { key: 'mg_usd',    title: '4. Báo cáo theo dõi thu chi MoneyGram',      desc: 'Như số 3 nhưng cho MoneyGram (Reference)',                  icon: <SwapOutlined />,   color: '#7c3aed' },
+  { key: 'fund',      title: '5. Báo cáo Vốn và Quỹ',                      desc: 'Tồn đầu/cuối ngày từng chi nhánh, quỹ chung, toàn hệ thống', icon: <WalletOutlined />, color: '#2563eb' },
+  { key: 'fx',        title: '6. Báo cáo Ngoại tệ',                        desc: 'Số lượng mua bán, tồn, tỷ giá, lợi nhuận',                  icon: <DollarOutlined />, color: '#16a34a' },
+  { key: 'transfer',  title: '7. Báo cáo Điều động Vốn',                   desc: 'Lịch sử luân chuyển vốn',                                   icon: <UsergroupAddOutlined />, color: '#0891b2' },
+  { key: 'gap',       title: '8. Báo cáo Sai lệch và Rủi ro',              desc: 'Sai lệch vốn, chưa match WU/MG/quỹ, đã/cần xử lý',           icon: <WarningOutlined />, color: '#d97706' },
+  { key: 'debt',      title: '9. Báo cáo Công nợ',                         desc: 'WU/MG chờ thanh toán từ ngân hàng, dẫn nguồn',              icon: <FileSearchOutlined />, color: '#dc2626' },
+  { key: 'bank',      title: '10. Báo cáo Ngân hàng',                      desc: 'Sao kê, đối chiếu, tồn đầu/cuối từng tài khoản',            icon: <BankOutlined />,   color: '#f5b301' },
 ];
 
 export function ReportsPage() {
-  const [reportType, setReportType] = useState('wu');
+  const [reportType, setReportType] = useState('cashbook');
+  const [ledgerCurrency, setLedgerCurrency] = useState<'USD' | 'VND'>('USD');
   const [range, setRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(6, 'day'), dayjs()]);
   const [branchId, setBranchId] = useState<string>();
   const [cashbookColumns, setCashbookColumns] = useState<string[]>(CASHBOOK_DEFAULT_COLUMNS);
   const [preview, setPreview] = useState<ReportPreviewDto | null>(null);
   const isCashbook = reportType === 'cashbook';
+  const isLedger = LEDGER_TYPES.includes(reportType);
+  const hasCurrencyOption = reportType === 'wu_usd' || reportType === 'mg_usd';
   const { data: branches = [] } = useBranches();
   const { data: dashboard } = useQuery({
     queryKey: ['reports', 'dashboard', range[1].format('YYYY-MM-DD')],
@@ -69,13 +75,14 @@ export function ReportsPage() {
   const notify = useNotify();
   const generateReport = useMutation({
     mutationFn: ({ format, type = reportType }: { format: 'PREVIEW' | 'EXCEL' | 'PDF'; type?: string }) => {
-      if (type === 'cashbook' && !branchId) {
-        return Promise.reject(new Error('Sổ thu chi hằng ngày phải chọn chi nhánh'));
+      if (LEDGER_TYPES.includes(type) && !branchId) {
+        return Promise.reject(new Error('Báo cáo theo sổ quỹ (1–4) phải chọn chi nhánh'));
       }
       return summaryApi.generate({
         reportType: type, format, branchId,
         dateFrom: range[0].format('YYYY-MM-DD'), dateTo: range[1].format('YYYY-MM-DD'),
         columns: type === 'cashbook' ? cashbookColumns : undefined,
+        currencyCode: type === 'wu_usd' || type === 'mg_usd' ? ledgerCurrency : undefined,
       });
     },
     onSuccess: (data, { format }) => {
@@ -119,16 +126,19 @@ export function ReportsPage() {
             <Typography.Text type="secondary" className="text-xs!">Chi nhánh</Typography.Text>
             <Select
               className="w-full"
-              allowClear={!isCashbook}
-              placeholder={isCashbook ? 'Bắt buộc chọn chi nhánh' : 'Tất cả chi nhánh'}
-              status={isCashbook && !branchId ? 'warning' : undefined}
+              allowClear={!isLedger}
+              placeholder={isLedger ? 'Bắt buộc chọn chi nhánh' : 'Tất cả chi nhánh'}
+              status={isLedger && !branchId ? 'warning' : undefined}
               value={branchId}
               onChange={setBranchId}
               options={branches.map((branch) => ({ value: branch.id, label: `${branch.code} - ${branch.name}` }))}
             />
           </Col>
           <Col xs={24} md={4}>
-            <Typography.Text type="secondary" className="text-xs!">Tần suất</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs!">{hasCurrencyOption ? 'Loại quỹ' : 'Tần suất'}</Typography.Text>
+            {hasCurrencyOption ? (
+              <Select className="w-full" value={ledgerCurrency} onChange={setLedgerCurrency} options={[{ value: 'USD', label: 'USD' }, { value: 'VND', label: 'VND' }]} />
+            ) : (
             <Select
               className="w-full"
               defaultValue="daily"
@@ -139,6 +149,7 @@ export function ReportsPage() {
                 { value: 'yearly', label: 'Năm' },
               ]}
             />
+            )}
           </Col>
         </Row>
         {isCashbook && (
