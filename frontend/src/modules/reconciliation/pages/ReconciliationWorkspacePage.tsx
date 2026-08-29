@@ -1,13 +1,16 @@
 // Flow Đối chiếu Journal (diagram 4) — nối API thật
 import { useEffect, useMemo, useState } from 'react';
 import {
-  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Segmented, Select, Space, Table, Tag, Typography, Upload,
+  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Progress, Row, Segmented, Select, Space, Table, Tag, Typography, Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, UploadOutlined } from '@ant-design/icons';
+import { CloseCircleOutlined, MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
-import { useReconItems, useReconRuns, useRunReconciliation, useParseJournal } from '../hooks/useReconciliation';
-import type { JournalRowInput, ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
+import {
+  useReconItems, useReconRuns, useRunReconciliation, useParseJournal,
+  usePendingJournals, usePendingJournalDetail, useSubmitPendingJournal, useRejectPendingJournal,
+} from '../hooks/useReconciliation';
+import type { JournalRowInput, ReconItemDto, ReconRunDto, PendingJournalDto } from '../api/reconciliation.api';
 import { useBranches } from '@/shared/hooks/useBranches';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import dayjs from 'dayjs';
@@ -46,6 +49,13 @@ export function ReconciliationWorkspacePage() {
   const [form] = Form.useForm<ReconciliationFormValues>();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const { data: items = [] } = useReconItems(selectedRun);
+  // DongDav6 — luồng 2 bước: chi nhánh gửi Journal về KTTH (pending) -> KTTH xem, chạy đối chiếu (duyệt) hoặc từ chối
+  const submitPending = useSubmitPendingJournal();
+  const rejectPending = useRejectPendingJournal();
+  const { data: pendingJournals = [] } = usePendingJournals(ownBranchId ?? historyBranchId);
+  const [viewingPending, setViewingPending] = useState<string | null>(null);
+  const { data: pendingDetail } = usePendingJournalDetail(viewingPending);
+  const [loadedPendingId, setLoadedPendingId] = useState<string | null>(null);
   const branchOptions = useMemo(
     () => branches
       .filter((branch) => branch.type !== 'HEAD_OFFICE')
@@ -92,6 +102,49 @@ export function ReconciliationWorkspacePage() {
     return false; // chặn antd tự upload
   };
 
+  // Chi nhánh: gửi các dòng đã rà về KTTH duyệt thay vì tự chạy đối chiếu
+  const onSubmitPending = async () => {
+    const v = await form.validateFields();
+    const branchId = ownBranchId ?? v.branchId;
+    const rows = (v.rows ?? [])
+      .filter((row) => row?.code && row?.amount != null)
+      .map((row) => ({ ...row, customerName: row.customerName?.trim() || undefined, branchId: branchId ?? row.branchId }));
+    if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
+    if (!branchId) return message.warning('Gửi KTTH duyệt phải chọn chi nhánh');
+    try {
+      const res = await submitPending.mutateAsync({ provider: v.provider, businessDate: v.businessDate.format('YYYY-MM-DD'), branchId, rows });
+      message.success(`Đã gửi ${res.parsedRowCount} dòng Journal ${res.provider} về KTTH duyệt (${res.runNo})`);
+      form.setFieldsValue({ rows: [{ currencyCode: 'USD' }] });
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Gửi Journal thất bại'));
+    }
+  };
+
+  // KTTH: nạp các dòng của Journal chờ duyệt vào form để chạy đối chiếu (= duyệt)
+  const loadPendingIntoForm = () => {
+    if (!pendingDetail) return;
+    const { summary, rows } = pendingDetail;
+    form.setFieldsValue({
+      provider: summary.provider,
+      businessDate: dayjs(summary.businessDate),
+      branchId: summary.branchId ?? undefined,
+      rows: rows.map((r) => ({ code: r.code, amount: r.amount, currencyCode: r.currencyCode, customerName: r.customerName ?? undefined, branchId: r.branchId ?? undefined })),
+    });
+    setLoadedPendingId(summary.id);
+    setViewingPending(null);
+    message.info('Đã nạp dòng Journal vào form — bấm "Chạy đối chiếu" để duyệt');
+  };
+
+  const onRejectPending = async (p: PendingJournalDto) => {
+    try {
+      await rejectPending.mutateAsync({ id: p.id });
+      message.success(`Đã từ chối ${p.runNo}`);
+      if (viewingPending === p.id) setViewingPending(null);
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Từ chối thất bại'));
+    }
+  };
+
   const onRun = async (v: ReconciliationFormValues) => {
     const branchId = ownBranchId ?? v.branchId;
     const rows = (v.rows ?? [])
@@ -123,11 +176,13 @@ export function ReconciliationWorkspacePage() {
           businessDate: v.businessDate.format('YYYY-MM-DD'),
           branchId,
           rows: curRows,
+          pendingJournalId: loadedPendingId ?? undefined,
         });
         lastRunId = res.id;
         summaries.push(`${cur}: khớp ${(res.matchRate * 100).toFixed(0)}% (${curRows.length} dòng)`);
       }
       if (lastRunId) setSelectedRun(lastRunId);
+      setLoadedPendingId(null);
       message.success(`Đối chiếu xong — ${summaries.join(' · ')}`);
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Đối chiếu thất bại'));
@@ -243,10 +298,49 @@ export function ReconciliationWorkspacePage() {
                   </div>
                 )}
               </Form.List>
-              <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={run.isPending} block className="mt-3" disabled={!canRun}>
-                Chạy đối chiếu
-              </Button>
+              <Space direction="vertical" className="w-full mt-3" size={8}>
+                {loadedPendingId && <Tag color="gold">Đang duyệt Journal chi nhánh gửi — chạy đối chiếu sẽ đánh dấu đã duyệt</Tag>}
+                <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={run.isPending} block disabled={!canRun}>
+                  {isBranchUser ? 'Tự chạy đối chiếu tại chi nhánh' : loadedPendingId ? 'Chạy đối chiếu & duyệt' : 'Chạy đối chiếu'}
+                </Button>
+                {canRun && (
+                  <Button icon={<SendOutlined />} loading={submitPending.isPending} block onClick={onSubmitPending}
+                    style={isBranchUser ? { background: '#111', color: '#f5b301', borderColor: '#111' } : undefined}>
+                    Gửi KTTH duyệt
+                  </Button>
+                )}
+              </Space>
             </Form>
+          </Card>
+          <Card
+            title={`Journal chờ duyệt (${pendingJournals.length})`}
+            size="small"
+            className="mb-4"
+          >
+            <Table<PendingJournalDto>
+              rowKey="id" size="small" dataSource={pendingJournals} pagination={{ pageSize: 5, hideOnSinglePage: true }} scroll={{ x: 520 }}
+              locale={{ emptyText: isBranchUser ? 'Chưa gửi Journal nào' : 'Không có Journal chờ duyệt' }}
+              columns={[
+                { title: 'Ngày', dataIndex: 'businessDate', width: 90, render: (v: string) => dayjs(v).format('DD/MM') },
+                { title: 'Đối tác', dataIndex: 'provider', width: 70, render: (v: string) => <Tag>{v}</Tag> },
+                { title: 'Chi nhánh', dataIndex: 'branchName', ellipsis: true },
+                { title: 'Dòng', dataIndex: 'parsedRowCount', width: 60, align: 'right' },
+                { title: 'Gửi lúc', dataIndex: 'uploadedAt', width: 110, render: (v: string) => dayjs(v).format('DD/MM HH:mm') },
+                {
+                  title: '', width: isBranchUser ? 70 : 150,
+                  render: (_: unknown, p: PendingJournalDto) => (
+                    <Space size={4}>
+                      <Button size="small" onClick={() => setViewingPending(p.id)}>Xem</Button>
+                      {!isBranchUser && canRun && (
+                        <Popconfirm title="Từ chối Journal này?" okText="Từ chối" cancelText="Hủy" onConfirm={() => onRejectPending(p)}>
+                          <Button size="small" danger icon={<CloseCircleOutlined />} />
+                        </Popconfirm>
+                      )}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
           </Card>
           <Card
             title="Lịch sử đối chiếu"
@@ -273,6 +367,33 @@ export function ReconciliationWorkspacePage() {
           </Card>
         </Col>
       </Row>
+      <Modal
+        title={pendingDetail ? `Journal ${pendingDetail.summary.provider} · ${pendingDetail.summary.branchName ?? ''} · ${dayjs(pendingDetail.summary.businessDate).format('DD/MM/YYYY')}` : 'Journal chờ duyệt'}
+        open={!!viewingPending}
+        onCancel={() => setViewingPending(null)}
+        width={720}
+        footer={[
+          <Button key="close" onClick={() => setViewingPending(null)}>Đóng</Button>,
+          ...(!isBranchUser && canRun ? [
+            <Button key="load" type="primary" icon={<PlayCircleOutlined />} onClick={loadPendingIntoForm} disabled={!pendingDetail}>
+              Nạp vào form để đối chiếu
+            </Button>,
+          ] : []),
+        ]}
+      >
+        <Table
+          rowKey={(r) => r.code + r.currencyCode}
+          size="small"
+          dataSource={pendingDetail?.rows ?? []}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          columns={[
+            { title: 'Mã', dataIndex: 'code' },
+            { title: 'Khách hàng', dataIndex: 'customerName', ellipsis: true, render: (v: string | null) => v || '—' },
+            { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: money },
+            { title: 'Tiền', dataIndex: 'currencyCode', width: 70 },
+          ]}
+        />
+      </Modal>
     </PageScaffold>
   );
 }

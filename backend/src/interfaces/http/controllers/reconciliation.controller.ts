@@ -5,7 +5,9 @@
 //   GET  /reconciliation/runs/:id/items   chi tiết sai lệch
 //   POST /reconciliation/parse-journal    parse file Journal -> trả dòng để người dùng rà lại rồi /run
 //   POST /reconciliation/upload-journal   (DongDav6) chi nhánh upload Journal -> lưu chờ KTTH duyệt, gom theo chi nhánh
+//   POST /reconciliation/pending-journals        chi nhánh gửi các dòng đã rà (JSON) về KTTH duyệt
 //   GET  /reconciliation/pending-journals        KTTH/GĐ xem danh sách chờ duyệt (?branchId=)
+//   POST /reconciliation/pending-journals/:id/reject   KTTH/GĐ từ chối; duyệt = chạy /run kèm pendingJournalId
 //   GET  /reconciliation/pending-journals/:id    chi tiết 1 Journal chờ duyệt
 
 import {
@@ -20,7 +22,7 @@ import {
   RunReconciliationUseCase, ListReconciliationUseCase, ReconActor, UploadJournalUseCase, ListPendingJournalsUseCase,
 } from '../../../application/use-cases/reconciliation/reconciliation.use-cases';
 import { ParseJournalUseCase } from '../../../application/use-cases/reconciliation/parse-journal.use-case';
-import { RunReconciliationDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
+import { RunReconciliationDto, SubmitPendingJournalDto, RejectPendingJournalDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
 
 @Controller('reconciliation')
 @UseGuards(JwtAuthGuard)
@@ -106,6 +108,21 @@ export class ReconciliationController {
       ? await this.parseJournal.executePdf(file.buffer, file.originalname, provider)
       : this.parseJournal.execute(file.buffer, file.originalname, provider);
     return this.uploadJournal.execute(parsed.rows, provider, businessDate, actorOf(req), branchId || undefined);
+  }
+
+  // Chi nhánh gửi các dòng Journal đã rà lại trên UI (không cần upload lại file) về KTTH duyệt
+  @Post('pending-journals')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  submitPendingJournal(@Request() req: any, @Body() dto: SubmitPendingJournalDto) {
+    return this.uploadJournal.execute(dto.rows, dto.provider, dto.businessDate, actorOf(req), dto.branchId || undefined);
+  }
+
+  @Post('pending-journals/:id/reject')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  rejectPendingJournal(@Request() req: any, @Param('id') id: string, @Body() dto: RejectPendingJournalDto) {
+    return this.listPending.reject(actorOf(req), id, dto.reason);
   }
 
   @Get('pending-journals')

@@ -327,6 +327,14 @@ export class PrismaBankRepository implements IBankRepository {
       if (!advance || advance.movement_type !== 'ADVANCE_CK') {
         throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
       }
+      if (advance.bank_account_id !== input.bankAccountId) {
+        throw new BadRequestException('Phiếu tạm ứng không thuộc tài khoản ngân hàng này');
+      }
+      const already = await tx.bank_balance_movements.findFirst({
+        where: { movement_type: 'ADVANCE_SETTLE', bank_reference: input.advanceMovementId },
+        select: { movement_no: true },
+      });
+      if (already) throw new BadRequestException(`Phiếu tạm ứng ${advance.movement_no} đã được hoàn (${already.movement_no})`);
       await this.lockBankAccount(tx, input.bankAccountId);
       const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
       if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
@@ -358,24 +366,30 @@ export class PrismaBankRepository implements IBankRepository {
     });
   }
 
-  // Liệt kê tạm ứng CK theo filter
+  // Liệt kê tạm ứng CK theo filter.
+  //   status ADVANCE_CK = phiếu ứng CHƯA hoàn; SETTLED = phiếu ứng ĐÃ hoàn; bỏ trống = tất cả phiếu ứng (kèm cờ settled).
+  // Phiếu hoàn (ADVANCE_SETTLE) tham chiếu phiếu ứng qua bank_reference = id phiếu ứng.
   async listAdvances(filter?: import('../../../domain/repositories/bank.repository').ListAdvancesFilter): Promise<BankMovement[]> {
-    const types = (filter?.status === 'SETTLED'
-      ? ['ADVANCE_SETTLE']
-      : filter?.status === 'ADVANCE_CK'
-        ? ['ADVANCE_CK']
-        : ['ADVANCE_CK', 'ADVANCE_SETTLE']) as any[];
-    const rows = await this.prisma.bank_balance_movements.findMany({
-      where: {
-        movement_type: { in: types },
-        ...(filter?.bankAccountId && { bank_account_id: filter.bankAccountId }),
-        ...(filter?.branchId && { branch_id: filter.branchId }),
-        ...(filter?.businessDate && { business_date: filter.businessDate }),
-      },
-      orderBy: { occurred_at: 'desc' },
-      take: 200,
-    });
-    return rows.map(toMovement);
+    const scope = {
+      ...(filter?.bankAccountId && { bank_account_id: filter.bankAccountId }),
+      ...(filter?.branchId && { branch_id: filter.branchId }),
+      ...(filter?.businessDate && { business_date: filter.businessDate }),
+    };
+    const [advances, settles] = await Promise.all([
+      this.prisma.bank_balance_movements.findMany({
+        where: { movement_type: 'ADVANCE_CK', ...scope },
+        orderBy: { occurred_at: 'desc' },
+        take: 200,
+      }),
+      this.prisma.bank_balance_movements.findMany({
+        where: { movement_type: 'ADVANCE_SETTLE', bank_reference: { not: null } },
+        select: { id: true, bank_reference: true },
+      }),
+    ]);
+    const settledBy = new Map(settles.map((s) => [s.bank_reference as string, s.id]));
+    return advances
+      .map((row) => ({ ...toMovement(row), settled: settledBy.has(row.id), settledMovementId: settledBy.get(row.id) ?? null }))
+      .filter((m) => (filter?.status === 'ADVANCE_CK' ? !m.settled : filter?.status === 'SETTLED' ? m.settled : true));
   }
 
 

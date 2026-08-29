@@ -1,7 +1,7 @@
 // Prisma Reconciliation Repository
 // Layer: Infrastructure
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
   IReconciliationRepository, SaveRunInput, ReconRunSummary,
@@ -69,7 +69,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
           posted_at: { not: null },
         },
       });
-      if (posted) throw new Error('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
+      if (posted) throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
 
       // Chuỗi file → batch → rows (thỏa check constraint nguồn của item)
       const file = await tx.journal_upload_files.create({
@@ -325,7 +325,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       include: { debt_movements: { where: { status: 'POSTED' } } },
     });
     if (accounts.some((account: any) => account.debt_movements.some((m: any) => m.movement_type === 'SETTLEMENT'))) {
-      throw new Error('Không thể chốt Journal sau khi công nợ ngày này đã được thanh toán');
+      throw new BadRequestException('Không thể chốt Journal sau khi công nợ ngày này đã được thanh toán');
     }
 
     for (const account of accounts) {
@@ -446,6 +446,14 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       });
     });
     return this.toPendingSummary(run, input.rows.length);
+  }
+
+  async updatePendingJournalStatus(id: string, status: 'APPROVED' | 'REJECTED', userId: string): Promise<boolean> {
+    const res = await this.prisma.reconciliation_runs.updateMany({
+      where: { id, ...this.pendingWhere() },
+      data: { status, reviewed_by_user_id: userId, ...(status === 'APPROVED' ? { approved_by_user_id: userId } : {}), updated_at: new Date() },
+    });
+    return res.count > 0;
   }
 
   private pendingWhere(branchId?: string) {

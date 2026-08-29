@@ -67,6 +67,8 @@ export interface IReconciliationRepository {
   fundReconciliation(branchId?: string): Promise<FundReconItem[]>;
   // STAFF upload journal chờ KTTH duyệt
   savePendingJournal(input: SavePendingJournalInput): Promise<PendingJournalSummary>;
+  // KTTH duyệt (đã chạy đối chiếu) hoặc từ chối Journal chờ duyệt
+  updatePendingJournalStatus(id: string, status: 'APPROVED' | 'REJECTED', userId: string): Promise<boolean>;
   listPendingJournals(branchId?: string): Promise<PendingJournalSummary[]>;
   getPendingJournal(id: string): Promise<{ summary: PendingJournalSummary; rows: any[] } | null>;
 }

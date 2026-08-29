@@ -68,7 +68,7 @@ export class RunReconciliationUseCase {
     const currencyCode = rows[0].currencyCode;
     const system = await this.repo.listSystemTxByProvider(dto.provider, businessDate, branchId);
     const result = reconcile(system, rows);
-    return this.repo.saveRun({
+    const run = await this.repo.saveRun({
       provider: dto.provider,
       businessDate,
       scope,
@@ -77,6 +77,11 @@ export class RunReconciliationUseCase {
       result,
       createdByUserId: actor.id,
     });
+    // Chạy từ Journal chi nhánh gửi lên -> đánh dấu Journal đó đã duyệt
+    if (dto.pendingJournalId) {
+      await this.repo.updatePendingJournalStatus(dto.pendingJournalId, 'APPROVED', actor.id);
+    }
+    return run;
   }
 }
 
@@ -163,5 +168,11 @@ export class ListPendingJournalsUseCase {
       throw new ForbiddenException('Không được xem Journal của chi nhánh khác');
     }
     return detail;
+  }
+  // KTTH/GĐ từ chối Journal chi nhánh gửi (file sai ngày, sai chi nhánh...)
+  async reject(actor: ReconActor, id: string, _reason?: string) {
+    const ok = await this.repo.updatePendingJournalStatus(id, 'REJECTED', actor.id);
+    if (!ok) throw new NotFoundException('Journal chờ duyệt không tồn tại hoặc đã được xử lý');
+    return { id, status: 'REJECTED' as const };
   }
 }

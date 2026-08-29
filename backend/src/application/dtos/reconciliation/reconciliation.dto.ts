@@ -41,4 +41,34 @@ export class RunReconciliationDto {
   @ValidateNested({ each: true })
   @Type(() => JournalRowDto)
   rows: JournalRowDto[];
+
+  // KTTH chạy đối chiếu từ một Journal chi nhánh gửi lên -> sau khi chạy, Journal đó chuyển APPROVED
+  @IsOptional()
+  @IsUUID()
+  pendingJournalId?: string;
+}
+
+// Chi nhánh gửi Journal (đã rà lại trên UI) về KTTH duyệt — không cần upload lại file
+export class SubmitPendingJournalDto {
+  @IsEnum(['WU', 'MG'] as any, { message: 'provider phải WU/MG' })
+  provider: 'WU' | 'MG';
+
+  @IsDateString()
+  businessDate: string;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => JournalRowDto)
+  rows: JournalRowDto[];
+}
+
+export class RejectPendingJournalDto {
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }

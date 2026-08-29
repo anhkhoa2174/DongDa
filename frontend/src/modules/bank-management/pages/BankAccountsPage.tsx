@@ -4,12 +4,16 @@ import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   BankOutlined,
+  CheckOutlined,
+  SwapOutlined,
   EyeOutlined,
   PlusOutlined,
   ShopOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Select, Space, Statistic, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
@@ -17,8 +21,9 @@ import { formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBranches } from '@/shared/hooks/useBranches';
-import { useBankAccounts, useDeactivateBankAccount } from '../hooks/useBank';
-import type { BankAccountDto } from '../api/bank.api';
+import { useAdvances, useBankAccounts, useDeactivateBankAccount, useSettleAdvanceCk } from '../hooks/useBank';
+import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
+import { AdvanceCkModal } from '../components/AdvanceCkModal';
 import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
 import { CreateBankAccountModal } from '../components/CreateBankAccountModal';
 
@@ -27,12 +32,13 @@ function formatAccountMoney(account: BankAccountDto, value: number) {
 }
 
 function BankAccountCard({
-  account, canManage, canRecord, onRecord, onDeactivate,
+  account, canManage, canRecord, onRecord, onAdvance, onDeactivate,
 }: {
   account: BankAccountDto;
   canManage: boolean;
   canRecord: boolean;
   onRecord: (direction: BankMovementDirection) => void;
+  onAdvance: () => void;
   onDeactivate: () => void;
 }) {
   const navigate = useNavigate();
@@ -76,10 +82,12 @@ function BankAccountCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-5">
         <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Lịch sử</Button>
         <Button icon={<ArrowDownOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('IN'); }}>Tiền vào</Button>
         <Button danger icon={<ArrowUpOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('OUT'); }}>Tiền ra</Button>
+        <Button icon={<SwapOutlined />} disabled={!canRecord} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }}
+          onClick={(event) => { event.stopPropagation(); onAdvance(); }}>Ứng CK</Button>
         {canManage ? (
           <Popconfirm
             title="Ngưng tài khoản này?"
@@ -112,6 +120,35 @@ export function BankAccountsPage() {
   const [bankFilter, setBankFilter] = useState('ALL');
   const [createOpen, setCreateOpen] = useState(false);
   const [recording, setRecording] = useState<{ account: BankAccountDto; direction: BankMovementDirection } | null>(null);
+  const [advancing, setAdvancing] = useState<BankAccountDto | null>(null);
+  // Tạm ứng CK chưa hoàn (DongDav6): NV ứng trước trong ngày, KTTH/GĐ hoàn lại cuối ngày
+  const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
+  const settle = useSettleAdvanceCk();
+  const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const onSettle = async (adv: BankMovementDto) => {
+    try {
+      await settle.mutateAsync({ advanceId: adv.id, bankAccountId: adv.bankAccountId });
+      message.success(`Đã hoàn tạm ứng ${adv.movementNo}`);
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Hoàn tạm ứng thất bại'));
+    }
+  };
+  const advanceCols: ColumnsType<BankMovementDto> = [
+    { title: 'Ngày', dataIndex: 'businessDate', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
+    { title: 'Số phiếu', dataIndex: 'movementNo', width: 200 },
+    { title: 'Tài khoản', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a ? `${a.bankCode} · ${a.accountNo}` : id.slice(0, 8); } },
+    { title: 'Chi nhánh', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a?.branchCode ?? '—'; } },
+    { title: 'Nội dung', dataIndex: 'description', ellipsis: true },
+    { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (v: number, r) => (r.currencyCode === 'VND' ? formatVnd(v) : formatUsd(v)) },
+    ...(canManage ? [{
+      title: '', width: 110,
+      render: (_: unknown, r: BankMovementDto) => (
+        <Popconfirm title="Hoàn lại khoản ứng này bằng tài khoản chính?" okText="Hoàn" cancelText="Hủy" onConfirm={() => onSettle(r)}>
+          <Button size="small" type="primary" icon={<CheckOutlined />} loading={settle.isPending}>Hoàn</Button>
+        </Popconfirm>
+      ),
+    }] : []),
+  ];
 
   const bankOptions = useMemo(
     () => [{ value: 'ALL', label: 'Tất cả ngân hàng' }, ...[...new Set(accounts.map((a) => a.bankCode))].map((code) => ({ value: code, label: code }))],
@@ -193,6 +230,16 @@ export function BankAccountsPage() {
           </Row>
         </Card>
 
+        <Card
+          title={`Tạm ứng CK chưa hoàn (${pendingAdvances.length})`}
+          size="small"
+          extra={<Typography.Text type="secondary" className="text-xs!">NV ứng trước CK cho khách trong ngày · KTTH/GĐ bấm Hoàn khi đã thanh toán lại bằng tài khoản chính</Typography.Text>}
+        >
+          <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols} dataSource={pendingAdvances}
+            pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 800 }}
+            locale={{ emptyText: 'Không có khoản tạm ứng nào đang chờ hoàn' }} />
+        </Card>
+
         {!isLoading && filteredAccounts.length === 0 ? (
           <Card>
             <Empty description={canManage ? 'Chưa có tài khoản ngân hàng. Bấm "Thêm tài khoản" để khai báo cho từng chi nhánh.' : 'Chi nhánh chưa được khai báo tài khoản ngân hàng. Liên hệ KTTH/GĐ.'} />
@@ -206,6 +253,7 @@ export function BankAccountsPage() {
                   canManage={canManage}
                   canRecord={canRecord}
                   onRecord={(direction) => setRecording({ account, direction })}
+                  onAdvance={() => setAdvancing(account)}
                   onDeactivate={() => onDeactivate(account)}
                 />
               </Col>
@@ -215,6 +263,7 @@ export function BankAccountsPage() {
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      {advancing && <AdvanceCkModal account={advancing} open onClose={() => setAdvancing(null)} />}
       {recording && (
         <BankMovementModal
           account={recording.account}

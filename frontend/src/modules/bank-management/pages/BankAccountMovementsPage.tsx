@@ -4,6 +4,7 @@ import {
   ArrowLeftOutlined,
   ArrowUpOutlined,
   BankOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import { Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -16,6 +17,7 @@ import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBankAccounts, useBankMovements } from '../hooks/useBank';
 import type { BankAccountDto, BankMovementDto, BankMovementType } from '../api/bank.api';
 import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
+import { AdvanceCkModal } from '../components/AdvanceCkModal';
 
 const movementMeta: Record<BankMovementType, { label: string; color: string; inflow: boolean }> = {
   DEPOSIT: { label: 'Tiền vào', color: 'green', inflow: true },
@@ -23,6 +25,8 @@ const movementMeta: Record<BankMovementType, { label: string; color: string; inf
   WITHDRAW: { label: 'Rút tiền', color: 'red', inflow: false },
   TRANSFER_OUT: { label: 'Chuyển đi', color: 'orange', inflow: false },
   RECONCILIATION: { label: 'Đối chiếu', color: 'gold', inflow: true },
+  ADVANCE_CK: { label: 'Ứng CK', color: 'volcano', inflow: false },
+  ADVANCE_SETTLE: { label: 'Hoàn ứng CK', color: 'geekblue', inflow: true },
 };
 
 function formatAccountMoney(account: BankAccountDto, value: number) {
@@ -35,6 +39,7 @@ export function BankAccountMovementsPage() {
   const user = useAuthStore((state) => state.user);
   const canRecord = user?.role === 'director' || user?.role === 'accountant' || user?.role === 'branch';
   const [direction, setDirection] = useState<BankMovementDirection | null>(null);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
   const { data: accounts = [], isLoading } = useBankAccounts();
   const { data: movements = [] } = useBankMovements(accountKey);
   const account = accounts.find((a) => a.id === accountKey);
@@ -103,6 +108,7 @@ export function BankAccountMovementsPage() {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/bank-management/accounts')}>Danh sách tài khoản</Button>
           {canRecord && <Button icon={<ArrowDownOutlined />} onClick={() => setDirection('IN')}>Tiền vào</Button>}
           {canRecord && <Button danger icon={<ArrowUpOutlined />} onClick={() => setDirection('OUT')}>Tiền ra</Button>}
+          {canRecord && <Button icon={<SwapOutlined />} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }} onClick={() => setAdvanceOpen(true)}>Ứng CK</Button>}
         </Space>
       )}
     >
@@ -146,6 +152,7 @@ export function BankAccountMovementsPage() {
       {direction && (
         <BankMovementModal account={account} direction={direction} open onClose={() => setDirection(null)} />
       )}
+      <AdvanceCkModal account={account} open={advanceOpen} onClose={() => setAdvanceOpen(false)} />
     </PageScaffold>
   );
 }

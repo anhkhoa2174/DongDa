@@ -53,4 +53,7 @@ export interface BankMovement {
   description?: string | null;
   createdByUserId?: string;
   createdAt: Date;
+  // Chỉ có ở phiếu ADVANCE_CK: đã được hoàn (có ADVANCE_SETTLE tham chiếu tới) hay chưa
+  settled?: boolean;
+  settledMovementId?: string | null;
 }
