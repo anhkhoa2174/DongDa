@@ -86,6 +86,26 @@ function extractMgLine(line: string): Extracted | null {
   return { code, amount, currencyCode, customerName };
 }
 
+// MG — đọc theo KHỐI trên toàn bộ text: một số scan (CamScanner) OCR tách mỗi ô thành 1 dòng riêng
+// (ngày / mã 8 số / tên người nhận / tên người gửi / số tiền | loại tiền) nên đọc theo dòng bị sót.
+// Bắt mẫu: <dd/mm/yyyy> <8 số> <tên...> <số tiền> [|] <USD|VND>, cho phép xuống dòng giữa các ô.
+const MG_BLOCK_RE = /(\d{2}\/\d{2}\/\d{4})\s+(\d{8})(?!\d)\s+([A-Za-zÀ-ỹ][A-Za-zÀ-ỹ\s]*?)\s+((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*\|?\s*(USD|VND)\b/g;
+
+function extractMgBlocks(text: string): Array<Extracted & { index: number }> {
+  const out: Array<Extracted & { index: number }> = [];
+  for (const m of text.matchAll(MG_BLOCK_RE)) {
+    const [, , code, names, amountStr, ccy] = m;
+    if (/^20\d{6}$/.test(code) && /MT\d_/.test(text.slice(Math.max(0, m.index! - 20), m.index!))) continue; // mã yêu cầu MT9_USD_2026...
+    const amount = parseUsAmount(amountStr);
+    if (amount === null || amount <= 0) continue;
+    // Tên tách theo dòng: dòng đầu = người nhận (cột "Họ tên người nhận" đứng trước "Họ tên người gửi")
+    const nameLines = names.split(/\r?\n/).map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const customerName = nameLines.length > 1 ? nameLines[0] : cleanCustomerName(names);
+    out.push({ code, amount, currencyCode: ccy as 'USD' | 'VND', customerName, index: m.index! });
+  }
+  return out;
+}
+
 // Dòng tiêu đề/tổng/chân trang -> bỏ qua (tránh bắt nhầm mã yêu cầu, tổng tiền...).
 const NOISE_RE = /(tổng|tong cong|tong so|mã yêu cầu|ma yeu cau|tên đại lý|ten dai ly|ngày yêu cầu|ngay yeu cau|tgtt|danh sách|danh sach|báo cáo|bao cao|số tk|so tk|loại tiền giao dịch|loai tien giao dich|người điều hành|nguoi dieu hanh|họ tên người|ho ten nguoi)/i;
 
@@ -115,6 +135,20 @@ export function parseOcrJournalText(
       currencyCode: ex.currencyCode,
       customerName: ex.customerName,
     });
+  }
+
+  // MG: bổ sung các giao dịch bị OCR tách ô xuống nhiều dòng (đọc theo khối trên toàn text)
+  if (provider === 'MG') {
+    const lineStarts: number[] = [];
+    let pos = 0;
+    for (const l of text.split(/\r?\n/)) { lineStarts.push(pos); pos += l.length + 1; }
+    for (const ex of extractMgBlocks(text)) {
+      if (seen.has(ex.code)) continue;
+      seen.add(ex.code);
+      const rowNo = lineStarts.filter((st) => st <= ex.index).length;
+      rows.push({ rowNo, code: ex.code, amount: ex.amount, currencyCode: ex.currencyCode, customerName: ex.customerName });
+    }
+    rows.sort((a, b) => a.rowNo - b.rowNo);
   }
 
   return {
