@@ -92,7 +92,8 @@ export class ParseJournalUseCase {
     let sheet: XLSX.WorkSheet;
     try {
       // codepage 65001 = UTF-8 để đọc đúng tiêu đề/tên tiếng Việt trong file CSV.
-      const wb = XLSX.read(fileBuffer, { type: 'buffer', codepage: 65001 });
+      // raw: true -> ô CSV giữ nguyên chuỗi, MTCN '0273631579' không bị parse thành số mất số 0 đầu.
+      const wb = XLSX.read(fileBuffer, { type: 'buffer', codepage: 65001, raw: true });
       const sheetName = wb.SheetNames[0];
       if (!sheetName) throw new Error('empty');
       sheet = wb.Sheets[sheetName];

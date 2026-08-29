@@ -51,7 +51,7 @@ export interface SavePendingJournalInput {
   provider: 'WU' | 'MG';
   businessDate: Date;
   branchId?: string;
-  rows: Array<{ code: string; amount: number; currencyCode: string; branchId?: string }>;
+  rows: Array<{ code: string; amount: number; currencyCode: string; branchId?: string; customerName?: string }>;
   createdByUserId: string;
 }
 
