@@ -1,0 +1,25 @@
+# dongda.name.vn: tự xin SSL Let's Encrypt khi DNS đã trỏ về VPS.
+# Khối :80 để vẫn vào được bằng IP khi chưa có DNS.
+dongda.name.vn {
+	encode gzip
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+:80 {
+	encode gzip
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
+	}
+}

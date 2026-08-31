@@ -1,0 +1,47 @@
+# Push lên main -> runner self-hosted trên VPS tự build + deploy.
+# VPS: /srv/dongda (code ở src/, FE build ở www/, secrets ở .env — tạo tay 1 lần).
+name: Deploy DongDa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, dongda]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend (node trong docker, không cần cài node trên VPS)
+        run: |
+          docker run --rm -v "$PWD/frontend":/app -w /app node:20-alpine \
+            sh -c "npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund; npm run build"
+
+      - name: Đồng bộ code + cấu hình vào /srv/dongda
+        run: |
+          mkdir -p /srv/dongda/src /srv/dongda/www
+          rsync -a --delete --exclude node_modules --exclude .git ./ /srv/dongda/src/
+          rsync -a --delete frontend/dist/ /srv/dongda/www/
+          cp deploy/docker-compose.prod.yml /srv/dongda/docker-compose.yml
+          cp deploy/Caddyfile /srv/dongda/Caddyfile
+          test -f /srv/dongda/.env || { echo "THIẾU /srv/dongda/.env — tạo theo deploy/README.md"; exit 1; }
+
+      - name: Build & up
+        working-directory: /srv/dongda
+        run: |
+          docker compose up -d --build
+          docker image prune -f
+
+      - name: Kiểm tra sức khỏe
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost/api/v1/auth/me || true)
+            [ "$code" = "401" ] && echo "Backend OK (401 khi chưa đăng nhập)" && exit 0
+            sleep 3
+          done
+          echo "Backend không phản hồi"; docker compose -f /srv/dongda/docker-compose.yml logs --tail 50 backend; exit 1
