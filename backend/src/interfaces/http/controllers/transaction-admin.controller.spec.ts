@@ -33,6 +33,21 @@ describe('TransactionAdminController adjustment vouchers', () => {
     )).toEqual({ action: 'VOID' });
   });
 
+  it('blocks every edit or void path once the transaction debt is reconciled', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      debt_accounts: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce({ id: 'debt-1' })
+          .mockResolvedValueOnce({ lifecycle_status: 'RECONCILED' }),
+      },
+    };
+    const controller = new TransactionAdminController({} as any, {} as any);
+
+    await expect((controller as any).assertTransactionNotReconciled(tx, transactionId))
+      .rejects.toThrow('không được sửa, thay thế hoặc hủy');
+  });
+
   it('rejects corrected monetary amounts with more than two decimal places', () => {
     const controller = new TransactionAdminController({} as any, {} as any);
     expect(() => (controller as any).buildAdjustmentPayload(
@@ -81,7 +96,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
       },
       wu_transaction_details: { create: wuDetailCreate },
       ledger_entries: { create: jest.fn().mockResolvedValue({ id: 'ledger-new' }) },
-      debt_accounts: { upsert: jest.fn().mockResolvedValue({ id: 'debt-1' }) },
+      debt_accounts: { create: jest.fn().mockResolvedValue({ id: 'debt-1' }) },
       debt_movements: { create: jest.fn().mockResolvedValue({ id: 'movement-new' }) },
       audit_logs: { create: jest.fn().mockResolvedValue({ id: 'audit-new' }) },
     };
@@ -115,11 +130,11 @@ describe('TransactionAdminController adjustment vouchers', () => {
         received_vnd: 12_725,
       }),
     }));
-    expect(tx.debt_accounts.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        branch_id_provider_code_currency_code_business_date: expect.objectContaining({
-          business_date: originalBusinessDate,
-        }),
+    expect(tx.debt_accounts.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        transaction_id: 'replacement-1',
+        business_date: originalBusinessDate,
+        lifecycle_status: 'PENDING',
       }),
     }));
   });
@@ -153,6 +168,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
         create: jest.fn(),
       },
       debt_settlement_allocations: { aggregate: jest.fn() },
+      debt_accounts: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
       ledger_entries: {
         findMany: jest.fn().mockResolvedValue([{
           id: 'entry-1',

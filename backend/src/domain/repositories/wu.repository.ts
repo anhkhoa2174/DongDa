@@ -5,6 +5,7 @@ import type { WuTransaction, Currency2 } from '../entities/wu.entity';
 
 export interface CreateWuInput {
   branchId: string;
+  bankAccountId: string;
   mtcn: string;
   customerName?: string;
   customerPhone: string;

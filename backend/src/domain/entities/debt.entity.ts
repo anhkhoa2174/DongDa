@@ -1,10 +1,8 @@
 // Domain Entity: Công nợ (WU/MG)
 // Layer: Domain
 //
-// Mô hình v3: sổ + biến động
-//   debt_accounts  = 1 khoản nợ ngày / (ngày + chi nhánh + provider + loại tiền)
-//   debt_movements = từng lần tăng (EXPECTED_DEBT) / giảm (SETTLEMENT)
-// "Status" công nợ (Pending/Partially/Settled) là GIÁ TRỊ SUY RA từ số dư còn lại.
+// Mô hình v4: một giao dịch WU/MG có đúng một công nợ.
+// Công nợ chỉ được thanh toán toàn bộ sau khi đối chiếu hai lớp hoàn tất.
 
 export enum DebtMovementType {
   EXPECTED_DEBT = 'EXPECTED_DEBT', // nợ phát sinh khi tạo GD WU/MG
@@ -17,20 +15,27 @@ export enum DebtMovementType {
 import type { CurrencyCode } from './currency';
 export type { CurrencyCode } from './currency';
 
-// Trạng thái công nợ (suy ra từ số dư)
 export enum DebtStatus {
-  PENDING = 'PENDING', // chưa trả đồng nào
-  PARTIALLY_SETTLED = 'PARTIALLY_SETTLED', // trả một phần
-  SETTLED = 'SETTLED', // trả hết
+  PENDING = 'PENDING',
+  RECONCILED = 'RECONCILED',
+  SETTLED = 'SETTLED',
+  CANCELLED = 'CANCELLED',
 }
 
 export interface DebtAccount {
   id: string;
+  transactionId?: string | null;
+  reconciliationRunId?: string | null;
+  settlementBankAccountId?: string | null;
   branchId: string;
   providerCode: string; // 'WU' | 'MG'
   currencyCode: CurrencyCode;
   businessDate: Date;
   name: string;
+  status: DebtStatus;
+  reconciledAt?: Date | null;
+  settledAt?: Date | null;
+  cancelledAt?: Date | null;
 }
 
 export interface DebtMovement {
@@ -54,13 +59,4 @@ export interface DebtAccountSummary extends DebtAccount {
   totalDebt: number;
   totalSettled: number;
   outstanding: number;
-  status: DebtStatus;
-}
-
-export function computeDebtStatus(totalDebt: number, totalSettled: number): DebtStatus {
-  if (totalDebt <= 0) return DebtStatus.PENDING;
-  const outstanding = totalDebt - totalSettled;
-  if (outstanding <= 0) return DebtStatus.SETTLED;
-  if (totalSettled > 0) return DebtStatus.PARTIALLY_SETTLED;
-  return DebtStatus.PENDING;
 }

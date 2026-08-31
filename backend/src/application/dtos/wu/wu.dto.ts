@@ -11,6 +11,9 @@ export class CreateWuDto {
   @IsUUID()
   branchId: string;
 
+  @IsUUID()
+  bankAccountId: string;
+
   @Matches(/^\d{10}$/, { message: 'MSKH (MTCN) phải gồm đúng 10 chữ số' })
   mtcn: string;
 

@@ -1,3 +1,4 @@
+import { Navigate } from 'react-router-dom';
 import { RoleGuard } from '@/app/guards/RoleGuard';
 import { ReconciliationPage } from './pages/ReconciliationPage';
 import { ReconciliationWorkspacePage } from './pages/ReconciliationWorkspacePage';
@@ -11,12 +12,20 @@ export const reconciliationRoutes = [
       </RoleGuard>
     ),
   },
-  // Chi nhánh upload Journal + đối chiếu cho chính mình; GĐ/KTTH/kiểm toán xem toàn công ty hoặc từng chi nhánh.
+  { path: 'reconciliation/journal', element: <Navigate to="/reconciliation/journal/wu" replace /> },
   {
-    path: 'reconciliation/journal',
+    path: 'reconciliation/journal/wu',
     element: (
       <RoleGuard allowedRoles={['director', 'accountant', 'auditor', 'branch']}>
-        <ReconciliationWorkspacePage />
+        <ReconciliationWorkspacePage provider="WU" />
+      </RoleGuard>
+    ),
+  },
+  {
+    path: 'reconciliation/journal/mg',
+    element: (
+      <RoleGuard allowedRoles={['director', 'accountant', 'auditor', 'branch']}>
+        <ReconciliationWorkspacePage provider="MG" />
       </RoleGuard>
     ),
   },

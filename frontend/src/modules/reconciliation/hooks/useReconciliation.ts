@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { reconApi, type RunReconInput, type JournalRowInput } from '../api/reconciliation.api';
+import { reconApi, type RunReconInput } from '../api/reconciliation.api';
 
 const KEY = ['reconciliation'] as const;
 
-export function useReconRuns(branchId?: string) {
-  return useQuery({ queryKey: [...KEY, 'runs', branchId ?? 'all'], queryFn: () => reconApi.runs(branchId) });
+export function useReconRuns(branchId?: string, provider?: 'WU' | 'MG') {
+  return useQuery({ queryKey: [...KEY, 'runs', branchId ?? 'all', provider ?? 'all'], queryFn: () => reconApi.runs(branchId, provider) });
 }
 export function useFundReconciliation(branchId?: string) {
   return useQuery({
@@ -27,27 +27,22 @@ export function useRunReconciliation() {
   });
 }
 
-export function usePendingJournals(branchId?: string) {
-  return useQuery({ queryKey: [...KEY, 'pending', branchId ?? 'all'], queryFn: () => reconApi.pendingJournals(branchId) });
-}
-export function usePendingJournalDetail(id: string | null) {
-  return useQuery({ queryKey: [...KEY, 'pending-detail', id], queryFn: () => reconApi.pendingJournal(id!), enabled: !!id });
-}
-export function useSubmitPendingJournal() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { provider: 'WU' | 'MG'; businessDate: string; branchId?: string; rows: JournalRowInput[] }) =>
-      reconApi.submitPendingJournal(input),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: KEY }); qc.invalidateQueries({ queryKey: ['notifications'] }); },
+export function useSubmittedBranchRuns(provider: 'WU' | 'MG', branchId?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, provider, 'submitted', branchId ?? 'all'],
+    queryFn: () => reconApi.submittedBranchRuns(provider, branchId),
+    enabled,
   });
 }
-export function useRejectPendingJournal() {
+
+export function useCreateFinalRun(provider: 'WU' | 'MG') {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) => reconApi.rejectPendingJournal(id, reason),
+    mutationFn: (branchRunIds: string[]) => reconApi.createFinalRun(provider, branchRunIds),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }
+
 export function useParseJournal() {
   return useMutation({
     mutationFn: ({ provider, file }: { provider: 'WU' | 'MG'; file: File }) =>

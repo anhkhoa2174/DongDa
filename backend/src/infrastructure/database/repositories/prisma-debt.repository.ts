@@ -4,12 +4,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
-  IDebtRepository, RecordDebtInput, SettleUsdCashDebtInput, ListDebtsFilter,
+  IDebtRepository, SettleUsdCashDebtInput, ListDebtsFilter,
   SettleVndCashDebtInput, SettleDebtBatchInput, DebtBatchSettlementResult,
 } from '../../../domain/repositories/debt.repository';
 import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
-  CurrencyCode, computeDebtStatus,
+  CurrencyCode, DebtStatus,
 } from '../../../domain/entities/debt.entity';
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
@@ -26,49 +26,22 @@ export class PrismaDebtRepository implements IDebtRepository {
     private readonly notifications: NotificationService,
   ) {}
 
-  // Updated: tách công nợ theo giao dịch — mỗi giao dịch tạo 1 debt_movements riêng (source_type/source_id)
-  async recordDebt(input: RecordDebtInput): Promise<DebtMovement> {
-    const businessDate = toVietnamBusinessDate(input.businessDate ?? new Date());
-    const now = new Date();
-    const row = await this.prisma.$transaction(async (tx) => {
-      const account = await this.ensureAccount(
-        tx, input.branchId, input.providerCode, input.currencyCode, businessDate,
-      );
-      return tx.debt_movements.create({
-        data: {
-          debt_account_id: account.id,
-          branch_id: input.branchId,
-          movement_type: 'EXPECTED_DEBT',
-          source_type: (input.sourceType as any) ?? null,
-          source_id: input.sourceId ?? null,
-          business_date: businessDate,
-          amount: input.amount,
-          currency_code: input.currencyCode,
-          description: input.description ?? null,
-          status: 'POSTED',
-          posted_at: now,
-          created_by_user_id: input.createdByUserId,
-        },
-      });
-    });
-    return toMovement(row);
-  }
-
   async settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
       const debtAccount = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
+      this.assertReconciled(debtAccount);
       if (debtAccount.currency_code !== 'USD') {
         throw new BadRequestException('Form tiền mặt USD chỉ áp dụng cho công nợ USD');
       }
 
       const settlementAmount = Number((input.cashUsdAmount + input.oddUsdAmount).toFixed(2));
       const outstanding = await this.outstanding(tx, debtAccount.id);
-      if (settlementAmount > outstanding) {
+      if (!sameMoney(settlementAmount, outstanding)) {
         throw new BadRequestException(
-          `Số tiền xử lý (${settlementAmount}) vượt số còn nợ (${outstanding} USD)`,
+          `Công nợ phải được tất toán toàn bộ: cần đúng ${outstanding} USD`,
         );
       }
 
@@ -169,6 +142,10 @@ export class PrismaDebtRepository implements IDebtRepository {
         },
       });
       await allocateDebtSettlement(tx, debtAccount.id, settlement.id, settlementAmount);
+      await tx.debt_accounts.update({
+        where: { id: debtAccount.id },
+        data: { lifecycle_status: 'SETTLED', settled_at: now, updated_at: now },
+      });
       await this.notifySettlement(
         tx, debtAccount, settlementAmount, outstanding, input.createdByUserId, 'Tiền mặt (Quỹ)',
       );
@@ -182,14 +159,15 @@ export class PrismaDebtRepository implements IDebtRepository {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
       const debtAccount = await tx.debt_accounts.findUniqueOrThrow({ where: { id: input.debtAccountId } });
+      this.assertReconciled(debtAccount);
       if (debtAccount.currency_code !== 'VND') {
         throw new BadRequestException('Form tiền mặt VND chỉ áp dụng cho công nợ VND');
       }
 
       const outstanding = await this.outstanding(tx, debtAccount.id);
-      if (input.amount > outstanding) {
+      if (!sameMoney(input.amount, outstanding)) {
         throw new BadRequestException(
-          `Số tiền xử lý (${input.amount}) vượt số còn nợ (${outstanding} VND)`,
+          `Công nợ phải được tất toán toàn bộ: cần đúng ${outstanding} VND`,
         );
       }
 
@@ -263,6 +241,10 @@ export class PrismaDebtRepository implements IDebtRepository {
         },
       });
       await allocateDebtSettlement(tx, debtAccount.id, settlement.id, input.amount);
+      await tx.debt_accounts.update({
+        where: { id: debtAccount.id },
+        data: { lifecycle_status: 'SETTLED', settled_at: now, updated_at: now },
+      });
       await this.notifySettlement(
         tx, debtAccount, input.amount, outstanding, input.createdByUserId, 'Tiền mặt (Quỹ)',
       );
@@ -283,10 +265,15 @@ export class PrismaDebtRepository implements IDebtRepository {
       }
       const accounts = await tx.debt_accounts.findMany({
         where: { id: { in: accountIds }, status: 'ACTIVE' },
+        include: { transaction: { include: { wu_transaction_details: true } } },
         orderBy: { id: 'asc' },
       });
       if (accounts.length !== accountIds.length) {
         throw new BadRequestException('Một hoặc nhiều khoản công nợ không còn hoạt động');
+      }
+      const blocked = accounts.find((account) => account.lifecycle_status !== 'RECONCILED');
+      if (blocked) {
+        throw new BadRequestException('Chỉ công nợ đã đối chiếu RECONCILED mới được thanh toán');
       }
       const first = accounts[0];
       const sameGroup = accounts.every((account) => (
@@ -322,6 +309,16 @@ export class PrismaDebtRepository implements IDebtRepository {
       let sourceId: string;
       if (input.settlementSource === 'BANK') {
         if (!input.bankAccountId) throw new BadRequestException('Phải chọn tài khoản ngân hàng nhận tiền');
+        const assignedBankIds = [...new Set(accounts
+          .map((account: any) => account.transaction?.wu_transaction_details?.bank_account_id)
+          .filter(Boolean))];
+        if (accounts.some((account: any) => account.provider_code === 'WU'
+          && !account.transaction?.wu_transaction_details?.bank_account_id)) {
+          throw new BadRequestException('Có giao dịch WU chưa được gắn tài khoản ngân hàng thanh toán');
+        }
+        if (assignedBankIds.length > 1 || (assignedBankIds.length === 1 && assignedBankIds[0] !== input.bankAccountId)) {
+          throw new BadRequestException('Các công nợ WU phải được thanh toán qua đúng ngân hàng đã chọn khi tạo giao dịch');
+        }
         await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${input.bankAccountId}::uuid FOR UPDATE`;
         const bankAccount = await tx.bank_accounts.findFirst({
           where: { id: input.bankAccountId, status: 'ACTIVE' },
@@ -453,6 +450,10 @@ export class PrismaDebtRepository implements IDebtRepository {
         });
         await allocateDebtSettlement(tx, account.id, settlement.id, amount);
       }
+      await tx.debt_accounts.updateMany({
+        where: { id: { in: accountIds }, lifecycle_status: 'RECONCILED' },
+        data: { lifecycle_status: 'SETTLED', settled_at: now, updated_at: now },
+      });
 
       await this.notifications.notifyUsers({
         title: 'Đã tất toán công nợ tổng',
@@ -482,7 +483,9 @@ export class PrismaDebtRepository implements IDebtRepository {
   }
 
   async getAccountSummary(id: string): Promise<DebtAccountSummary | null> {
-    const acc = await this.prisma.debt_accounts.findUnique({ where: { id } });
+    const acc = await this.prisma.debt_accounts.findUnique({
+      where: { id }, include: { transaction: { include: { wu_transaction_details: true } } },
+    });
     if (!acc) return null;
     return this.buildSummary(acc);
   }
@@ -501,6 +504,7 @@ export class PrismaDebtRepository implements IDebtRepository {
           },
         }),
       },
+      include: { transaction: { include: { wu_transaction_details: true } } },
       orderBy: [{ business_date: 'desc' }, { created_at: 'desc' }],
     });
     return Promise.all(accounts.map((a) => this.buildSummary(a)));
@@ -516,28 +520,10 @@ export class PrismaDebtRepository implements IDebtRepository {
 
   // ── helpers ──────────────────────────────────────────────
 
-  // Updated: gom công nợ theo List (Chi nhánh, Ngày) — 1 sổ nợ / (chi nhánh, provider, loại tiền, ngày)
-  private async ensureAccount(
-    db: any, branchId: string, providerCode: string, currencyCode: CurrencyCode, businessDate: Date,
-  ) {
-    return db.debt_accounts.upsert({
-      where: {
-        branch_id_provider_code_currency_code_business_date: {
-          branch_id: branchId,
-          provider_code: providerCode,
-          currency_code: currencyCode,
-          business_date: businessDate,
-        },
-      },
-      update: {},
-      create: {
-        branch_id: branchId,
-        provider_code: providerCode,
-        currency_code: currencyCode,
-        business_date: businessDate,
-        name: `Công nợ ${providerCode} ${currencyCode} ngày ${businessDate.toISOString().slice(0, 10)}`,
-      },
-    });
+  private assertReconciled(account: { lifecycle_status: string }) {
+    if (account.lifecycle_status !== 'RECONCILED') {
+      throw new BadRequestException('Chỉ công nợ đã đối chiếu RECONCILED mới được thanh toán');
+    }
   }
 
   private async buildSummary(acc: any): Promise<DebtAccountSummary> {
@@ -559,7 +545,7 @@ export class PrismaDebtRepository implements IDebtRepository {
       totalDebt,
       totalSettled,
       outstanding,
-      status: computeDebtStatus(totalDebt, totalSettled),
+      status: acc.lifecycle_status as DebtStatus,
     };
   }
 
@@ -586,16 +572,15 @@ export class PrismaDebtRepository implements IDebtRepository {
     sourceLabel: string,
   ) {
     const remaining = Number((outstandingBefore - amount).toFixed(2));
-    const settled = remaining <= 0;
     const currency = debtAccount.currency_code;
     const formatAmount = (value: number) => value.toLocaleString('vi-VN', {
       minimumFractionDigits: currency === 'VND' ? 0 : 2,
       maximumFractionDigits: currency === 'VND' ? 0 : 2,
     });
     await this.notifications.notifyUsers({
-      title: settled ? 'Công nợ đã được tất toán' : 'Công nợ đã được xử lý một phần',
+      title: 'Công nợ đã được tất toán',
       body: `${debtAccount.provider_code} ngày ${debtAccount.business_date.toISOString().slice(0, 10)}: nhận ${formatAmount(amount)} ${currency} qua ${sourceLabel}; còn lại ${formatAmount(Math.max(remaining, 0))} ${currency}.`,
-      sourceType: settled ? 'DEBT_SETTLED' : 'DEBT_PARTIALLY_SETTLED',
+      sourceType: 'DEBT_SETTLED',
       sourceId: debtAccount.id,
     }, {
       userIds: [actorUserId],
@@ -608,12 +593,23 @@ export class PrismaDebtRepository implements IDebtRepository {
 function toAccount(row: any): DebtAccount {
   return {
     id: row.id,
+    transactionId: row.transaction_id ?? null,
+    reconciliationRunId: row.reconciliation_run_id ?? null,
+    settlementBankAccountId: row.transaction?.wu_transaction_details?.bank_account_id ?? null,
     branchId: row.branch_id,
     providerCode: row.provider_code,
     currencyCode: row.currency_code as CurrencyCode,
     businessDate: row.business_date,
     name: row.name,
+    status: row.lifecycle_status as DebtStatus,
+    reconciledAt: row.reconciled_at ?? null,
+    settledAt: row.settled_at ?? null,
+    cancelledAt: row.cancelled_at ?? null,
   };
+}
+
+function sameMoney(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.005;
 }
 
 function toMovement(row: any): DebtMovement {

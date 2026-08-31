@@ -1,21 +1,25 @@
 // Flow Đối chiếu Journal (diagram 4) — nối API thật
 import { useEffect, useMemo, useState } from 'react';
 import {
-  App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Progress, Row, Segmented, Select, Space, Table, Tag, Typography, Upload,
+  App, Button, Card, Col, DatePicker, Empty, Form, Input, InputNumber, Progress, Row, Select, Space, Table, Tag, Tooltip, Typography, Upload,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { CloseCircleOutlined, MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined, CheckCircleOutlined, ClockCircleOutlined, FileSearchOutlined,
+  HistoryOutlined, MinusCircleOutlined, PlusOutlined, PlayCircleOutlined, UploadOutlined,
+} from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import {
   useReconItems, useReconRuns, useRunReconciliation, useParseJournal,
-  usePendingJournals, usePendingJournalDetail, useSubmitPendingJournal, useRejectPendingJournal,
+  useSubmittedBranchRuns, useCreateFinalRun,
 } from '../hooks/useReconciliation';
-import type { JournalRowInput, ReconItemDto, ReconRunDto, PendingJournalDto } from '../api/reconciliation.api';
+import type { JournalRowInput, ReconItemDto, ReconRunDto } from '../api/reconciliation.api';
 import { useBranches } from '@/shared/hooks/useBranches';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
-import { formatNumber } from '@/shared/utils/formatters';
+import { formatNumber, numberInputFormatter, numberInputParser } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 
 const money = (n: number) => formatNumber(n, 2);
@@ -34,28 +38,25 @@ interface ReconciliationFormValues {
   rows: JournalRowInput[];
 }
 
-export function ReconciliationWorkspacePage() {
+export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG' }) {
   const { message } = App.useApp();
   const user = useAuthStore((state) => state.user);
   // Chi nhánh: chỉ upload/đối chiếu/xem cho chính mình. GĐ/KTTH/kiểm toán: toàn công ty hoặc lọc từng chi nhánh.
   const isBranchUser = user?.role === 'branch';
   const ownBranchId = isBranchUser ? user?.branchId : undefined;
   const canRun = user?.role !== 'auditor';
-  const [historyBranchId, setHistoryBranchId] = useState<string | undefined>(undefined);
-  const { data: runs = [] } = useReconRuns(ownBranchId ?? historyBranchId);
+  const runHistoryBranchId = isBranchUser ? ownBranchId : undefined;
+  const { data: runs = [] } = useReconRuns(runHistoryBranchId, provider);
   const run = useRunReconciliation();
   const parse = useParseJournal();
   const { data: branches = [] } = useBranches();
   const [form] = Form.useForm<ReconciliationFormValues>();
+  const journalRows = Form.useWatch('rows', form) ?? [];
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const { data: items = [] } = useReconItems(selectedRun);
-  // DongDav6 — luồng 2 bước: chi nhánh gửi Journal về KTTH (pending) -> KTTH xem, chạy đối chiếu (duyệt) hoặc từ chối
-  const submitPending = useSubmitPendingJournal();
-  const rejectPending = useRejectPendingJournal();
-  const { data: pendingJournals = [] } = usePendingJournals(ownBranchId ?? historyBranchId);
-  const [viewingPending, setViewingPending] = useState<string | null>(null);
-  const { data: pendingDetail } = usePendingJournalDetail(viewingPending);
-  const [loadedPendingId, setLoadedPendingId] = useState<string | null>(null);
+  const createFinal = useCreateFinalRun(provider);
+  const { data: submittedBranchRuns = [] } = useSubmittedBranchRuns(provider, undefined, !isBranchUser);
+  const [selectedBranchRunIds, setSelectedBranchRunIds] = useState<string[]>([]);
   const branchOptions = useMemo(
     () => branches
       .filter((branch) => branch.type !== 'HEAD_OFFICE')
@@ -67,15 +68,18 @@ export function ReconciliationWorkspacePage() {
     const branch = branches.find((b) => b.id === branchId);
     return branch ? `${branch.code} - ${branch.name}` : branchId.slice(0, 8);
   };
-  const isBranchScopedForm = (values: Partial<ReconciliationFormValues>) => Boolean(ownBranchId ?? values.branchId);
+  useEffect(() => {
+    form.setFieldValue('provider', provider);
+    if (ownBranchId) form.setFieldValue('branchId', ownBranchId);
+  }, [form, ownBranchId, provider]);
 
   useEffect(() => {
-    if (ownBranchId) form.setFieldValue('branchId', ownBranchId);
-  }, [form, ownBranchId]);
+    setSelectedRun(null);
+    setSelectedBranchRunIds([]);
+  }, [provider]);
 
   // Upload file WU/MG Journal -> parse -> đổ vào danh sách dòng để KTTH rà lại.
   const onUploadJournal = async (file: File) => {
-    const provider = form.getFieldValue('provider') as 'WU' | 'MG';
     try {
       const res = await parse.mutateAsync({ provider, file });
       form.setFieldsValue({
@@ -93,56 +97,10 @@ export function ReconciliationWorkspacePage() {
       if (res.errors.length) {
         message.warning(`Dòng lỗi: ${res.errors.slice(0, 5).map((e) => `#${e.rowNo} ${e.message}`).join('; ')}${res.errors.length > 5 ? '…' : ''}`, 6);
       }
-      if (provider === 'MG' && res.rows.length && !isBranchScopedForm(form.getFieldsValue())) {
-        message.info('Journal MG toàn công ty: chọn chi nhánh cho từng dòng (hoặc chọn 1 chi nhánh ở đầu form) trước khi chạy đối chiếu');
-      }
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Đọc file thất bại'));
     }
     return false; // chặn antd tự upload
-  };
-
-  // Chi nhánh: gửi các dòng đã rà về KTTH duyệt thay vì tự chạy đối chiếu
-  const onSubmitPending = async () => {
-    const v = await form.validateFields();
-    const branchId = ownBranchId ?? v.branchId;
-    const rows = (v.rows ?? [])
-      .filter((row) => row?.code && row?.amount != null)
-      .map((row) => ({ ...row, customerName: row.customerName?.trim() || undefined, branchId: branchId ?? row.branchId }));
-    if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
-    if (!branchId) return message.warning('Gửi KTTH duyệt phải chọn chi nhánh');
-    try {
-      const res = await submitPending.mutateAsync({ provider: v.provider, businessDate: v.businessDate.format('YYYY-MM-DD'), branchId, rows });
-      message.success(`Đã gửi ${res.parsedRowCount} dòng Journal ${res.provider} về KTTH duyệt (${res.runNo})`);
-      form.setFieldsValue({ rows: [{ currencyCode: 'USD' }] });
-    } catch (error: unknown) {
-      message.error(getApiErrorMessage(error, 'Gửi Journal thất bại'));
-    }
-  };
-
-  // KTTH: nạp các dòng của Journal chờ duyệt vào form để chạy đối chiếu (= duyệt)
-  const loadPendingIntoForm = () => {
-    if (!pendingDetail) return;
-    const { summary, rows } = pendingDetail;
-    form.setFieldsValue({
-      provider: summary.provider,
-      businessDate: dayjs(summary.businessDate),
-      branchId: summary.branchId ?? undefined,
-      rows: rows.map((r) => ({ code: r.code, amount: r.amount, currencyCode: r.currencyCode, customerName: r.customerName ?? undefined, branchId: r.branchId ?? undefined })),
-    });
-    setLoadedPendingId(summary.id);
-    setViewingPending(null);
-    message.info('Đã nạp dòng Journal vào form — bấm "Chạy đối chiếu" để duyệt');
-  };
-
-  const onRejectPending = async (p: PendingJournalDto) => {
-    try {
-      await rejectPending.mutateAsync({ id: p.id });
-      message.success(`Đã từ chối ${p.runNo}`);
-      if (viewingPending === p.id) setViewingPending(null);
-    } catch (error: unknown) {
-      message.error(getApiErrorMessage(error, 'Từ chối thất bại'));
-    }
   };
 
   const onRun = async (v: ReconciliationFormValues) => {
@@ -156,9 +114,7 @@ export function ReconciliationWorkspacePage() {
         branchId: branchId ?? row.branchId,
       }));
     if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
-    if (v.provider === 'MG' && !branchId && rows.some((row) => !row.branchId)) {
-      return message.warning('Journal MG toàn công ty: chọn chi nhánh cho từng dòng, hoặc chọn 1 chi nhánh ở đầu form');
-    }
+    if (!branchId) return message.warning('Phải xác định chi nhánh đối chiếu');
     // Journal WU/MG có thể lẫn USD và VND, nhưng mỗi lần đối chiếu chỉ 1 loại tiền
     // -> tự gom theo loại tiền và chạy lần lượt từng loại.
     const byCurrency = new Map<string, JournalRowInput[]>();
@@ -172,228 +128,318 @@ export function ReconciliationWorkspacePage() {
       const summaries: string[] = [];
       for (const [cur, curRows] of byCurrency) {
         const res = await run.mutateAsync({
-          provider: v.provider,
+          provider,
           businessDate: v.businessDate.format('YYYY-MM-DD'),
           branchId,
           rows: curRows,
-          pendingJournalId: loadedPendingId ?? undefined,
         });
         lastRunId = res.id;
         summaries.push(`${cur}: khớp ${(res.matchRate * 100).toFixed(0)}% (${curRows.length} dòng)`);
       }
       if (lastRunId) setSelectedRun(lastRunId);
-      setLoadedPendingId(null);
-      message.success(`Đối chiếu xong — ${summaries.join(' · ')}`);
+      message.success(`Đã đối chiếu ${provider} và gửi GĐ/KTTH — ${summaries.join(' · ')}`);
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Đối chiếu thất bại'));
     }
   };
 
+  const onCreateFinal = async () => {
+    try {
+      const finalRun = await createFinal.mutateAsync(selectedBranchRunIds);
+      setSelectedBranchRunIds([]);
+      setSelectedRun(finalRun.id);
+      message.success(`Đã tạo bản đối chiếu ${provider} cuối ${finalRun.runNo}`);
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo bản đối chiếu cuối thất bại'));
+    }
+  };
+
   const runCols: ColumnsType<ReconRunDto> = [
-    { title: 'Mã', dataIndex: 'runNo', render: (v) => <Typography.Text copyable={{ text: v }}>{v.slice(0, 14)}…</Typography.Text> },
-    { title: 'Đối tác', dataIndex: 'provider', render: (v) => <Tag>{v}</Tag> },
-    { title: 'Ngày', dataIndex: 'businessDate', render: (v) => dayjs(v).format('DD/MM') },
-    { title: 'Chi nhánh', dataIndex: 'branchId', ellipsis: true,
-      render: (v, r) => v ? (r.branchCode ?? branchLabel(v)) : <Tag color="blue">Toàn Cty</Tag> },
-    { title: 'Match', dataIndex: 'matchRate',
-      render: (v, r) => <Progress percent={Math.round(v * 100)} size="small" style={{ width: 90 }}
-        status={v >= 0.95 ? 'success' : 'exception'} format={() => `${r.matchedCount}/${r.totalCount}`} /> },
-    { title: 'Lệch tổng', dataIndex: 'varianceTotal', align: 'right', render: (v) => `${money(v)}` },
-    { title: '', render: (_, r) => <Button size="small" onClick={() => setSelectedRun(r.id)}>Xem</Button> },
+    {
+      title: 'Bản đối chiếu', key: 'identity',
+      render: (_, row) => (
+        <div className="min-w-0">
+          <Typography.Text className="block! font-semibold!" ellipsis={{ tooltip: row.runNo }}>{row.runNo}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">
+            {dayjs(row.businessDate).format('DD/MM/YYYY')} · {row.currencyCode}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Phạm vi', key: 'scope', responsive: ['md'], ellipsis: true,
+      render: (_, row) => row.branchId
+        ? (row.branchCode ?? branchLabel(row.branchId))
+        : <Tag color="gold">Toàn công ty</Tag>,
+    },
+    {
+      title: 'Kết quả', dataIndex: 'matchRate', width: 118,
+      render: (value, row) => (
+        <Progress
+          percent={Math.round(value * 100)}
+          size="small"
+          status={value >= 1 ? 'success' : 'exception'}
+          format={() => `${row.matchedCount}/${row.totalCount}`}
+        />
+      ),
+    },
+    {
+      title: '', width: 42, align: 'right',
+      render: (_, row) => (
+        <Tooltip title="Xem chi tiết">
+          <Button type="text" size="small" icon={<FileSearchOutlined />} onClick={() => setSelectedRun(row.id)} />
+        </Tooltip>
+      ),
+    },
   ];
 
   const itemCols: ColumnsType<ReconItemDto> = [
-    { title: 'Mã', dataIndex: 'code' },
-    { title: 'Khách hàng', dataIndex: 'customerName', ellipsis: true,
+    { title: provider === 'WU' ? 'MSKH / MTCN' : 'Reference', dataIndex: 'code', width: 150, ellipsis: true },
+    { title: 'Khách hàng', dataIndex: 'customerName', ellipsis: true, responsive: ['lg'],
       render: (v) => v || <Typography.Text type="secondary">—</Typography.Text> },
-    { title: 'Trạng thái', dataIndex: 'status',
+    { title: 'Kết quả', dataIndex: 'status', width: 126,
       render: (s) => <Tag color={ITEM_STATUS[s]?.color}>{ITEM_STATUS[s]?.label ?? s}</Tag> },
-    { title: 'Hệ thống', dataIndex: 'systemAmount', align: 'right', render: money },
-    { title: 'Journal', dataIndex: 'journalAmount', align: 'right', render: money },
-    { title: 'Lệch', dataIndex: 'varianceAmount', align: 'right',
-      render: (v) => <Typography.Text type={v === 0 ? undefined : 'danger'}>{money(v)}</Typography.Text> },
+    { title: 'Hệ thống', dataIndex: 'systemAmount', width: 118, align: 'right', render: money },
+    { title: 'Journal', dataIndex: 'journalAmount', width: 118, align: 'right', render: money },
+    { title: 'Chênh lệch', dataIndex: 'varianceAmount', width: 118, align: 'right',
+      render: (v) => <Typography.Text strong type={v === 0 ? undefined : 'danger'}>{money(v)}</Typography.Text> },
   ];
+  const selectedBranchRuns = submittedBranchRuns.filter((item) => selectedBranchRunIds.includes(item.id));
+  const selectionAnchor = selectedBranchRuns[0];
+  const visibleRuns = runs.filter((item) => item.stage === (isBranchUser ? 'BRANCH' : 'FINAL'));
+  const selectedRunSummary = [...submittedBranchRuns, ...runs].find((item) => item.id === selectedRun);
+  const matchedItems = items.filter((item) => item.status === 'MATCHED').length;
+  const varianceItems = items.length - matchedItems;
+  const latestRun = visibleRuns[0];
 
   return (
     <PageScaffold
-      title="Đối chiếu Journal WU/MG"
+      title={`Đối chiếu Journal ${provider}`}
       description={isBranchUser
-        ? 'Upload Journal WU/MG cuối ngày của chi nhánh → hệ thống so khớp với giao dịch đã ghi. GĐ/KTTH sẽ xem kết quả này.'
-        : 'Nhập/upload các dòng Journal cuối ngày (MSKH/Reference + tên khách + số tiền) → so khớp với giao dịch đã ghi; xem theo toàn công ty hoặc từng chi nhánh.'}
+        ? `Upload Journal ${provider}, tạo bản so sánh giao dịch hệ thống và tự động gửi GĐ/KTTH.`
+        : `Chọn các bản ${provider} do chi nhánh gửi, kiểm tra lại và tạo bản đối chiếu cuối cùng.`}
       moduleName="reconciliation"
+      extra={<Tag color="gold">{isBranchUser ? 'LỚP CHI NHÁNH' : 'LỚP TỔNG HỢP'}</Tag>}
     >
-      <Row gutter={16}>
-        <Col xs={24} lg={10}>
-          <Card title="Chạy đối chiếu" size="small" className="mb-4">
-            <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider: 'WU', businessDate: dayjs(), rows: [{ currencyCode: 'USD' }] }}>
-              <Form.Item name="provider" label="Đối tác">
-                <Segmented options={['WU', 'MG']} />
-              </Form.Item>
-              <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
-                <DatePicker className="w-full" format="DD/MM/YYYY" />
-              </Form.Item>
-              <Form.Item noStyle shouldUpdate={(prev, next) => prev.provider !== next.provider}>
-                {({ getFieldValue }) => {
-                  const isWu = getFieldValue('provider') === 'WU';
-                  if (ownBranchId) {
-                    return (
+      <OperationalOverviewCard
+        className="mt-4"
+        eyebrow={isBranchUser ? 'ĐỐI CHIẾU CHI NHÁNH' : 'ĐỐI CHIẾU TOÀN HỆ THỐNG'}
+        title={`Journal ${provider}`}
+        icon={<FileSearchOutlined />}
+        meta={isBranchUser ? (user?.branchName ?? branchLabel(ownBranchId) ?? 'Chi nhánh hiện tại') : 'GĐ/KTTH kiểm tra và chốt bản cuối'}
+        aside={<Tag color={canRun ? 'gold' : 'default'}>{canRun ? 'ĐƯỢC THAO TÁC' : 'CHỈ XEM'}</Tag>}
+        metrics={isBranchUser ? [
+          { label: 'Dòng đã nhập', value: String(journalRows.filter((row) => row?.code).length), note: 'Journal đang chuẩn bị', icon: <UploadOutlined /> },
+          { label: 'Bản đã gửi', value: String(visibleRuns.length), note: `Lịch sử ${provider}`, icon: <HistoryOutlined /> },
+          { label: 'Lần gần nhất', value: latestRun ? `${latestRun.matchedCount}/${latestRun.totalCount}` : '—', note: latestRun ? dayjs(latestRun.businessDate).format('DD/MM/YYYY') : 'Chưa đối chiếu', icon: <CheckCircleOutlined /> },
+        ] : [
+          { label: 'Chờ tổng hợp', value: String(submittedBranchRuns.length), note: `Bản ${provider} từ chi nhánh`, icon: <ClockCircleOutlined /> },
+          { label: 'Đang chọn', value: String(selectedBranchRunIds.length), note: 'Cùng ngày và loại tiền', icon: <ApartmentOutlined /> },
+          { label: 'Bản cuối', value: String(visibleRuns.length), note: 'Đã tạo trên hệ thống', icon: <CheckCircleOutlined /> },
+        ]}
+      />
+
+      <Row gutter={[16, 16]} className="mt-4">
+        <Col xs={24} xl={isBranchUser ? 24 : 9}>
+          {!isBranchUser ? (
+            <Card
+              title={<span className="section-card-title"><ClockCircleOutlined />Bản chi nhánh chờ tổng hợp</span>}
+              size="small"
+              className="polished-card reconciliation-panel"
+              extra={canRun ? (
+                <Button
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  disabled={selectedBranchRunIds.length === 0}
+                  loading={createFinal.isPending}
+                  onClick={onCreateFinal}
+                >
+                  Chốt bản cuối ({selectedBranchRunIds.length})
+                </Button>
+              ) : null}
+            >
+              <Table<ReconRunDto>
+                rowKey="id"
+                size="small"
+                dataSource={submittedBranchRuns}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`Không có bản ${provider} chờ tổng hợp`} /> }}
+                pagination={{ pageSize: 7, size: 'small', hideOnSinglePage: true }}
+                rowSelection={{
+                  selectedRowKeys: selectedBranchRunIds,
+                  onChange: (keys) => setSelectedBranchRunIds(keys as string[]),
+                  getCheckboxProps: (record) => {
+                    if (!canRun) return { disabled: true };
+                    if (!selectionAnchor || selectedBranchRunIds.includes(record.id)) return { disabled: false };
+                    const sameDate = dayjs(record.businessDate).isSame(dayjs(selectionAnchor.businessDate), 'day');
+                    const sameCurrency = record.currencyCode === selectionAnchor.currencyCode;
+                    const duplicateBranch = selectedBranchRuns.some((item) => item.branchId === record.branchId);
+                    return { disabled: !sameDate || !sameCurrency || duplicateBranch };
+                  },
+                }}
+                rowClassName={(record) => record.id === selectedRun ? 'reconciliation-row--active' : ''}
+                onRow={(record) => ({ onClick: () => setSelectedRun(record.id) })}
+                columns={[
+                  {
+                    title: 'Chi nhánh', key: 'branch', ellipsis: true,
+                    render: (_, row) => (
+                      <div className="min-w-0">
+                        <Typography.Text className="block! font-semibold!" ellipsis={{ tooltip: row.branchName }}>{row.branchName ?? row.branchCode ?? '—'}</Typography.Text>
+                        <Typography.Text type="secondary" className="text-xs!">{dayjs(row.businessDate).format('DD/MM/YYYY')} · {row.currencyCode}</Typography.Text>
+                      </div>
+                    ),
+                  },
+                  {
+                    title: 'Kết quả', width: 92,
+                    render: (_, row) => <Tag color={row.matchedCount === row.totalCount ? 'green' : 'orange'}>{row.matchedCount}/{row.totalCount} khớp</Tag>,
+                  },
+                  { title: '', width: 38, align: 'right', render: (_, row) => <Button type="text" size="small" icon={<FileSearchOutlined />} onClick={() => setSelectedRun(row.id)} /> },
+                ]}
+              />
+              {selectionAnchor && (
+                <div className="reconciliation-selection-summary">
+                  <Typography.Text type="secondary">Phạm vi đang chọn</Typography.Text>
+                  <Space size={4} wrap>
+                    <Tag>{dayjs(selectionAnchor.businessDate).format('DD/MM/YYYY')}</Tag>
+                    <Tag>{selectionAnchor.currencyCode}</Tag>
+                    <Tag color="gold">{selectedBranchRunIds.length} chi nhánh</Tag>
+                  </Space>
+                </div>
+              )}
+            </Card>
+          ) : (
+            <Card
+              title={<span className="section-card-title"><UploadOutlined />Chuẩn bị Journal {provider}</span>}
+              size="small"
+              className="polished-card reconciliation-panel"
+            >
+              <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider, businessDate: dayjs(), rows: [{ currencyCode: 'USD' }] }}>
+                <Form.Item name="provider" hidden><Input /></Form.Item>
+                <Row gutter={12}>
+                  <Col xs={24} md={10}>
+                    <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
+                      <DatePicker className="w-full" format="DD/MM/YYYY" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={14}>
+                    {ownBranchId ? (
                       <Form.Item label="Chi nhánh">
                         <Input value={branchLabel(ownBranchId) ?? user?.branchName ?? ''} disabled />
                         <Form.Item name="branchId" hidden><Input /></Form.Item>
                       </Form.Item>
-                    );
-                  }
-                  return (
-                    <Form.Item
-                      name="branchId"
-                      label={isWu ? 'Chi nhánh WU' : 'Chi nhánh MG (bỏ trống = toàn công ty)'}
-                      rules={isWu ? [{ required: true, message: 'Chọn chi nhánh' }] : undefined}
-                    >
-                      <Select allowClear={!isWu} placeholder={isWu ? 'Chọn chi nhánh' : 'Toàn công ty'} options={branchOptions} />
-                    </Form.Item>
-                  );
-                }}
-              </Form.Item>
-              <div className="flex items-center justify-between mb-1">
-                <Typography.Text type="secondary">Dòng Journal (mã + tên khách + số tiền):</Typography.Text>
-                <Upload
-                  accept=".pdf,.csv,.xlsx,.xls"
-                  maxCount={1}
-                  showUploadList={false}
-                  beforeUpload={(file) => onUploadJournal(file as unknown as File)}
-                >
-                  <Button size="small" icon={<UploadOutlined />} loading={parse.isPending}>
-                    Upload Journal (PDF/Excel/CSV)
-                  </Button>
-                </Upload>
-              </div>
-              <Form.List name="rows">
-                {(fields, { add, remove }) => (
-                  <div className="mt-2">
-                    {fields.map(({ key, name, ...rest }) => (
-                      <Space key={key} align="baseline" className="flex mb-2">
-                        <Form.Item {...rest} name={[name, 'code']} rules={[{ required: true, message: 'mã' }]} noStyle>
-                          <Input placeholder="MSKH / Reference" style={{ width: 150 }} />
-                        </Form.Item>
-                        <Form.Item {...rest} name={[name, 'customerName']} noStyle>
-                          <Input placeholder="Tên khách hàng" style={{ width: 170 }} />
-                        </Form.Item>
-                        <Form.Item {...rest} name={[name, 'amount']} rules={[{ required: true, message: 'USD' }]} noStyle>
-                          <InputNumber placeholder="USD" min={0} style={{ width: 110 }} />
-                        </Form.Item>
-                        <Form.Item {...rest} name={[name, 'currencyCode']} initialValue="USD" noStyle>
-                          <Select style={{ width: 82 }} options={[{ value: 'USD' }, { value: 'VND' }]} />
-                        </Form.Item>
-                        <Form.Item noStyle shouldUpdate={(prev, next) => prev.provider !== next.provider || prev.branchId !== next.branchId}>
-                          {({ getFieldValue }) => getFieldValue('provider') === 'MG' && !ownBranchId && !getFieldValue('branchId') ? (
-                            <Form.Item {...rest} name={[name, 'branchId']} rules={[{ required: true, message: 'Chi nhánh' }]} noStyle>
-                              <Select placeholder="Chi nhánh" style={{ width: 160 }} options={branchOptions.map((o) => ({ value: o.value, label: o.label.split(' - ')[1] ?? o.label }))} />
-                            </Form.Item>
-                          ) : null}
-                        </Form.Item>
-                        <MinusCircleOutlined onClick={() => remove(name)} />
-                      </Space>
-                    ))}
-                    <Button type="dashed" onClick={() => add({ currencyCode: 'USD' })} icon={<PlusOutlined />} block>Thêm dòng</Button>
+                    ) : (
+                      <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true, message: 'Chọn chi nhánh' }]}>
+                        <Select placeholder="Chọn chi nhánh" options={branchOptions} />
+                      </Form.Item>
+                    )}
+                  </Col>
+                </Row>
+
+                <div className="reconciliation-upload-bar">
+                  <div className="min-w-0">
+                    <Typography.Text className="block! font-semibold!">Dữ liệu Journal</Typography.Text>
+                    <Typography.Text type="secondary" className="text-xs!">PDF, Excel hoặc CSV · {journalRows.length} dòng</Typography.Text>
                   </div>
-                )}
-              </Form.List>
-              <Space direction="vertical" className="w-full mt-3" size={8}>
-                {loadedPendingId && <Tag color="gold">Đang duyệt Journal chi nhánh gửi — chạy đối chiếu sẽ đánh dấu đã duyệt</Tag>}
-                <Button type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={run.isPending} block disabled={!canRun}>
-                  {isBranchUser ? 'Tự chạy đối chiếu tại chi nhánh' : loadedPendingId ? 'Chạy đối chiếu & duyệt' : 'Chạy đối chiếu'}
+                  <Upload
+                    accept=".pdf,.csv,.xlsx,.xls"
+                    maxCount={1}
+                    showUploadList={false}
+                    beforeUpload={(file) => onUploadJournal(file as unknown as File)}
+                  >
+                    <Button icon={<UploadOutlined />} loading={parse.isPending}>Chọn file</Button>
+                  </Upload>
+                </div>
+
+                <Form.List name="rows">
+                  {(fields, { add, remove }) => (
+                    <div className="reconciliation-entry-list">
+                      {fields.map(({ key, name, ...rest }) => (
+                        <div key={key} className="reconciliation-entry-card">
+                          <div className="reconciliation-entry-card__header">
+                            <Typography.Text strong>Giao dịch {name + 1}</Typography.Text>
+                            <Tooltip title="Xóa giao dịch">
+                              <Button type="text" danger icon={<MinusCircleOutlined />} onClick={() => remove(name)} />
+                            </Tooltip>
+                          </div>
+                          <div className="reconciliation-entry-fields">
+                            <Form.Item
+                              {...rest}
+                              name={[name, 'code']}
+                              label={provider === 'WU' ? 'MSKH / MTCN' : 'Reference'}
+                              rules={[{ required: true, message: 'Nhập mã' }]}
+                            >
+                              <Input placeholder={provider === 'WU' ? '633-775-1692' : 'Reference MG'} />
+                            </Form.Item>
+                            <Form.Item {...rest} name={[name, 'customerName']} label="Khách hàng">
+                              <Input placeholder="Tên khách hàng" />
+                            </Form.Item>
+                            <Form.Item {...rest} name={[name, 'amount']} label="Số tiền" rules={[{ required: true, message: 'Nhập số tiền' }]}>
+                              <InputNumber placeholder="0" min={0} precision={2} formatter={numberInputFormatter} parser={numberInputParser} className="w-full" />
+                            </Form.Item>
+                            <Form.Item {...rest} name={[name, 'currencyCode']} label="Loại tiền" initialValue="USD">
+                              <Select options={[{ value: 'USD' }, { value: 'VND' }]} />
+                            </Form.Item>
+                          </div>
+                        </div>
+                      ))}
+                      <Button type="dashed" onClick={() => add({ currencyCode: 'USD' })} icon={<PlusOutlined />} block>Thêm dòng Journal</Button>
+                    </div>
+                  )}
+                </Form.List>
+                <Button className="mt-3" type="primary" htmlType="submit" icon={<PlayCircleOutlined />} loading={run.isPending} block disabled={!canRun}>
+                  Đối chiếu và gửi GĐ/KTTH
                 </Button>
-                {canRun && (
-                  <Button icon={<SendOutlined />} loading={submitPending.isPending} block onClick={onSubmitPending}
-                    style={isBranchUser ? { background: '#111', color: '#f5b301', borderColor: '#111' } : undefined}>
-                    Gửi KTTH duyệt
-                  </Button>
-                )}
+              </Form>
+            </Card>
+          )}
+        </Col>
+
+        <Col xs={24} xl={isBranchUser ? 24 : 15}>
+          <Card
+            title={<span className="section-card-title"><FileSearchOutlined />Chi tiết đối chiếu</span>}
+            size="small"
+            className="polished-card reconciliation-panel"
+            extra={selectedRunSummary ? (
+              <Space size={4} wrap>
+                <Tag>{selectedRunSummary.currencyCode}</Tag>
+                <Tag color={varianceItems === 0 ? 'green' : 'orange'}>{matchedItems}/{items.length} khớp</Tag>
               </Space>
-            </Form>
-          </Card>
-          <Card
-            title={`Journal chờ duyệt (${pendingJournals.length})`}
-            size="small"
-            className="mb-4"
-          >
-            <Table<PendingJournalDto>
-              rowKey="id" size="small" dataSource={pendingJournals} pagination={{ pageSize: 5, hideOnSinglePage: true }} scroll={{ x: 520 }}
-              locale={{ emptyText: isBranchUser ? 'Chưa gửi Journal nào' : 'Không có Journal chờ duyệt' }}
-              columns={[
-                { title: 'Ngày', dataIndex: 'businessDate', width: 90, render: (v: string) => dayjs(v).format('DD/MM') },
-                { title: 'Đối tác', dataIndex: 'provider', width: 70, render: (v: string) => <Tag>{v}</Tag> },
-                { title: 'Chi nhánh', dataIndex: 'branchName', ellipsis: true },
-                { title: 'Dòng', dataIndex: 'parsedRowCount', width: 60, align: 'right' },
-                { title: 'Gửi lúc', dataIndex: 'uploadedAt', width: 110, render: (v: string) => dayjs(v).format('DD/MM HH:mm') },
-                {
-                  title: '', width: isBranchUser ? 70 : 150,
-                  render: (_: unknown, p: PendingJournalDto) => (
-                    <Space size={4}>
-                      <Button size="small" onClick={() => setViewingPending(p.id)}>Xem</Button>
-                      {!isBranchUser && canRun && (
-                        <Popconfirm title="Từ chối Journal này?" okText="Từ chối" cancelText="Hủy" onConfirm={() => onRejectPending(p)}>
-                          <Button size="small" danger icon={<CloseCircleOutlined />} />
-                        </Popconfirm>
-                      )}
-                    </Space>
-                  ),
-                },
-              ]}
-            />
-          </Card>
-          <Card
-            title="Lịch sử đối chiếu"
-            size="small"
-            extra={!isBranchUser ? (
-              <Select
-                allowClear
-                size="small"
-                placeholder="Tất cả chi nhánh"
-                style={{ width: 200 }}
-                value={historyBranchId}
-                onChange={(value) => setHistoryBranchId(value || undefined)}
-                options={branchOptions}
-              />
             ) : null}
           >
-            <Table<ReconRunDto> rowKey="id" size="small" columns={runCols} dataSource={runs} pagination={{ pageSize: 5 }} scroll={{ x: 560 }} />
+            {selectedRun ? (
+              <Table<ReconItemDto>
+                rowKey={(row) => `${row.code}-${row.status}-${row.transactionId ?? ''}`}
+                size="middle"
+                columns={itemCols}
+                dataSource={items}
+                pagination={{ pageSize: 10, size: 'small', hideOnSinglePage: true }}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Bản đối chiếu chưa có dữ liệu" /> }}
+              />
+            ) : (
+              <div className="reconciliation-empty-detail">
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chọn một bản đối chiếu để xem giao dịch hệ thống và Journal" />
+              </div>
+            )}
           </Card>
         </Col>
-        <Col xs={24} lg={14}>
-          <Card title={selectedRun ? 'Chi tiết đối chiếu' : 'Chọn 1 lần đối chiếu để xem chi tiết'} size="small">
-            <Table<ReconItemDto> rowKey={(r) => r.code + r.status} columns={itemCols} dataSource={items}
-              pagination={{ pageSize: 12 }} scroll={{ x: 640 }} />
+
+        <Col span={24}>
+          <Card
+            title={<span className="section-card-title"><HistoryOutlined />{isBranchUser ? `Lịch sử ${provider} chi nhánh` : `Lịch sử ${provider} bản cuối`}</span>}
+            size="small"
+            className="polished-card reconciliation-panel"
+          >
+            <Table<ReconRunDto>
+              rowKey="id"
+              size="small"
+              columns={runCols}
+              dataSource={visibleRuns}
+              rowClassName={(record) => record.id === selectedRun ? 'reconciliation-row--active' : ''}
+              pagination={{ pageSize: 6, size: 'small', hideOnSinglePage: true }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`Chưa có lịch sử đối chiếu ${provider}`} /> }}
+            />
           </Card>
         </Col>
       </Row>
-      <Modal
-        title={pendingDetail ? `Journal ${pendingDetail.summary.provider} · ${pendingDetail.summary.branchName ?? ''} · ${dayjs(pendingDetail.summary.businessDate).format('DD/MM/YYYY')}` : 'Journal chờ duyệt'}
-        open={!!viewingPending}
-        onCancel={() => setViewingPending(null)}
-        width={720}
-        footer={[
-          <Button key="close" onClick={() => setViewingPending(null)}>Đóng</Button>,
-          ...(!isBranchUser && canRun ? [
-            <Button key="load" type="primary" icon={<PlayCircleOutlined />} onClick={loadPendingIntoForm} disabled={!pendingDetail}>
-              Nạp vào form để đối chiếu
-            </Button>,
-          ] : []),
-        ]}
-      >
-        <Table
-          rowKey={(r) => r.code + r.currencyCode}
-          size="small"
-          dataSource={pendingDetail?.rows ?? []}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
-          columns={[
-            { title: 'Mã', dataIndex: 'code' },
-            { title: 'Khách hàng', dataIndex: 'customerName', ellipsis: true, render: (v: string | null) => v || '—' },
-            { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: money },
-            { title: 'Tiền', dataIndex: 'currencyCode', width: 70 },
-          ]}
-        />
-      </Modal>
     </PageScaffold>
   );
 }

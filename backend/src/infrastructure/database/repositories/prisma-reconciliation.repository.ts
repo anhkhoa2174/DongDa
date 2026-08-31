@@ -52,6 +52,9 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     const { result } = input;
     const now = new Date();
     const status = result.matchRate >= 1 ? 'MATCHED' : 'PENDING_REVIEW';
+    const stage = input.stage ?? 'FINAL';
+    const postFinancial = input.postFinancial ?? true;
+    const submitForFinal = input.submitForFinal ?? false;
     const rnd = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
     // Các dòng có mặt trong Journal (khớp / lệch / thiếu-hệ-thống)
@@ -59,17 +62,37 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
 
     const run = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.provider}:${input.scope}:${input.branchId ?? 'ALL'}:${input.businessDate.toISOString().slice(0, 10)}:${input.currencyCode}`}))`;
-      const posted = await tx.reconciliation_runs.findFirst({
+      const posted = postFinancial ? await tx.reconciliation_runs.findFirst({
         where: {
           provider: input.provider as any,
-          scope: input.scope,
-          branch_id: input.branchId ?? null,
+          ...(stage === 'FINAL' ? {} : { scope: input.scope, branch_id: input.branchId ?? null }),
           business_date: input.businessDate,
           currency_code: input.currencyCode,
           posted_at: { not: null },
         },
-      });
+      }) : null;
       if (posted) throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
+      if (submitForFinal) {
+        const finalized = await tx.reconciliation_runs.findFirst({
+          where: {
+            provider: input.provider as any, business_date: input.businessDate,
+            currency_code: input.currencyCode, posted_at: { not: null },
+          },
+        });
+        if (finalized) {
+          throw new BadRequestException(`Journal ${input.provider} ngày này đã có bản ghi công nợ thực tế`);
+        }
+        const waiting = await tx.reconciliation_runs.findFirst({
+          where: {
+            provider: input.provider as any, stage: 'BRANCH', branch_id: input.branchId ?? null,
+            business_date: input.businessDate, currency_code: input.currencyCode,
+            submitted_at: { not: null }, final_targets: { none: {} },
+          },
+        });
+        if (waiting) {
+          throw new BadRequestException('Chi nhánh đã có một bản cùng ngày và loại tiền đang chờ tổng hợp');
+        }
+      }
 
       // Chuỗi file → batch → rows (thỏa check constraint nguồn của item)
       const file = await tx.journal_upload_files.create({
@@ -107,11 +130,15 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         data: {
           run_no: `RC-${rnd}`, provider: input.provider as any, scope: input.scope, branch_id: input.branchId ?? null,
           business_date: input.businessDate, status,
+          stage,
           currency_code: input.currencyCode,
           system_total_amount: result.systemTotal, journal_total_amount: result.journalTotal,
-          variance_amount: result.varianceTotal, created_by_user_id: input.createdByUserId, posted_at: now,
+          variance_amount: result.varianceTotal, created_by_user_id: input.createdByUserId,
+          posted_at: postFinancial ? now : null,
+          submitted_at: submitForFinal ? now : null,
           reconciliation_items: {
             create: result.items.map((it) => ({
+              code: it.code,
               journal_row_id: it.status !== 'MISSING_IN_JOURNAL' ? (codeToRow.get(it.code) ?? null) : null,
               transaction_id: it.transactionId ?? null,
               branch_id: it.branchId ?? null,
@@ -124,9 +151,22 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         },
       });
 
-      await this.postActualDebt(tx, createdRun.id, input, result.items, now);
+      if (input.sourceRunIds?.length) {
+        await tx.reconciliation_final_sources.createMany({
+          data: input.sourceRunIds.map((branchRunId) => ({ final_run_id: createdRun.id, branch_run_id: branchRunId })),
+        });
+        await tx.reconciliation_runs.updateMany({
+          where: { id: { in: input.sourceRunIds } },
+          data: {
+            reviewed_by_user_id: input.createdByUserId,
+            ...(postFinancial ? { approved_by_user_id: input.createdByUserId } : {}),
+            updated_at: now,
+          },
+        });
+      }
+      if (postFinancial) await this.postActualDebt(tx, createdRun.id, input, result.items, now);
       const discrepancies = result.items.filter((item) => item.status !== ReconItemStatus.MATCHED);
-      if (discrepancies.length > 0) {
+      if (discrepancies.length > 0 && stage === 'FINAL') {
         const statusCounts = discrepancies.reduce<Record<string, number>>((counts, item) => {
           counts[item.status] = (counts[item.status] ?? 0) + 1;
           return counts;
@@ -154,16 +194,28 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
           branchIds: affectedBranchIds,
         }, tx);
       }
+      if (submitForFinal) {
+        await this.notifications.notifyUsers({
+          title: `Bản đối chiếu ${input.provider} chờ tổng hợp`,
+          body: `${createdRun.run_no}, ngày ${input.businessDate.toISOString().slice(0, 10)}, ${input.currencyCode} đã được chi nhánh đối chiếu và gửi tự động.`,
+          sourceType: `${input.provider}_BRANCH_RECON_SUBMITTED`,
+          sourceId: createdRun.id,
+        }, { roles: ['ADMIN', 'MANAGER'] }, tx);
+      }
       return createdRun;
     });
 
     return this.toSummary(run, result.matchedCount, result.totalCount, result.matchRate);
   }
 
-  async listRuns(branchId?: string): Promise<ReconRunSummary[]> {
+  async listRuns(branchId?: string, provider?: 'WU' | 'MG'): Promise<ReconRunSummary[]> {
     const runs = await this.prisma.reconciliation_runs.findMany({
-      where: branchId ? { branch_id: branchId } : undefined,
-      include: { branches: { select: { code: true } } },
+      where: {
+        ...(branchId ? { branch_id: branchId } : {}),
+        ...(provider ? { provider } : {}),
+        run_no: { not: { startsWith: 'PEND-' } },
+      },
+      include: { branches: { select: { code: true, name: true } } },
       orderBy: { created_at: 'desc' },
       take: 50,
     });
@@ -184,7 +236,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
   async findRun(runId: string): Promise<ReconRunSummary | null> {
     const run = await this.prisma.reconciliation_runs.findUnique({
       where: { id: runId },
-      include: { branches: { select: { code: true } } },
+      include: { branches: { select: { code: true, name: true } } },
     });
     if (!run) return null;
     const grouped = await this.prisma.reconciliation_items.groupBy({
@@ -204,13 +256,13 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         journal_rows: { select: { currency_code: true, customer_name: true } },
         customer_transactions: { select: { customer_name: true } },
       },
-      orderBy: { status: 'asc' },
+      orderBy: { created_at: 'asc' },
     });
     return rows.map((r: any) => {
-      const [code, ...rest] = (r.note ?? '').split(' · ');
+      const [legacyCode, ...rest] = (r.note ?? '').split(' · ');
       return {
         status: r.status as ReconItemStatus,
-        code: code ?? '',
+        code: r.code ?? legacyCode ?? '',
         transactionId: r.transaction_id ?? null,
         branchId: r.branch_id ?? null,
         systemAmount: Number(r.system_amount),
@@ -221,6 +273,89 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         note: rest.join(' · ') || undefined,
       };
     });
+  }
+
+  async submitBranchRun(provider: 'WU' | 'MG', runId: string, submittedByUserId: string): Promise<ReconRunSummary> {
+    const run = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM reconciliation_runs WHERE id = ${runId}::uuid FOR UPDATE`;
+      const current = await tx.reconciliation_runs.findUnique({ where: { id: runId } });
+      if (!current || current.provider !== provider || current.stage !== 'BRANCH') {
+        throw new BadRequestException(`Bản đối chiếu ${provider} chi nhánh không hợp lệ`);
+      }
+      if (current.submitted_at) throw new BadRequestException('Bản đối chiếu này đã được gửi');
+      const duplicate = await tx.reconciliation_runs.findFirst({
+        where: {
+          id: { not: runId }, provider, stage: 'BRANCH', branch_id: current.branch_id,
+          business_date: current.business_date, currency_code: current.currency_code,
+          submitted_at: { not: null }, final_targets: { none: {} },
+        },
+      });
+      if (duplicate) {
+        throw new BadRequestException('Chi nhánh đã có một bản cùng ngày và loại tiền đang chờ tổng hợp');
+      }
+      return tx.reconciliation_runs.update({
+        where: { id: runId },
+        data: { submitted_at: new Date(), reviewed_by_user_id: submittedByUserId, updated_at: new Date() },
+        include: { branches: { select: { code: true, name: true } } },
+      });
+    });
+    const items = await this.countRunItems(run.id);
+    return this.toSummary(run, items.matched, items.total, items.rate);
+  }
+
+  async listSubmittedBranchRuns(provider: 'WU' | 'MG', branchId?: string): Promise<ReconRunSummary[]> {
+    const runs = await this.prisma.reconciliation_runs.findMany({
+      where: {
+        provider, stage: 'BRANCH', submitted_at: { not: null },
+        ...(branchId ? { branch_id: branchId } : {}),
+        final_targets: { none: {} },
+      },
+      include: { branches: { select: { code: true, name: true } } },
+      orderBy: [{ business_date: 'desc' }, { created_at: 'desc' }],
+    });
+    return Promise.all(runs.map(async (run) => {
+      const items = await this.countRunItems(run.id);
+      return this.toSummary(run, items.matched, items.total, items.rate);
+    }));
+  }
+
+  async getBranchRunsForFinal(provider: 'WU' | 'MG', runIds: string[]): Promise<import('../../../domain/repositories/reconciliation.repository').BranchRunForFinal[]> {
+    const runs = await this.prisma.reconciliation_runs.findMany({
+      where: {
+        id: { in: runIds }, provider, stage: 'BRANCH', submitted_at: { not: null },
+        final_targets: { none: {} },
+      },
+      include: {
+        branches: { select: { code: true, name: true } },
+        reconciliation_items: {
+          where: { status: { not: 'MISSING_IN_JOURNAL' } },
+          include: { journal_rows: { select: { customer_name: true } } },
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
+    return Promise.all(runs.map(async (run) => {
+      const counts = await this.countRunItems(run.id);
+      return {
+        summary: this.toSummary(run, counts.matched, counts.total, counts.rate),
+        rows: run.reconciliation_items.map((item) => ({
+          code: item.code ?? (item.note ?? '').split(' · ')[0],
+          amount: Number(item.journal_amount),
+          currencyCode: item.currency_code as 'USD' | 'VND',
+          branchId: item.branch_id!,
+          customerName: item.journal_rows?.customer_name ?? null,
+        })),
+      };
+    }));
+  }
+
+  private async countRunItems(runId: string) {
+    const grouped = await this.prisma.reconciliation_items.groupBy({
+      by: ['status'], where: { reconciliation_run_id: runId }, _count: { _all: true },
+    });
+    const total = grouped.reduce((sum, group) => sum + group._count._all, 0);
+    const matched = grouped.find((group) => group.status === 'MATCHED')?._count._all ?? 0;
+    return { matched, total, rate: total > 0 ? matched / total : 1 };
   }
 
   // F9.1 — Đối chiếu quỹ: tồn hệ thống (ledger) vs tồn thực tế (kiểm quỹ gần nhất).
@@ -304,6 +439,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       currencyCode: run.currency_code,
       businessDate: run.business_date,
       status: run.status,
+      stage: run.stage ?? (run.posted_at ? 'FINAL' : 'BRANCH'),
       systemTotal: Number(run.system_total_amount),
       journalTotal: Number(run.journal_total_amount),
       varianceTotal: Number(run.variance_amount),
@@ -311,66 +447,55 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       matchedCount,
       totalCount,
       createdAt: run.created_at,
+      submittedAt: run.submitted_at ?? null,
+      branchName: run.branches?.name ?? null,
     };
   }
 
   private async postActualDebt(tx: any, runId: string, input: SaveRunInput, items: ReconItem[], now: Date) {
-    const accounts = await tx.debt_accounts.findMany({
-      where: {
-        provider_code: input.provider,
-        business_date: input.businessDate,
-        currency_code: input.currencyCode,
-        ...(input.branchId ? { branch_id: input.branchId } : {}),
-      },
-      include: { debt_movements: { where: { status: 'POSTED' } } },
+    const transactionIds = [...new Set(items
+      .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
+      .map((item) => item.transactionId as string))];
+    if (transactionIds.length === 0) {
+      throw new BadRequestException('Bản đối chiếu không có giao dịch khớp để xác nhận công nợ');
+    }
+
+    const accountRefs = await tx.debt_accounts.findMany({
+      where: { transaction_id: { in: transactionIds } },
+      select: { id: true },
     });
-    if (accounts.some((account: any) => account.debt_movements.some((m: any) => m.movement_type === 'SETTLEMENT'))) {
-      throw new BadRequestException('Không thể chốt Journal sau khi công nợ ngày này đã được thanh toán');
+    if (accountRefs.length !== transactionIds.length) {
+      throw new BadRequestException('Có giao dịch chưa phát sinh đúng một công nợ; chưa thể chốt đối chiếu');
     }
 
-    for (const account of accounts) {
-      const expectedMovements = account.debt_movements
-        .filter((movement: any) => movement.movement_type === 'EXPECTED_DEBT');
-      for (const expected of expectedMovements) {
-        await tx.debt_movements.create({ data: {
-          debt_account_id: account.id, branch_id: account.branch_id, movement_type: 'REVERSAL',
-          source_type: 'DEBT_MOVEMENT', source_id: expected.id,
-          business_date: input.businessDate, amount: expected.amount, currency_code: account.currency_code,
-          status: 'POSTED', posted_at: now,
-          description: `Đảo công nợ dự kiến khi chốt Journal ${runId}`,
-          created_by_user_id: input.createdByUserId,
-        }});
-      }
+    // Transaction administration also locks transaction -> debt in this order.
+    // Keeping the same order prevents reconciliation and void/replace from crossing.
+    for (const transactionId of [...transactionIds].sort()) {
+      await tx.$executeRaw`SELECT id FROM customer_transactions WHERE id = ${transactionId}::uuid FOR UPDATE`;
+    }
+    for (const accountId of accountRefs.map((account: any) => account.id).sort()) {
+      await tx.$executeRaw`SELECT id FROM debt_accounts WHERE id = ${accountId}::uuid FOR UPDATE`;
+    }
+    const accounts = await tx.debt_accounts.findMany({
+      where: { id: { in: accountRefs.map((account: any) => account.id) } },
+      select: { id: true, transaction_id: true, lifecycle_status: true },
+    });
+    const invalid = accounts.find((account: any) => account.lifecycle_status !== 'PENDING');
+    if (invalid) {
+      throw new BadRequestException(`Công nợ giao dịch ${invalid.transaction_id} không còn ở trạng thái PENDING`);
     }
 
-    const actual = new Map<string, { branchId: string; currencyCode: 'USD' | 'VND'; amount: number }>();
-    for (const item of items) {
-      if (!item.branchId || item.journalAmount <= 0) continue;
-      const key = `${item.branchId}:${item.currencyCode}`;
-      const current = actual.get(key) ?? { branchId: item.branchId, currencyCode: item.currencyCode, amount: 0 };
-      current.amount += item.journalAmount;
-      actual.set(key, current);
-    }
-    for (const value of actual.values()) {
-      const account = await tx.debt_accounts.upsert({
-        where: { branch_id_provider_code_currency_code_business_date: {
-          branch_id: value.branchId, provider_code: input.provider,
-          currency_code: value.currencyCode, business_date: input.businessDate,
-        }},
-        update: {},
-        create: {
-          branch_id: value.branchId, provider_code: input.provider, currency_code: value.currencyCode,
-          business_date: input.businessDate,
-          name: `Công nợ ${input.provider} ${value.currencyCode} ngày ${input.businessDate.toISOString().slice(0, 10)}`,
-        },
-      });
-      await tx.debt_movements.create({ data: {
-        debt_account_id: account.id, branch_id: value.branchId, movement_type: 'ACTUAL_DEBT',
-        source_type: 'JOURNAL_RECONCILIATION', source_id: runId,
-        business_date: input.businessDate, amount: value.amount, currency_code: value.currencyCode,
-        status: 'POSTED', posted_at: now, description: 'Công nợ thực tế theo Journal cuối ngày',
-        created_by_user_id: input.createdByUserId,
-      }});
+    const reconciled = await tx.debt_accounts.updateMany({
+      where: { id: { in: accounts.map((account: any) => account.id) }, lifecycle_status: 'PENDING' },
+      data: {
+        lifecycle_status: 'RECONCILED',
+        reconciliation_run_id: runId,
+        reconciled_at: now,
+        updated_at: now,
+      },
+    });
+    if (reconciled.count !== accounts.length) {
+      throw new BadRequestException('Trạng thái công nợ vừa thay đổi; vui lòng chạy đối chiếu lại');
     }
   }
 
@@ -456,8 +581,14 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     return res.count > 0;
   }
 
-  private pendingWhere(branchId?: string) {
-    return { status: 'PENDING_REVIEW' as const, posted_at: null, run_no: { startsWith: 'PEND-' }, ...(branchId && { branch_id: branchId }) };
+  private pendingWhere(branchId?: string, provider?: 'WU' | 'MG') {
+    return {
+      status: 'PENDING_REVIEW' as const,
+      posted_at: null,
+      run_no: { startsWith: 'PEND-' },
+      ...(branchId && { branch_id: branchId }),
+      ...(provider && { provider }),
+    };
   }
 
   private toPendingSummary(run: any, rowCount: number) {
@@ -475,9 +606,9 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     };
   }
 
-  async listPendingJournals(branchId?: string): Promise<import('../../../domain/repositories/reconciliation.repository').PendingJournalSummary[]> {
+  async listPendingJournals(branchId?: string, provider?: 'WU' | 'MG'): Promise<import('../../../domain/repositories/reconciliation.repository').PendingJournalSummary[]> {
     const runs = await this.prisma.reconciliation_runs.findMany({
-      where: this.pendingWhere(branchId),
+      where: this.pendingWhere(branchId, provider),
       include: { branches: { select: { name: true } }, _count: { select: { reconciliation_items: true } } },
       orderBy: { created_at: 'desc' },
       take: 100,
@@ -509,4 +640,3 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     };
   }
 }
-

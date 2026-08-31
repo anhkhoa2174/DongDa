@@ -63,11 +63,3 @@ export function useSettleDebtBatch() {
     },
   });
 }
-
-export function useRecordDebt() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: debtApi.record,
-    onSuccess: invalidate,
-  });
-}

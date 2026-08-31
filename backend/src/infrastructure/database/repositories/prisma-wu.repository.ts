@@ -34,6 +34,19 @@ export class PrismaWuRepository implements IWuRepository {
           where: { mtcn: input.mtcn, customer_transactions: { status: 'COMPLETED' } },
         });
         if (duplicate > 0) throw new ConflictException(`MSKH (MTCN) ${input.mtcn} đã được xử lý`);
+        const settlementBank = await tx.bank_accounts.findFirst({
+          where: {
+            id: input.bankAccountId,
+            currency_code: input.paidCurrency,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (!settlementBank) {
+          throw new BadRequestException(
+            `Tài khoản ngân hàng thanh toán phải đang hoạt động và dùng ${input.paidCurrency}`,
+          );
+        }
 
         // 2. customer_transaction (WU, COMPLETED)
         const txn = await tx.customer_transactions.create({
@@ -57,6 +70,7 @@ export class PrismaWuRepository implements IWuRepository {
         await tx.wu_transaction_details.create({
           data: {
             transaction_id: txn.id,
+            bank_account_id: settlementBank.id,
             mtcn: input.mtcn,
             sending_country: input.sendingCountry,
             sender_state: input.senderState ?? null,
@@ -125,7 +139,9 @@ export class PrismaWuRepository implements IWuRepository {
 
         // 5. Công nợ WU tăng (Paid Currency)
         const debtAmount = input.paidCurrency === 'USD' ? input.wuUsdAmount : input.wuVndAmount;
-        const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, businessDate);
+        const debtAcc = await this.createDebtAccount(
+          tx, txn.id, txn.transaction_no, input.branchId, 'WU', input.paidCurrency, businessDate,
+        );
         await tx.debt_movements.create({
           data: {
             debt_account_id: debtAcc,
@@ -162,7 +178,7 @@ export class PrismaWuRepository implements IWuRepository {
   async findById(id: string): Promise<WuTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { wu_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
     });
     return row?.wu_transaction_details ? toDomain(row) : null;
   }
@@ -170,7 +186,7 @@ export class PrismaWuRepository implements IWuRepository {
   async list(filter?: ListWuFilter): Promise<WuTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'WU', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { wu_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.wu_transaction_details).map(toDomain);
@@ -216,22 +232,19 @@ export class PrismaWuRepository implements IWuRepository {
     return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
-  private async ensureDebtAccount(
-    tx: any, branchId: string, provider: string, currency: Currency2, businessDate: Date,
+  private async createDebtAccount(
+    tx: any, transactionId: string, transactionNo: string, branchId: string,
+    provider: string, currency: Currency2, businessDate: Date,
   ): Promise<string> {
-    const account = await tx.debt_accounts.upsert({
-      where: {
-        branch_id_provider_code_currency_code_business_date: {
-          branch_id: branchId, provider_code: provider, currency_code: currency, business_date: businessDate,
-        },
-      },
-      update: {},
-      create: {
+    const account = await tx.debt_accounts.create({
+      data: {
+        transaction_id: transactionId,
         branch_id: branchId,
         provider_code: provider,
         currency_code: currency,
         business_date: businessDate,
-        name: `Công nợ ${provider} ${currency} ngày ${businessDate.toISOString().slice(0, 10)}`,
+        name: `Công nợ ${provider} - ${transactionNo}`,
+        lifecycle_status: 'PENDING',
       },
     });
     return account.id;
@@ -247,9 +260,11 @@ function toDomain(row: any): WuTransaction {
     id: row.id,
     transactionNo: row.transaction_no,
     branchId: row.branch_id,
+    bankAccountId: d.bank_account_id,
     shiftId: row.shift_id,
     businessDate: row.business_date,
     status: row.status,
+    debtStatus: row.debt_account?.lifecycle_status,
     customerName: row.customer_name ?? null,
     customerPhone: row.customer_phone ?? null,
     sendingCountry: d.sending_country,

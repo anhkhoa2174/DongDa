@@ -1,7 +1,7 @@
 // DTOs: Đối chiếu Journal
 // Layer: Application
 
-import { IsEnum, IsArray, ValidateNested, IsString, IsNumber, IsOptional, IsUUID, IsDateString, Min, ArrayMinSize } from 'class-validator';
+import { IsEnum, IsArray, ValidateNested, IsString, IsNumber, IsOptional, IsUUID, IsDateString, Min, ArrayMinSize, ArrayUnique } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class JournalRowDto {
@@ -71,4 +71,12 @@ export class RejectPendingJournalDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+export class CreateFinalReconciliationDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  branchRunIds: string[];
 }

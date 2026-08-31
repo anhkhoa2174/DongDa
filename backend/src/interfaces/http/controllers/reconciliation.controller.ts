@@ -20,9 +20,10 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import {
   RunReconciliationUseCase, ListReconciliationUseCase, ReconActor, UploadJournalUseCase, ListPendingJournalsUseCase,
+  SubmitBranchRunUseCase, ListSubmittedBranchRunsUseCase, CreateProviderFinalRunUseCase,
 } from '../../../application/use-cases/reconciliation/reconciliation.use-cases';
 import { ParseJournalUseCase } from '../../../application/use-cases/reconciliation/parse-journal.use-case';
-import { RunReconciliationDto, SubmitPendingJournalDto, RejectPendingJournalDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
+import { RunReconciliationDto, SubmitPendingJournalDto, RejectPendingJournalDto, CreateFinalReconciliationDto } from '../../../application/dtos/reconciliation/reconciliation.dto';
 
 @Controller('reconciliation')
 @UseGuards(JwtAuthGuard)
@@ -33,13 +34,20 @@ export class ReconciliationController {
     private readonly parseJournal: ParseJournalUseCase,
     private readonly uploadJournal: UploadJournalUseCase,
     private readonly listPending: ListPendingJournalsUseCase,
+    private readonly submitBranchRun: SubmitBranchRunUseCase,
+    private readonly listSubmittedRuns: ListSubmittedBranchRunsUseCase,
+    private readonly createFinalRun: CreateProviderFinalRunUseCase,
   ) {}
 
   @Get('runs')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR, UserRole.STAFF)
-  runs(@Request() req: any, @Query('branchId') branchId?: string) {
-    return this.listRecon.runs(actorOf(req), branchId || undefined);
+  runs(
+    @Request() req: any,
+    @Query('branchId') branchId?: string,
+    @Query('provider') provider?: string,
+  ) {
+    return this.listRecon.runs(actorOf(req), branchId || undefined, parseProvider(provider));
   }
 
   @Get('runs/:id/items')
@@ -57,12 +65,54 @@ export class ReconciliationController {
     return this.listRecon.fundReconciliation(branchId);
   }
 
-  // Chạy đối chiếu — chi nhánh (cho chính mình) hoặc KTTH/GĐ (toàn công ty / từng chi nhánh)
+  // Staff chạy tại chi nhánh; WU/MG được gửi tự động vào hàng chờ tạo bản cuối.
   @Post('run')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   run(@Request() req: any, @Body() dto: RunReconciliationDto) {
     return this.runRecon.execute(dto, actorOf(req));
+  }
+
+  @Post('wu/branch-runs/:id/submit')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF)
+  submitWuBranch(@Request() req: any, @Param('id') id: string) {
+    return this.submitBranchRun.execute('WU', id, actorOf(req));
+  }
+
+  @Get('wu/submitted-branch-runs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
+  submittedWuBranches(@Query('branchId') branchId?: string) {
+    return this.listSubmittedRuns.execute('WU', branchId || undefined);
+  }
+
+  @Post('wu/final-runs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  createWuFinal(@Request() req: any, @Body() dto: CreateFinalReconciliationDto) {
+    return this.createFinalRun.execute('WU', dto.branchRunIds, actorOf(req));
+  }
+
+  @Post('mg/branch-runs/:id/submit')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.STAFF)
+  submitMgBranch(@Request() req: any, @Param('id') id: string) {
+    return this.submitBranchRun.execute('MG', id, actorOf(req));
+  }
+
+  @Get('mg/submitted-branch-runs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
+  submittedMgBranches(@Query('branchId') branchId?: string) {
+    return this.listSubmittedRuns.execute('MG', branchId || undefined);
+  }
+
+  @Post('mg/final-runs')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  createMgFinal(@Request() req: any, @Body() dto: CreateFinalReconciliationDto) {
+    return this.createFinalRun.execute('MG', dto.branchRunIds, actorOf(req));
   }
 
   // Upload file WU/MG Journal (PDF scan/CSV/XLSX) -> parse ra danh sách dòng đối chiếu.
@@ -128,8 +178,12 @@ export class ReconciliationController {
   @Get('pending-journals')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR, UserRole.STAFF)
-  pendingJournals(@Request() req: any, @Query('branchId') branchId?: string) {
-    return this.listPending.list(actorOf(req), branchId || undefined);
+  pendingJournals(
+    @Request() req: any,
+    @Query('branchId') branchId?: string,
+    @Query('provider') provider?: string,
+  ) {
+    return this.listPending.list(actorOf(req), branchId || undefined, parseProvider(provider));
   }
 
   @Get('pending-journals/:id')
@@ -142,4 +196,12 @@ export class ReconciliationController {
 
 function actorOf(req: any): ReconActor {
   return { id: req.user.id, role: req.user.role, branchId: req.user.branchId ?? null };
+}
+
+function parseProvider(provider?: string): 'WU' | 'MG' | undefined {
+  if (!provider) return undefined;
+  if (provider !== 'WU' && provider !== 'MG') {
+    throw new BadRequestException('provider phải là WU hoặc MG');
+  }
+  return provider;
 }

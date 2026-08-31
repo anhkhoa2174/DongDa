@@ -23,16 +23,16 @@ function makeRepo() {
   };
 }
 
-describe('Bank use-cases — mỗi chi nhánh có ngân hàng riêng', () => {
-  it('STAFF chỉ thấy tài khoản/biến động của chi nhánh mình; GĐ lọc tùy ý', async () => {
+describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () => {
+  it('mọi role thấy tài khoản và lịch sử toàn công ty', async () => {
     const repo = makeRepo();
     const uc = new ListBankUseCase(repo as any);
     await uc.accounts(staffA, BRANCH_B);
-    expect(repo.listAccounts).toHaveBeenLastCalledWith(BRANCH_A, false);
+    expect(repo.listAccounts).toHaveBeenLastCalledWith(BRANCH_B, false);
     await uc.accounts(admin, BRANCH_B);
     expect(repo.listAccounts).toHaveBeenLastCalledWith(BRANCH_B, false);
     await uc.movements(staffA, 'acc-1');
-    expect(repo.listMovements).toHaveBeenLastCalledWith('acc-1', BRANCH_A);
+    expect(repo.listMovements).toHaveBeenLastCalledWith('acc-1');
   });
 
   it('STAFF không được ghi biến động trên tài khoản chi nhánh khác', async () => {

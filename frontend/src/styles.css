@@ -375,6 +375,127 @@
   color: #d99a00;
 }
 
+.reconciliation-panel {
+  height: 100%;
+}
+
+.reconciliation-panel > .ant-card-head {
+  min-height: 48px;
+  padding-inline: 16px;
+}
+
+.reconciliation-panel > .ant-card-body {
+  padding: 14px 16px 16px;
+}
+
+.reconciliation-upload-bar {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.reconciliation-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reconciliation-entry-card {
+  overflow: hidden;
+  border: 1px solid #eef0f3;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.reconciliation-entry-card__header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fafafa;
+}
+
+.reconciliation-entry-fields {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.15fr) minmax(220px, 1.5fr) minmax(150px, 1fr) minmax(100px, 0.55fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.reconciliation-entry-fields .ant-form-item {
+  margin-bottom: 0;
+}
+
+.reconciliation-entry-fields .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.reconciliation-selection-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eef0f3;
+}
+
+.reconciliation-empty-detail {
+  display: grid;
+  min-height: 330px;
+  place-items: center;
+}
+
+.reconciliation-row--active > td {
+  background: #fff9e6 !important;
+}
+
+.reconciliation-panel .ant-table-cell {
+  vertical-align: middle;
+}
+
+@media (max-width: 767px) {
+  .reconciliation-panel > .ant-card-head {
+    align-items: flex-start;
+    padding-block: 10px;
+  }
+
+  .reconciliation-panel > .ant-card-head .ant-card-extra {
+    margin-inline-start: 8px;
+  }
+
+  .reconciliation-upload-bar,
+  .reconciliation-selection-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reconciliation-upload-bar .ant-upload-wrapper,
+  .reconciliation-upload-bar .ant-upload,
+  .reconciliation-upload-bar .ant-btn {
+    width: 100%;
+  }
+
+  .reconciliation-entry-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .reconciliation-entry-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .shift-fund-panel .ant-card-body,
 .shift-process-panel .ant-card-body {
   padding: 18px;

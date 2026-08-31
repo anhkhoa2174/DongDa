@@ -13,6 +13,7 @@ export interface MgTransaction {
   shiftId: string;
   businessDate: Date;
   status: string;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   customerName?: string | null;
   customerPhone?: string | null;
   shiftCode?: string;

@@ -5,6 +5,7 @@ import { XlsxWuFormExporterService } from './xlsx-wu-form-exporter.service';
 
 const dto = {
   branchId: '00000000-0000-0000-0000-000000000001', mtcn: '2751454064',
+  bankAccountId: '00000000-0000-0000-0000-000000000010',
   customerName: 'ALEX ROBERTS', customerPhone: '0783269349', sendingCountry: 'AUSTRALIA',
   receiverDateOfBirth: '1983-06-21', currentAddress: '97DUONG 66 P THAO DIEN Q2',
   identityDocumentType: 'PASSPORT', identityDocumentNumber: '146171983',

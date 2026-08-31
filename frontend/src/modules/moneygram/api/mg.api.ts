@@ -6,6 +6,7 @@ export interface MgTransactionDto {
   branchId: string;
   shiftCode?: string;
   status: string;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   customerName?: string | null;
   customerPhone?: string | null;
   referenceNo: string;

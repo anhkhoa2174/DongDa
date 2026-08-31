@@ -28,10 +28,12 @@ import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTrans
 import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 import { wuApi } from '../api/wu.api';
 import type { CreateWuPayload } from '../api/wu.api';
+import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 
 export function WuWorkspacePage() {
   const { message } = App.useApp();
   const { data: activeRates = [] } = useActiveRates();
+  const { data: bankAccounts = [] } = useBankAccounts();
   const create = useCreateWu();
   const [exportingBank, setExportingBank] = useState<'ACB' | 'MSB' | null>(null);
   const [form] = Form.useForm();
@@ -50,6 +52,12 @@ export function WuWorkspacePage() {
   const wuVnd = Form.useWatch('wuVndAmount', form) ?? 0;
   const transactionRate = Form.useWatch('appliedRate', form) ?? 0;
   const payoutCurrency = Form.useWatch('payoutCurrency', form) ?? 'USD';
+  const paidCurrency = Form.useWatch('paidCurrency', form) ?? 'USD';
+  const bankAccountId = Form.useWatch('bankAccountId', form);
+  const eligibleBankAccounts = bankAccounts.filter((account) => (
+    account.status === 'ACTIVE' && account.currencyCode === paidCurrency
+  ));
+  const selectedBank = eligibleBankAccounts.find((account) => account.id === bankAccountId);
   const rateType: ExchangeRateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
   const rateSelectionKey = `${rateType}:${systemRate ?? 0}`;
@@ -99,8 +107,15 @@ export function WuWorkspacePage() {
     if (!hasVisa) form.setFieldsValue({ visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
   }, [form, hasVisa]);
 
+  useEffect(() => {
+    if (bankAccountId && !eligibleBankAccounts.some((account) => account.id === bankAccountId)) {
+      form.setFieldValue('bankAccountId', undefined);
+    }
+  }, [bankAccountId, eligibleBankAccounts, form]);
+
   const toPayload = (v: WuFormValues): CreateWuPayload => ({
     branchId: isBranchUser && user?.branchId ? user.branchId : v.branchId,
+    bankAccountId: v.bankAccountId,
     mtcn: v.mtcn,
     customerName: v.customerName,
     customerPhone: v.customerPhone,
@@ -290,6 +305,22 @@ export function WuWorkspacePage() {
                 <Col span={12}><Form.Item name="paidCurrency" label="Paid Currency (WU hoàn)">
                   <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
               </Row>
+              <Form.Item
+                name="bankAccountId"
+                label="Ngân hàng nhận thanh toán công nợ"
+                rules={[{ required: true, message: `Chọn tài khoản ngân hàng ${paidCurrency}` }]}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder={`Chọn tài khoản ngân hàng ${paidCurrency}`}
+                  notFoundContent={`Không có tài khoản ${paidCurrency} đang hoạt động trong công ty`}
+                  options={eligibleBankAccounts.map((account) => ({
+                    value: account.id,
+                    label: `${account.bankCode} - ${account.accountNo} - ${account.accountName}${account.branchName ? ` (${account.branchName})` : ''}`,
+                  }))}
+                />
+              </Form.Item>
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
                 <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={PAID_RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
@@ -331,6 +362,10 @@ export function WuWorkspacePage() {
                     <div className="text-lg font-semibold">{formatExchangeRate(transactionRate)}</div>
                     <Typography.Text type="secondary">{rateType === 'PAID_BUY' ? 'Paid mua' : 'Paid bán'} {formatExchangeRate(systemRate ?? 0)}</Typography.Text>
                   </Col>
+                  <Col xs={24}>
+                    <Typography.Text type="secondary">Ngân hàng thanh toán công nợ</Typography.Text>
+                    <div className="font-semibold">{selectedBank ? `${selectedBank.bankCode} - ${selectedBank.accountNo}` : 'Chưa chọn'}</div>
+                  </Col>
                 </Row>
               </div>
               {!systemRate && (
@@ -363,6 +398,7 @@ export function WuWorkspacePage() {
 
 interface WuFormValues {
   branchId: string;
+  bankAccountId: string;
   mtcn: string;
   customerName?: string;
   customerPhone: string;

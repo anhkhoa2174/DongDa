@@ -91,8 +91,8 @@ export const navigationItems: AppMenuItem[] = [
     label: 'Đối Chiếu',
     children: [
       { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation', allowedRoles: ['director', 'accountant', 'auditor'] },
-      // Chi nhánh upload Journal + đối chiếu cho chính mình; GĐ/KTTH xem toàn công ty hoặc từng chi nhánh.
-      { key: '/reconciliation/journal', label: 'Đối chiếu Journal', path: '/reconciliation/journal' },
+      { key: '/reconciliation/journal/wu', label: 'Journal WU', path: '/reconciliation/journal/wu' },
+      { key: '/reconciliation/journal/mg', label: 'Journal MG', path: '/reconciliation/journal/mg' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
   },

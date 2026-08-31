@@ -3,6 +3,7 @@ import { CreateWuUseCase, assertWuPayoutMatches, validateAppliedRate } from './w
 
 const base = {
   branchId: '00000000-0000-0000-0000-000000000001', mtcn: '1234567890',
+  bankAccountId: '00000000-0000-0000-0000-000000000010',
   customerName: 'ALEX ROBERTS', customerPhone: '0783269349', sendingCountry: 'AUSTRALIA',
   receiverDateOfBirth: '1983-06-21', currentAddress: '97 DUONG 66, THAO DIEN, Q2',
   identityDocumentType: 'PASSPORT', identityDocumentNumber: '146171983',
@@ -48,5 +49,20 @@ describe('WU financial rules', () => {
 
     await expect(useCase.execute(base, 'user-1')).rejects.toBeInstanceOf(ConflictException);
     expect(rateRepo.findActive).not.toHaveBeenCalled();
+  });
+
+  it('passes the selected settlement bank to the transaction repository', async () => {
+    const wuRepo = {
+      mtcnExists: jest.fn().mockResolvedValue(false),
+      create: jest.fn().mockResolvedValue({ id: 'wu-1' }),
+    };
+    const rateRepo = { findActive: jest.fn().mockResolvedValue([{ rate: 26_000 }]) };
+    const useCase = new CreateWuUseCase(wuRepo as any, rateRepo as any);
+
+    await useCase.execute(base, 'user-1');
+
+    expect(wuRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      bankAccountId: base.bankAccountId,
+    }));
   });
 });

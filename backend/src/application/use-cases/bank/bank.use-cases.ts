@@ -1,9 +1,8 @@
 // Use Cases: Ngân hàng
 // Layer: Application
 //
-// Mỗi chi nhánh có tài khoản ngân hàng riêng. STAFF chỉ thấy/ghi biến động trên tài khoản
-// của chi nhánh mình (kiểm tra bằng canAccessBranch ở đây, không tin frontend).
-// ADMIN/MANAGER (GĐ/KTTH) tạo tài khoản, ghi biến động ở mọi chi nhánh.
+// Mọi tài khoản đăng nhập được đọc danh sách và lịch sử ngân hàng toàn công ty.
+// Quyền tạo tài khoản và ghi biến động vẫn được kiểm tra riêng theo role/chi nhánh.
 
 import { Injectable, Inject, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IBankRepository } from '../../../domain/repositories/bank.repository';
@@ -30,11 +29,11 @@ export class ListBankUseCase {
   banks(): Promise<Bank[]> {
     return this.bankRepo.listBanks();
   }
-  accounts(actor: BankActor, branchId?: string, includeInactive = false): Promise<BankAccount[]> {
-    return this.bankRepo.listAccounts(scopeBranch(actor, branchId), includeInactive);
+  accounts(_actor: BankActor, branchId?: string, includeInactive = false): Promise<BankAccount[]> {
+    return this.bankRepo.listAccounts(branchId, includeInactive);
   }
-  movements(actor: BankActor, bankAccountId?: string): Promise<BankMovement[]> {
-    return this.bankRepo.listMovements(bankAccountId, scopeBranch(actor));
+  movements(_actor: BankActor, bankAccountId?: string): Promise<BankMovement[]> {
+    return this.bankRepo.listMovements(bankAccountId);
   }
 }
 

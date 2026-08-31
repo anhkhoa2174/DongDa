@@ -42,6 +42,7 @@ export class CreateWuUseCase {
 
     return this.wuRepo.create({
       branchId: dto.branchId,
+      bankAccountId: dto.bankAccountId,
       mtcn: dto.mtcn,
       customerName: dto.customerName,
       customerPhone: dto.customerPhone,

@@ -183,25 +183,26 @@ model audit_logs {
 }
 
 model bank_accounts {
-  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  branch_id              String                   @db.Uuid
-  bank_id                String                   @db.Uuid
-  account_no             String                   @db.VarChar(100)
-  account_name           String                   @db.VarChar(255)
-  currency_code          currency_code
-  opening_balance        Decimal                  @default(0) @db.Decimal(20, 2)
-  current_balance        Decimal                  @default(0) @db.Decimal(20, 2)
-  available_balance      Decimal                  @default(0) @db.Decimal(20, 2)
-  status                 record_status            @default(ACTIVE)
-  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
-  banks                  banks                    @relation(fields: [bank_id], references: [id], onUpdate: NoAction)
-  branches               Branch                   @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
-  bank_balance_movements bank_balance_movements[]
-  bank_balance_snapshots bank_balance_snapshots[]
-  bank_statement_batches bank_statement_batches[]
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branch_id                 String                      @db.Uuid
+  bank_id                   String                      @db.Uuid
+  account_no                String                      @db.VarChar(100)
+  account_name              String                      @db.VarChar(255)
+  currency_code             currency_code
+  opening_balance           Decimal                     @default(0) @db.Decimal(20, 2)
+  current_balance           Decimal                     @default(0) @db.Decimal(20, 2)
+  available_balance         Decimal                     @default(0) @db.Decimal(20, 2)
+  status                    record_status               @default(ACTIVE)
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  banks                     banks                       @relation(fields: [bank_id], references: [id], onUpdate: NoAction)
+  branches                  Branch                      @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
+  bank_balance_movements    bank_balance_movements[]
+  bank_balance_snapshots    bank_balance_snapshots[]
+  bank_statement_batches    bank_statement_batches[]
   domestic_transfer_details domestic_transfer_details[]
-  fund_accounts          fund_accounts[]
+  fund_accounts             fund_accounts[]
+  wu_transaction_details    wu_transaction_details[]
 
   @@unique([bank_id, account_no], map: "uq_bank_account_no")
   @@index([bank_id], map: "idx_bank_accounts_bank")
@@ -372,16 +373,16 @@ model business_days {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model cash_count_lines {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cash_count_id   String        @db.Uuid
-  fund_account_id String        @db.Uuid
-  currency_code   currency_code
-  system_amount   Decimal       @db.Decimal(20, 2)
-  actual_amount   Decimal       @db.Decimal(20, 2)
-  variance        Decimal       @db.Decimal(20, 2)
-  created_at      DateTime      @default(now()) @db.Timestamptz(6)
-  cash_counts     cash_counts   @relation(fields: [cash_count_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  fund_accounts   fund_accounts @relation(fields: [fund_account_id], references: [id], onUpdate: NoAction)
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cash_count_id            String                     @db.Uuid
+  fund_account_id          String                     @db.Uuid
+  currency_code            currency_code
+  system_amount            Decimal                    @db.Decimal(20, 2)
+  actual_amount            Decimal                    @db.Decimal(20, 2)
+  variance                 Decimal                    @db.Decimal(20, 2)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  cash_counts              cash_counts                @relation(fields: [cash_count_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  fund_accounts            fund_accounts              @relation(fields: [fund_account_id], references: [id], onUpdate: NoAction)
   cash_count_denominations cash_count_denominations[]
 
   @@unique([cash_count_id, fund_account_id], map: "uq_cash_count_account")
@@ -525,7 +526,7 @@ model customer_transactions {
   voided_at                                             DateTime?                  @db.Timestamptz(6)
   created_at                                            DateTime                   @default(now()) @db.Timestamptz(6)
   updated_at                                            DateTime                   @default(now()) @db.Timestamptz(6)
-  replacement_of_transaction_id                        String?                    @db.Uuid
+  replacement_of_transaction_id                         String?                    @db.Uuid
   revision                                              Int                        @default(1)
   branches                                              Branch                     @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
   users_customer_transactions_created_by_user_idTousers User                       @relation("customer_transactions_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
@@ -538,6 +539,7 @@ model customer_transactions {
   journal_rows                                          journal_rows[]
   mg_transaction_details                                mg_transaction_details?
   reconciliation_items                                  reconciliation_items[]
+  debt_account                                          debt_accounts?
   wu_transaction_details                                wu_transaction_details?
   original_transaction                                  customer_transactions?     @relation("TransactionRevisions", fields: [replacement_of_transaction_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
   replacement_transactions                              customer_transactions[]    @relation("TransactionRevisions")
@@ -594,45 +596,54 @@ model day_closing_runs {
 }
 
 model debt_accounts {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  branch_id      String           @db.Uuid
-  provider_code  String           @db.VarChar(50)
-  currency_code  currency_code
-  business_date  DateTime         @db.Date
-  name           String           @db.VarChar(255)
-  status         record_status    @default(ACTIVE)
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime         @default(now()) @db.Timestamptz(6)
-  branches       Branch           @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
-  debt_movements debt_movements[]
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transaction_id        String?                @unique(map: "uq_debt_account_transaction") @db.Uuid
+  reconciliation_run_id String?                @db.Uuid
+  branch_id             String                 @db.Uuid
+  provider_code         String                 @db.VarChar(50)
+  currency_code         currency_code
+  business_date         DateTime               @db.Date
+  name                  String                 @db.VarChar(255)
+  lifecycle_status      debt_lifecycle_status  @default(PENDING)
+  reconciled_at         DateTime?              @db.Timestamptz(6)
+  settled_at            DateTime?              @db.Timestamptz(6)
+  cancelled_at          DateTime?              @db.Timestamptz(6)
+  status                record_status          @default(ACTIVE)
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  branches              Branch                 @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
+  transaction           customer_transactions? @relation(fields: [transaction_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  reconciliation_run    reconciliation_runs?   @relation(fields: [reconciliation_run_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  debt_movements        debt_movements[]
 
-  @@unique([branch_id, provider_code, currency_code, business_date], map: "uq_debt_account_day")
+  @@index([branch_id, provider_code, currency_code, business_date], map: "idx_debt_accounts_group")
+  @@index([lifecycle_status, business_date], map: "idx_debt_accounts_lifecycle")
   @@index([business_date, status], map: "idx_debt_accounts_date_status")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model debt_movements {
-  id                                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  debt_account_id                                 String              @db.Uuid
-  branch_id                                       String              @db.Uuid
+  id                                              String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  debt_account_id                                 String                        @db.Uuid
+  branch_id                                       String                        @db.Uuid
   movement_type                                   debt_movement_type
   source_type                                     ledger_source_type?
-  source_id                                       String?             @db.Uuid
-  business_date                                   DateTime            @db.Date
-  effective_at                                    DateTime            @default(now()) @db.Timestamptz(6)
-  amount                                          Decimal             @db.Decimal(20, 2)
+  source_id                                       String?                       @db.Uuid
+  business_date                                   DateTime                      @db.Date
+  effective_at                                    DateTime                      @default(now()) @db.Timestamptz(6)
+  amount                                          Decimal                       @db.Decimal(20, 2)
   currency_code                                   currency_code
   description                                     String?
-  status                                          workflow_status     @default(DRAFT)
-  created_by_user_id                              String              @db.Uuid
-  approved_by_user_id                             String?             @db.Uuid
-  posted_at                                       DateTime?           @db.Timestamptz(6)
-  created_at                                      DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at                                      DateTime            @default(now()) @db.Timestamptz(6)
-  users_debt_movements_approved_by_user_idTousers User?               @relation("debt_movements_approved_by_user_idTousers", fields: [approved_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  branches                                        Branch              @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
-  users_debt_movements_created_by_user_idTousers  User                @relation("debt_movements_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
-  debt_accounts                                   debt_accounts       @relation(fields: [debt_account_id], references: [id], onUpdate: NoAction)
+  status                                          workflow_status               @default(DRAFT)
+  created_by_user_id                              String                        @db.Uuid
+  approved_by_user_id                             String?                       @db.Uuid
+  posted_at                                       DateTime?                     @db.Timestamptz(6)
+  created_at                                      DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at                                      DateTime                      @default(now()) @db.Timestamptz(6)
+  users_debt_movements_approved_by_user_idTousers User?                         @relation("debt_movements_approved_by_user_idTousers", fields: [approved_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  branches                                        Branch                        @relation(fields: [branch_id], references: [id], onUpdate: NoAction)
+  users_debt_movements_created_by_user_idTousers  User                          @relation("debt_movements_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
+  debt_accounts                                   debt_accounts                 @relation(fields: [debt_account_id], references: [id], onUpdate: NoAction)
   debt_settlement_allocations_as_debt             debt_settlement_allocations[] @relation("debt_settlement_allocations_debt")
   debt_settlement_allocations_as_settlement       debt_settlement_allocations[] @relation("debt_settlement_allocations_settlement")
 
@@ -641,13 +652,13 @@ model debt_movements {
 }
 
 model debt_settlement_allocations {
-  id                                            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  settlement_movement_id                        String         @db.Uuid
-  debt_movement_id                              String         @db.Uuid
-  amount                                        Decimal        @db.Decimal(20, 2)
-  created_at                                    DateTime       @default(now()) @db.Timestamptz(6)
-  settlement_movement                           debt_movements @relation("debt_settlement_allocations_settlement", fields: [settlement_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  debt_movement                                 debt_movements @relation("debt_settlement_allocations_debt", fields: [debt_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  id                     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  settlement_movement_id String         @db.Uuid
+  debt_movement_id       String         @db.Uuid
+  amount                 Decimal        @db.Decimal(20, 2)
+  created_at             DateTime       @default(now()) @db.Timestamptz(6)
+  settlement_movement    debt_movements @relation("debt_settlement_allocations_settlement", fields: [settlement_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  debt_movement          debt_movements @relation("debt_settlement_allocations_debt", fields: [debt_movement_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@unique([settlement_movement_id, debt_movement_id], map: "uq_debt_settlement_allocation")
   @@index([debt_movement_id], map: "idx_debt_settlement_allocations_debt")
@@ -969,7 +980,7 @@ model mg_transaction_details {
   transaction_id        String                @id @db.Uuid
   reference_no          String                @db.VarChar(50)
   payout_currency       currency_code
-  paid_currency         currency_code       @default(USD)
+  paid_currency         currency_code         @default(USD)
   payout_amount         Decimal               @db.Decimal(20, 2)
   received_usd          Decimal               @default(0) @db.Decimal(20, 2)
   received_vnd          Decimal               @default(0) @db.Decimal(20, 2)
@@ -1068,32 +1079,48 @@ model reconciliation_run_batches {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model reconciliation_runs {
-  id                                                   String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  run_no                                               String                       @unique @db.VarChar(100)
+  id                                                   String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_no                                               String                         @unique @db.VarChar(100)
   provider                                             service_provider
   scope                                                journal_scope
-  branch_id                                            String?                      @db.Uuid
-  business_date                                        DateTime                     @db.Date
-  status                                               reconciliation_status        @default(DRAFT)
-  system_total_amount                                  Decimal                      @default(0) @db.Decimal(20, 2)
-  journal_total_amount                                 Decimal                      @default(0) @db.Decimal(20, 2)
-  variance_amount                                      Decimal                      @default(0) @db.Decimal(20, 2)
-  currency_code                                        currency_code                @default(USD)
-  created_by_user_id                                   String                       @db.Uuid
-  reviewed_by_user_id                                  String?                      @db.Uuid
-  approved_by_user_id                                  String?                      @db.Uuid
-  posted_at                                            DateTime?                    @db.Timestamptz(6)
-  created_at                                           DateTime                     @default(now()) @db.Timestamptz(6)
-  updated_at                                           DateTime                     @default(now()) @db.Timestamptz(6)
+  branch_id                                            String?                        @db.Uuid
+  business_date                                        DateTime                       @db.Date
+  status                                               reconciliation_status          @default(DRAFT)
+  stage                                                reconciliation_stage           @default(BRANCH)
+  system_total_amount                                  Decimal                        @default(0) @db.Decimal(20, 2)
+  journal_total_amount                                 Decimal                        @default(0) @db.Decimal(20, 2)
+  variance_amount                                      Decimal                        @default(0) @db.Decimal(20, 2)
+  currency_code                                        currency_code                  @default(USD)
+  created_by_user_id                                   String                         @db.Uuid
+  reviewed_by_user_id                                  String?                        @db.Uuid
+  approved_by_user_id                                  String?                        @db.Uuid
+  posted_at                                            DateTime?                      @db.Timestamptz(6)
+  submitted_at                                         DateTime?                      @db.Timestamptz(6)
+  created_at                                           DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at                                           DateTime                       @default(now()) @db.Timestamptz(6)
   reconciliation_adjustments                           reconciliation_adjustments[]
   reconciliation_items                                 reconciliation_items[]
   reconciliation_run_batches                           reconciliation_run_batches[]
-  users_reconciliation_runs_approved_by_user_idTousers User?                        @relation("reconciliation_runs_approved_by_user_idTousers", fields: [approved_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  branches                                             Branch?                      @relation(fields: [branch_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  users_reconciliation_runs_created_by_user_idTousers  User                         @relation("reconciliation_runs_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
-  users_reconciliation_runs_reviewed_by_user_idTousers User?                        @relation("reconciliation_runs_reviewed_by_user_idTousers", fields: [reviewed_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  users_reconciliation_runs_approved_by_user_idTousers User?                          @relation("reconciliation_runs_approved_by_user_idTousers", fields: [approved_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  branches                                             Branch?                        @relation(fields: [branch_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  users_reconciliation_runs_created_by_user_idTousers  User                           @relation("reconciliation_runs_created_by_user_idTousers", fields: [created_by_user_id], references: [id], onUpdate: NoAction)
+  users_reconciliation_runs_reviewed_by_user_idTousers User?                          @relation("reconciliation_runs_reviewed_by_user_idTousers", fields: [reviewed_by_user_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  final_sources                                        reconciliation_final_sources[] @relation("reconciliation_final_sources_final")
+  final_targets                                        reconciliation_final_sources[] @relation("reconciliation_final_sources_branch")
+  debt_accounts                                        debt_accounts[]
 
   @@index([provider, business_date, status], map: "idx_reconciliation_runs_provider_date")
+}
+
+model reconciliation_final_sources {
+  final_run_id  String              @db.Uuid
+  branch_run_id String              @db.Uuid
+  created_at    DateTime            @default(now()) @db.Timestamptz(6)
+  final_run     reconciliation_runs @relation("reconciliation_final_sources_final", fields: [final_run_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branch_run    reconciliation_runs @relation("reconciliation_final_sources_branch", fields: [branch_run_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([final_run_id, branch_run_id])
+  @@index([branch_run_id], map: "idx_reconciliation_final_sources_branch")
 }
 
 model role_permissions {
@@ -1158,39 +1185,43 @@ model user_roles {
 }
 
 model wu_transaction_details {
-  transaction_id        String                @id @db.Uuid
-  mtcn                  String                @db.VarChar(50)
-  sending_country       String?               @db.VarChar(100)
-  sender_state          String?               @db.VarChar(100)
-  receiver_date_of_birth DateTime?            @db.Date
-  current_address       String?
-  identity_address      String?
-  identity_document_type String?              @db.VarChar(50)
-  identity_document_number String?            @db.VarChar(100)
-  identity_issuing_country String?             @db.VarChar(100)
-  identity_issue_date   DateTime?             @db.Date
-  identity_expiry_date  DateTime?             @db.Date
-  has_visa              Boolean               @default(false)
-  visa_type             String?               @db.VarChar(100)
-  visa_number           String?               @db.VarChar(100)
-  visa_issue_date       DateTime?             @db.Date
-  visa_expiry_date      DateTime?             @db.Date
-  employment_status     String?               @db.VarChar(100)
-  country_of_birth      String?               @db.VarChar(100)
-  sender_relationship   String?               @db.VarChar(100)
-  receive_purpose       String?               @db.VarChar(150)
-  sender_name           String?               @db.VarChar(150)
-  received_date         DateTime?             @db.Date
-  paid_currency         currency_code         @default(USD)
-  payout_currency       currency_code         @default(USD)
-  wu_usd_amount         Decimal               @default(0) @db.Decimal(20, 2)
-  wu_vnd_amount         Decimal               @default(0) @db.Decimal(20, 2)
-  received_usd          Decimal               @default(0) @db.Decimal(20, 2)
-  received_vnd          Decimal               @default(0) @db.Decimal(20, 2)
-  wu_rate               Decimal               @db.Decimal(20, 6)
-  system_rate           Decimal               @db.Decimal(20, 6)
-  applied_rate          Decimal               @db.Decimal(20, 6)
-  customer_transactions customer_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  transaction_id           String                @id @db.Uuid
+  bank_account_id          String?               @db.Uuid
+  mtcn                     String                @db.VarChar(50)
+  sending_country          String?               @db.VarChar(100)
+  sender_state             String?               @db.VarChar(100)
+  receiver_date_of_birth   DateTime?             @db.Date
+  current_address          String?
+  identity_address         String?
+  identity_document_type   String?               @db.VarChar(50)
+  identity_document_number String?               @db.VarChar(100)
+  identity_issuing_country String?               @db.VarChar(100)
+  identity_issue_date      DateTime?             @db.Date
+  identity_expiry_date     DateTime?             @db.Date
+  has_visa                 Boolean               @default(false)
+  visa_type                String?               @db.VarChar(100)
+  visa_number              String?               @db.VarChar(100)
+  visa_issue_date          DateTime?             @db.Date
+  visa_expiry_date         DateTime?             @db.Date
+  employment_status        String?               @db.VarChar(100)
+  country_of_birth         String?               @db.VarChar(100)
+  sender_relationship      String?               @db.VarChar(100)
+  receive_purpose          String?               @db.VarChar(150)
+  sender_name              String?               @db.VarChar(150)
+  received_date            DateTime?             @db.Date
+  paid_currency            currency_code         @default(USD)
+  payout_currency          currency_code         @default(USD)
+  wu_usd_amount            Decimal               @default(0) @db.Decimal(20, 2)
+  wu_vnd_amount            Decimal               @default(0) @db.Decimal(20, 2)
+  received_usd             Decimal               @default(0) @db.Decimal(20, 2)
+  received_vnd             Decimal               @default(0) @db.Decimal(20, 2)
+  wu_rate                  Decimal               @db.Decimal(20, 6)
+  system_rate              Decimal               @db.Decimal(20, 6)
+  applied_rate             Decimal               @db.Decimal(20, 6)
+  customer_transactions    customer_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bank_accounts            bank_accounts?        @relation(fields: [bank_account_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@index([bank_account_id], map: "idx_wu_transaction_details_bank_account")
 }
 
 enum approval_action {
@@ -1272,6 +1303,13 @@ enum debt_movement_type {
   ADJUSTMENT
   SETTLEMENT
   REVERSAL
+}
+
+enum debt_lifecycle_status {
+  PENDING
+  RECONCILED
+  SETTLED
+  CANCELLED
 }
 
 enum employee_status {
@@ -1394,6 +1432,11 @@ enum reconciliation_status {
   APPROVED
   POSTED
   REJECTED
+}
+
+enum reconciliation_stage {
+  BRANCH
+  FINAL
 }
 
 enum record_status {

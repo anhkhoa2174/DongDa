@@ -12,9 +12,11 @@ export interface WuTransaction {
   id: string;
   transactionNo: string;
   branchId: string;
+  bankAccountId: string;
   shiftId: string;
   businessDate: Date;
   status: string;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   customerName?: string | null;
   customerPhone?: string | null;
   sendingCountry?: string | null;

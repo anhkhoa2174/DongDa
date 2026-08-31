@@ -4,6 +4,7 @@ export type TransactionRecord = {
   key: string;
   code: string;
   status: TransactionStatus;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   shiftCode: string;
   createdAt: string;
   createdBy: string;
@@ -30,6 +31,7 @@ export type AggregatedTransaction = {
   createdAt: string;
   createdAtRaw: string;
   status: TransactionStatus;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   financialData?: {
     wuUsdAmount?: number;
     wuVndAmount?: number;

@@ -10,29 +10,6 @@ import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 const CURRENCIES = [...SUPPORTED_CURRENCIES];
 const PROVIDERS = ['WU', 'MG'];
 
-export class RecordDebtDto {
-  @IsUUID()
-  branchId: string;
-
-  @IsEnum(PROVIDERS as any, { message: 'provider phải là WU hoặc MG' })
-  providerCode: string;
-
-  @IsEnum(CURRENCIES as any, { message: 'currency không hợp lệ' })
-  currencyCode: string;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  amount: number;
-
-  @IsOptional()
-  @IsDateString()
-  businessDate?: string;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-}
-
 export class SettleUsdCashDebtDto {
   @IsInt()
   @Min(0)

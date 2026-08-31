@@ -10,6 +10,7 @@ export interface ReconRunDto {
   currencyCode: string;
   businessDate: string;
   status: string;
+  stage: 'BRANCH' | 'FINAL';
   systemTotal: number;
   journalTotal: number;
   varianceTotal: number;
@@ -17,6 +18,8 @@ export interface ReconRunDto {
   matchedCount: number;
   totalCount: number;
   createdAt: string;
+  submittedAt?: string | null;
+  branchName?: string | null;
 }
 
 export interface ReconItemDto {
@@ -44,26 +47,6 @@ export interface RunReconInput {
   businessDate: string;
   branchId?: string;
   rows: JournalRowInput[];
-  pendingJournalId?: string; // KTTH chạy từ Journal chi nhánh gửi lên -> Journal đó chuyển APPROVED
-}
-
-// Journal chi nhánh gửi về KTTH chờ duyệt (DongDav6)
-export interface PendingJournalDto {
-  id: string;
-  runNo: string;
-  provider: 'WU' | 'MG';
-  businessDate: string;
-  branchId: string | null;
-  branchName: string | null;
-  parsedRowCount: number;
-  uploadedByUserId: string;
-  uploadedAt: string;
-  status: 'PENDING_REVIEW';
-}
-
-export interface PendingJournalDetailDto {
-  summary: PendingJournalDto;
-  rows: { code: string; amount: number; currencyCode: 'USD' | 'VND'; branchId: string | null; customerName?: string | null }[];
 }
 
 export interface ParsedJournalRow {
@@ -95,22 +78,18 @@ export interface FundReconItemDto {
 }
 
 export const reconApi = {
-  runs: (branchId?: string) =>
-    httpClient.get<ReconRunDto[]>('/reconciliation/runs', { params: branchId ? { branchId } : {} }).then((r) => r.data),
+  runs: (branchId?: string, provider?: 'WU' | 'MG') =>
+    httpClient.get<ReconRunDto[]>('/reconciliation/runs', { params: { branchId, provider } }).then((r) => r.data),
   fundReconciliation: (branchId?: string) =>
     httpClient.get<FundReconItemDto[]>('/reconciliation/fund', { params: branchId ? { branchId } : {} }).then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
   run: (input: RunReconInput) =>
     httpClient.post<ReconRunDto>('/reconciliation/run', input).then((r) => r.data),
-  submitPendingJournal: (input: { provider: 'WU' | 'MG'; businessDate: string; branchId?: string; rows: JournalRowInput[] }) =>
-    httpClient.post<PendingJournalDto>('/reconciliation/pending-journals', input).then((r) => r.data),
-  pendingJournals: (branchId?: string) =>
-    httpClient.get<PendingJournalDto[]>('/reconciliation/pending-journals', { params: branchId ? { branchId } : {} }).then((r) => r.data),
-  pendingJournal: (id: string) =>
-    httpClient.get<PendingJournalDetailDto>(`/reconciliation/pending-journals/${id}`).then((r) => r.data),
-  rejectPendingJournal: (id: string, reason?: string) =>
-    httpClient.post(`/reconciliation/pending-journals/${id}/reject`, { reason }).then((r) => r.data),
+  submittedBranchRuns: (provider: 'WU' | 'MG', branchId?: string) =>
+    httpClient.get<ReconRunDto[]>(`/reconciliation/${provider.toLowerCase()}/submitted-branch-runs`, { params: { branchId } }).then((r) => r.data),
+  createFinalRun: (provider: 'WU' | 'MG', branchRunIds: string[]) =>
+    httpClient.post<ReconRunDto>(`/reconciliation/${provider.toLowerCase()}/final-runs`, { branchRunIds }).then((r) => r.data),
   parseJournal: (provider: 'WU' | 'MG', file: File) => {
     const form = new FormData();
     form.append('file', file);

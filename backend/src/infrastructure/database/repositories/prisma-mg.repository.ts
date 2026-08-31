@@ -108,7 +108,9 @@ export class PrismaMgRepository implements IMgRepository {
 
       // Công nợ MG tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.mgUsdAmount : input.mgVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency, businessDate);
+      const debtAcc = await this.createDebtAccount(
+        tx, txn.id, txn.transaction_no, input.branchId, 'MG', input.paidCurrency, businessDate,
+      );
       await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc,
@@ -135,7 +137,7 @@ export class PrismaMgRepository implements IMgRepository {
   async findById(id: string): Promise<MgTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { mg_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
     });
     return row?.mg_transaction_details ? toDomain(row) : null;
   }
@@ -143,7 +145,7 @@ export class PrismaMgRepository implements IMgRepository {
   async list(filter?: ListMgFilter): Promise<MgTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'MG', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { mg_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.mg_transaction_details).map(toDomain);
@@ -186,22 +188,19 @@ export class PrismaMgRepository implements IMgRepository {
     return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
-  private async ensureDebtAccount(
-    tx: any, branchId: string, provider: string, currency: Currency2, businessDate: Date,
+  private async createDebtAccount(
+    tx: any, transactionId: string, transactionNo: string, branchId: string,
+    provider: string, currency: Currency2, businessDate: Date,
   ): Promise<string> {
-    const account = await tx.debt_accounts.upsert({
-      where: {
-        branch_id_provider_code_currency_code_business_date: {
-          branch_id: branchId, provider_code: provider, currency_code: currency, business_date: businessDate,
-        },
-      },
-      update: {},
-      create: {
+    const account = await tx.debt_accounts.create({
+      data: {
+        transaction_id: transactionId,
         branch_id: branchId,
         provider_code: provider,
         currency_code: currency,
         business_date: businessDate,
-        name: `Công nợ ${provider} ${currency} ngày ${businessDate.toISOString().slice(0, 10)}`,
+        name: `Công nợ ${provider} - ${transactionNo}`,
+        lifecycle_status: 'PENDING',
       },
     });
     return account.id;
@@ -221,6 +220,7 @@ function toDomain(row: any): MgTransaction {
     shiftId: row.shift_id,
     businessDate: row.business_date,
     status: row.status,
+    debtStatus: row.debt_account?.lifecycle_status,
     customerName: row.customer_name ?? null,
     customerPhone: row.customer_phone ?? null,
     shiftCode: row.shifts?.shift_code,

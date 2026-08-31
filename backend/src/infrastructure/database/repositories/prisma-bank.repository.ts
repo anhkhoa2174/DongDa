@@ -174,7 +174,10 @@ export class PrismaBankRepository implements IBankRepository {
       await this.lockDebtAccount(tx, input.debtAccountId);
       const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
       if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
-      const debtAcc = await tx.debt_accounts.findUnique({ where: { id: input.debtAccountId } });
+      const debtAcc = await tx.debt_accounts.findUnique({
+        where: { id: input.debtAccountId },
+        include: { transaction: { include: { wu_transaction_details: true } } },
+      });
       if (!debtAcc) throw new NotFoundException('Không tìm thấy sổ công nợ');
 
       if (bankAcc.currency_code !== debtAcc.currency_code) {
@@ -182,12 +185,19 @@ export class PrismaBankRepository implements IBankRepository {
           `Loại tiền không khớp: NH ${bankAcc.currency_code} vs công nợ ${debtAcc.currency_code}`,
         );
       }
+      if (debtAcc.lifecycle_status !== 'RECONCILED') {
+        throw new BadRequestException('Chỉ công nợ đã đối chiếu RECONCILED mới được thanh toán');
+      }
+      const assignedBankId = debtAcc.transaction?.wu_transaction_details?.bank_account_id;
+      if (debtAcc.provider_code === 'WU' && assignedBankId !== input.bankAccountId) {
+        throw new BadRequestException('Công nợ WU phải được thanh toán qua đúng ngân hàng đã chọn khi tạo giao dịch');
+      }
 
       // Kiểm tra số còn nợ
       const outstanding = await this.debtOutstanding(tx, input.debtAccountId);
-      if (input.amount > outstanding) {
+      if (Math.abs(input.amount - outstanding) >= 0.005) {
         throw new BadRequestException(
-          `Số tiền (${input.amount}) vượt số còn nợ (${outstanding} ${debtAcc.currency_code})`,
+          `Công nợ phải được tất toán toàn bộ: cần đúng ${outstanding} ${debtAcc.currency_code}`,
         );
       }
 
@@ -238,17 +248,20 @@ export class PrismaBankRepository implements IBankRepository {
         },
       });
       await allocateDebtSettlement(tx, debtAcc.id, settlement.id, input.amount);
-      const remaining = Number((outstanding - input.amount).toFixed(2));
-      const settled = remaining <= 0;
+      await tx.debt_accounts.update({
+        where: { id: debtAcc.id },
+        data: { lifecycle_status: 'SETTLED', settled_at: now, updated_at: now },
+      });
+      const remaining = 0;
       const fractionDigits = debtAcc.currency_code === 'VND' ? 0 : 2;
       const formatAmount = (value: number) => value.toLocaleString('vi-VN', {
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
       });
       await this.notifications.notifyUsers({
-        title: settled ? 'Công nợ đã được tất toán' : 'Công nợ đã được xử lý một phần',
+        title: 'Công nợ đã được tất toán',
         body: `${debtAcc.provider_code} ngày ${debtAcc.business_date.toISOString().slice(0, 10)}: nhận ${formatAmount(input.amount)} ${debtAcc.currency_code} qua ngân hàng ${bankAcc.account_no}; còn lại ${formatAmount(Math.max(remaining, 0))} ${debtAcc.currency_code}.`,
-        sourceType: settled ? 'DEBT_SETTLED' : 'DEBT_PARTIALLY_SETTLED',
+        sourceType: 'DEBT_SETTLED',
         sourceId: debtAcc.id,
       }, {
         userIds: [input.createdByUserId],

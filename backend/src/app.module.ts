@@ -43,7 +43,7 @@ import { PrismaBankRepository } from './infrastructure/database/repositories/pri
 import { ListBankUseCase, ReceiveFromProviderUseCase, ManageBankAccountUseCase, RecordBankMovementUseCase, RecordAdvanceCkUseCase, SettleAdvanceCkUseCase, ListAdvancesUseCase } from './application/use-cases/bank/bank.use-cases';
 import { ReconciliationController } from './interfaces/http/controllers/reconciliation.controller';
 import { PrismaReconciliationRepository } from './infrastructure/database/repositories/prisma-reconciliation.repository';
-import { RunReconciliationUseCase, ListReconciliationUseCase, UploadJournalUseCase, ListPendingJournalsUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
+import { RunReconciliationUseCase, ListReconciliationUseCase, UploadJournalUseCase, ListPendingJournalsUseCase, SubmitBranchRunUseCase, ListSubmittedBranchRunsUseCase, CreateProviderFinalRunUseCase } from './application/use-cases/reconciliation/reconciliation.use-cases';
 import { ParseJournalUseCase } from './application/use-cases/reconciliation/parse-journal.use-case';
 import { AuditLogController } from './interfaces/http/controllers/audit-log.controller';
 import { PrismaAuditRepository } from './infrastructure/database/repositories/prisma-audit.repository';
@@ -79,7 +79,6 @@ import { ParseExchangeRateImageUseCase } from './application/use-cases/exchange-
 import { GeminiExchangeRateParserService } from './infrastructure/ai/gemini-exchange-rate-parser.service';
 
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
-import { RecordDebtUseCase } from './application/use-cases/debt/record-debt.use-case';
 import {
   SettleDebtBatchUseCase, SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
 } from './application/use-cases/debt/settle-debt.use-case';
@@ -165,7 +164,6 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ListExchangeRatesUseCase,
     ParseExchangeRateImageUseCase,
 
-    RecordDebtUseCase,
     SettleUsdCashDebtUseCase,
     SettleVndCashDebtUseCase,
     SettleDebtBatchUseCase,
@@ -206,6 +204,9 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ListReconciliationUseCase,
     UploadJournalUseCase,
     ListPendingJournalsUseCase,
+    SubmitBranchRunUseCase,
+    ListSubmittedBranchRunsUseCase,
+    CreateProviderFinalRunUseCase,
     ParseJournalUseCase,
 
     ListAuditUseCase,

@@ -176,11 +176,16 @@ export function TransactionsMainPage() {
     },
   });
   const adjustmentMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => (
-      isControlUser && values.action === 'VOID'
-        ? transactionAdminApi.voidDirectly(id, values.reason)
-        : transactionAdminApi.createAdjustmentRequest(id, values)
-    ),
+    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => {
+      if (!isControlUser) return transactionAdminApi.createAdjustmentRequest(id, values);
+      if (values.action === 'VOID') return transactionAdminApi.voidDirectly(id, values.reason);
+      return transactionAdminApi.replaceDirectly(id, {
+        action: 'REPLACE',
+        reason: values.reason,
+        proposedCorrection: values.proposedCorrection,
+        correctedData: values.correctedData ?? {},
+      });
+    },
     onSuccess: async (_, variables) => {
       await invalidateTransactionQueries();
       await queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] });
@@ -188,8 +193,10 @@ export function TransactionsMainPage() {
       setDeactivateTarget(null);
       deactivateForm.resetFields();
       void message.success(
-        isControlUser && variables.values.action === 'VOID'
-          ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
+        isControlUser
+          ? variables.values.action === 'VOID'
+            ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
+            : 'Đã thay thế giao dịch và ghi lại quỹ/công nợ'
           : 'Đã lập phiếu điều chỉnh và gửi duyệt',
       );
     },
@@ -250,6 +257,7 @@ export function TransactionsMainPage() {
         shiftCode: transaction.shiftCode ?? '',
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
+        debtStatus: transaction.debtStatus,
         createdAtRaw: transaction.createdAt,
         financialData: {
           wuUsdAmount: transaction.wuUsdAmount,
@@ -279,6 +287,7 @@ export function TransactionsMainPage() {
         shiftCode: transaction.shiftCode ?? '',
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
+        debtStatus: transaction.debtStatus,
         createdAtRaw: transaction.createdAt,
         financialData: {
           paidAmount: transaction.paidCurrency === 'USD' ? transaction.mgUsdAmount : transaction.mgVndAmount,
@@ -493,7 +502,9 @@ export function TransactionsMainPage() {
       width: 150,
       render: (_, record) => {
         const isInactive = ['VOID', 'VOIDED', 'DEACTIVATED'].includes(record.status);
-        if ((!canControlTransactions && !canRequestAdjustment) || isInactive) {
+        const isReconciled = record.debtStatus === 'RECONCILED' || record.debtStatus === 'SETTLED';
+        if ((!canControlTransactions && !canRequestAdjustment) || isInactive || isReconciled) {
+          if (isReconciled) return <Tag color="blue">Đã đối chiếu · Chỉ xem</Tag>;
           return <Typography.Text type="secondary">Chỉ xem</Typography.Text>;
         }
 
@@ -815,7 +826,7 @@ export function TransactionsMainPage() {
       </Modal>
 
       <Modal
-        title={`${isControlUser && adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
+        title={`${isControlUser ? (adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Thay thế giao dịch') : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
         open={Boolean(deactivateTarget)}
         onCancel={() => setDeactivateTarget(null)}
         footer={null}
@@ -826,12 +837,14 @@ export function TransactionsMainPage() {
             className="mb-4"
             type={isControlUser && adjustmentAction === 'VOID' ? 'error' : 'warning'}
             showIcon
-            message={isControlUser && adjustmentAction === 'VOID'
-              ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
-              : 'Phiếu cần được GĐ/KTTH khác duyệt trước khi ghi sổ'}
-            description={isControlUser && adjustmentAction === 'VOID'
-              ? 'Thao tác không cần duyệt lại. Công nợ đã tất toán hoặc giao dịch đã chốt Journal vẫn không thể hủy trực tiếp.'
-              : 'Nếu giao dịch thuộc ca đã đóng, bút toán đảo và giao dịch thay thế sẽ được ghi vào ca đang mở hiện tại. Tỷ giá của giao dịch cũ được giữ nguyên.'}
+            message={isControlUser
+              ? adjustmentAction === 'VOID'
+                ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
+                : 'Giao dịch cũ sẽ được đảo và thay thế ngay'
+              : 'Phiếu cần được GĐ/KTTH duyệt trước khi ghi sổ'}
+            description={isControlUser
+              ? 'Chỉ giao dịch có công nợ PENDING mới được thao tác. Giao dịch đã RECONCILED hoặc SETTLED bị khóa.'
+              : 'Nếu được duyệt, bút toán đảo và giao dịch thay thế được ghi vào ca đang mở; tỷ giá giao dịch cũ được giữ nguyên.'}
           />
           <Form.Item name="action" label="Cách xử lý" rules={[{ required: true }]}>
             <Segmented
@@ -909,7 +922,7 @@ export function TransactionsMainPage() {
             <Button onClick={() => setDeactivateTarget(null)}>Hủy</Button>
             <Button type="primary" htmlType="submit" loading={adjustmentMutation.isPending}>
               {adjustmentAction === 'REPLACE'
-                ? 'Gửi phiếu thay thế'
+                ? isControlUser ? 'Thay thế giao dịch ngay' : 'Gửi phiếu thay thế'
                 : isControlUser ? 'Hủy giao dịch ngay' : 'Gửi phiếu hủy'}
             </Button>
           </div>

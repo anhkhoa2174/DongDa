@@ -4,8 +4,10 @@ export interface WuTransactionDto {
   id: string;
   transactionNo: string;
   branchId: string;
+  bankAccountId: string;
   shiftCode?: string;
   status: string;
+  debtStatus?: 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
   customerName?: string | null;
   customerPhone?: string | null;
   sendingCountry?: string | null;
@@ -45,6 +47,7 @@ export interface WuTransactionDto {
 
 export interface CreateWuPayload {
   branchId: string;
+  bankAccountId: string;
   mtcn: string;
   customerName?: string;
   customerPhone: string;

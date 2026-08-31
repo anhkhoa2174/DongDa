@@ -4,6 +4,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IDebtRepository } from '../../../domain/repositories/debt.repository';
 import { DebtMovement } from '../../../domain/entities/debt.entity';
+import { DebtStatus } from '../../../domain/entities/debt.entity';
 import type { DebtBatchSettlementResult } from '../../../domain/repositories/debt.repository';
 import type { SettleUsdCashDebtDto } from '../../dtos/debt/debt.dto';
 import type { SettleVndCashDebtDto } from '../../dtos/debt/debt.dto';
@@ -21,13 +22,16 @@ export class SettleUsdCashDebtUseCase {
     if (summary.currencyCode !== 'USD') {
       throw new BadRequestException('Form tiền mặt USD chỉ áp dụng cho công nợ USD');
     }
+    if (summary.status !== DebtStatus.RECONCILED) {
+      throw new BadRequestException('Công nợ chưa hoàn tất đối chiếu tổng');
+    }
     const settlementAmount = Number((dto.cashUsdAmount + dto.oddUsdAmount).toFixed(2));
     if (settlementAmount <= 0) {
       throw new BadRequestException('Số tiền xử lý phải lớn hơn 0');
     }
-    if (settlementAmount > summary.outstanding) {
+    if (Math.abs(settlementAmount - summary.outstanding) >= 0.005) {
       throw new BadRequestException(
-        `Số tiền xử lý (${settlementAmount}) vượt số còn nợ (${summary.outstanding} USD)`,
+        `Phải tất toán toàn bộ ${summary.outstanding} USD`,
       );
     }
     return this.debtRepo.settleUsdCash({
@@ -52,9 +56,12 @@ export class SettleVndCashDebtUseCase {
     if (summary.currencyCode !== 'VND') {
       throw new BadRequestException('Form tiền mặt VND chỉ áp dụng cho công nợ VND');
     }
-    if (dto.amount > summary.outstanding) {
+    if (summary.status !== DebtStatus.RECONCILED) {
+      throw new BadRequestException('Công nợ chưa hoàn tất đối chiếu tổng');
+    }
+    if (Math.abs(dto.amount - summary.outstanding) >= 0.005) {
       throw new BadRequestException(
-        `Số tiền xử lý (${dto.amount}) vượt số còn nợ (${summary.outstanding} VND)`,
+        `Phải tất toán toàn bộ ${summary.outstanding} VND`,
       );
     }
     return this.debtRepo.settleVndCash({
