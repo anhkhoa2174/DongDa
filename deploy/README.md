@@ -11,13 +11,13 @@ JWT_SECRET=<chuỗi ngẫu nhiên ≥32 ký tự>
 JWT_REFRESH_SECRET=<chuỗi ngẫu nhiên ≥32 ký tự>
 JWT_EXPIRES_IN=30m
 JWT_REFRESH_EXPIRES_IN=7d
-FRONTEND_URL=https://dongda.name.vn
+FRONTEND_URL=https://dongda.info.vn
 GEMINI_API_KEY=<key đọc ảnh tỷ giá, bỏ trống nếu chưa dùng>
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ## DNS
-Vietnix → Quản lý tên miền → bản ghi A: `dongda.name.vn → 103.90.227.63`. Caddy tự xin SSL sau khi DNS trỏ đúng. Chưa có DNS vẫn vào được qua `http://103.90.227.63`.
+Vietnix → Quản lý tên miền → bản ghi A: `dongda.info.vn → 103.90.227.63`. Caddy tự xin SSL sau khi DNS trỏ đúng. Chưa có DNS vẫn vào được qua `http://103.90.227.63`.
 
 ## Lệnh hay dùng trên VPS
 ```
