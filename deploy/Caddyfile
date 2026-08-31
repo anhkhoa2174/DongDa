@@ -1,5 +1,10 @@
 # dongda.info.vn: tự xin SSL Let's Encrypt khi DNS đã trỏ về VPS.
 # Khối :80 để vẫn vào được bằng IP khi chưa có DNS.
+# Bản TEST (stack dongda-test, mạng ngoài dongda-test_default)
+test.dongda.info.vn {
+	reverse_proxy dongda-test-caddy-1:80
+}
+
 dongda.info.vn {
 	encode gzip
 	handle /api/* {

@@ -36,6 +36,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    networks: [default, test_net]
     ports:
       - "80:80"
       - "443:443"
@@ -51,3 +52,10 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
+
+# Caddy chính phục vụ luôn test.dongda.info.vn -> proxy sang stack dongda-test
+networks:
+  default: {}
+  test_net:
+    external: true
+    name: dongda-test_default
