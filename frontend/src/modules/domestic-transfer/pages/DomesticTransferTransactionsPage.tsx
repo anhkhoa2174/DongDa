@@ -113,6 +113,15 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
     return (
       <div className="mb-4 border-y border-slate-200 bg-slate-50 px-4 py-3">
         <Typography.Text strong>Tóm tắt giao dịch</Typography.Text>
+        {type === 'CASH_TO_BANK' && (
+          <Alert
+            className="mt-3"
+            type="info"
+            showIcon
+            message="Hệ thống sẽ tự động ghi nhận ứng chuyển khoản"
+            description="Khoản chuyển ra được theo dõi tại Ngân hàng cho đến khi KTTH/GĐ hoàn ứng."
+          />
+        )}
         <Row gutter={[16, 12]} className="mt-3">
           <Col xs={12} md={6}>
             <Typography.Text type="secondary">Nghiệp vụ</Typography.Text>

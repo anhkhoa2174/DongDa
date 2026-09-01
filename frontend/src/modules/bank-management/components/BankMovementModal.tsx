@@ -1,5 +1,5 @@
-// Modal nộp/rút/chuyển khoản thủ công trên 1 tài khoản ngân hàng -> POST /bank/accounts/:id/movements
-import { App, DatePicker, Form, Input, InputNumber, Modal, Segmented } from 'antd';
+// Modal nộp/rút tiền thủ công trên 1 tài khoản ngân hàng -> POST /bank/accounts/:id/movements
+import { App, DatePicker, Form, Input, InputNumber, Modal } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
@@ -17,15 +17,9 @@ interface FormValues {
   businessDate?: Dayjs;
 }
 
-const TYPE_OPTIONS: Record<BankMovementDirection, { value: ManualBankMovementType; label: string }[]> = {
-  IN: [
-    { value: 'TRANSFER_IN', label: 'Nhận chuyển khoản' },
-    { value: 'DEPOSIT', label: 'Nộp tiền mặt vào tài khoản' },
-  ],
-  OUT: [
-    { value: 'TRANSFER_OUT', label: 'Chuyển khoản đi' },
-    { value: 'WITHDRAW', label: 'Rút tiền mặt' },
-  ],
+const MOVEMENT_TYPE: Record<BankMovementDirection, ManualBankMovementType> = {
+  IN: 'DEPOSIT',
+  OUT: 'WITHDRAW',
 };
 
 export function BankMovementModal({
@@ -72,14 +66,12 @@ export function BankMovementModal({
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ movementType: TYPE_OPTIONS[direction][0].value, businessDate: dayjs() }}
+        initialValues={{ movementType: MOVEMENT_TYPE[direction], businessDate: dayjs() }}
       >
         <Form.Item label="Tài khoản">
           <Input value={`${account.bankCode} · ${account.accountNo} · ${account.currencyCode}`} disabled />
         </Form.Item>
-        <Form.Item name="movementType" label="Hình thức" rules={[{ required: true }]}>
-          <Segmented block options={TYPE_OPTIONS[direction]} />
-        </Form.Item>
+        <Form.Item name="movementType" hidden><Input /></Form.Item>
         <Form.Item name="amount" label={`Số tiền ${account.currencyCode}`} rules={[{ required: true, message: 'Nhập số tiền' }]}>
           <InputNumber
             className="w-full"

@@ -1,7 +1,7 @@
 import { httpClient } from '@/shared/api/httpClient';
 
 export type BankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RECONCILIATION' | 'ADVANCE_CK' | 'ADVANCE_SETTLE';
-export type ManualBankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+export type ManualBankMovementType = 'DEPOSIT' | 'WITHDRAW';
 
 export interface BankDto {
   id: string;
@@ -42,12 +42,19 @@ export interface BankMovementDto {
   settledMovementId?: string | null;
 }
 
-// Tạm ứng CK hằng ngày (DongDav6): NV chi nhánh ứng trước CK cho khách, cuối ngày KTTH/GĐ hoàn lại
-export interface RecordAdvanceCkInput {
-  bankAccountId: string;
-  branchId: string;
+export interface InternalBankTransferInput {
+  fromBankAccountId: string;
+  toBankAccountId: string;
   amount: number;
-  description: string;
+  description?: string;
+  bankReference?: string;
+  businessDate?: string;
+}
+
+export interface InternalBankTransferResult {
+  transferReference: string;
+  fromMovement: BankMovementDto;
+  toMovement: BankMovementDto;
 }
 
 export interface DebtAccountDto {
@@ -90,10 +97,10 @@ export const bankApi = {
     httpClient.get<BankMovementDto[]>('/bank/movements', { params: { bankAccountId } }).then((r) => r.data),
   createMovement: (bankAccountId: string, payload: CreateBankMovementInput) =>
     httpClient.post<BankMovementDto>(`/bank/accounts/${bankAccountId}/movements`, payload).then((r) => r.data),
+  internalTransfer: (payload: InternalBankTransferInput) =>
+    httpClient.post<InternalBankTransferResult>('/bank/internal-transfer', payload).then((r) => r.data),
   advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }) =>
     httpClient.get<BankMovementDto[]>('/bank/advances', { params }).then((r) => r.data),
-  recordAdvanceCk: (payload: RecordAdvanceCkInput) =>
-    httpClient.post<BankMovementDto>('/bank/advance-ck', payload).then((r) => r.data),
   settleAdvanceCk: (advanceId: string, payload: { bankAccountId: string; note?: string }) =>
     httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload).then((r) => r.data),
   debts: () => httpClient.get<DebtAccountDto[]>('/debts').then((r) => r.data),

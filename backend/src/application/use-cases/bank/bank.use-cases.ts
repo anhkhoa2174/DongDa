@@ -6,9 +6,12 @@
 
 import { Injectable, Inject, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { IBankRepository } from '../../../domain/repositories/bank.repository';
-import { Bank, BankAccount, BankMovement, CurrencyCode } from '../../../domain/entities/bank.entity';
+import { Bank, BankAccount, BankMovement, CurrencyCode, InternalBankTransferResult } from '../../../domain/entities/bank.entity';
 import { UserRole, GLOBAL_ROLES } from '../../../domain/entities/user.entity';
-import type { CreateBankAccountDto, CreateBankMovementDto, ReceiveFromProviderDto, RecordAdvanceCkDto, SettleAdvanceCkDto } from '../../dtos/bank/bank.dto';
+import type {
+  CreateBankAccountDto, CreateBankMovementDto, CreateInternalBankTransferDto,
+  ReceiveFromProviderDto, SettleAdvanceCkDto,
+} from '../../dtos/bank/bank.dto';
 import { toVietnamBusinessDate } from '../../../infrastructure/database/business-date';
 
 export interface BankActor {
@@ -89,24 +92,35 @@ export class RecordBankMovementUseCase {
 }
 
 @Injectable()
+export class InternalBankTransferUseCase {
+  constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
+
+  async execute(
+    dto: CreateInternalBankTransferDto,
+    actor: BankActor,
+  ): Promise<InternalBankTransferResult> {
+    if (dto.fromBankAccountId === dto.toBankAccountId) {
+      throw new BadRequestException('Tài khoản nguồn và tài khoản đích phải khác nhau');
+    }
+    return this.bankRepo.transferInternal({
+      fromBankAccountId: dto.fromBankAccountId,
+      toBankAccountId: dto.toBankAccountId,
+      amount: dto.amount,
+      description: dto.description?.trim() || undefined,
+      bankReference: dto.bankReference?.trim() || undefined,
+      businessDate: dto.businessDate
+        ? toVietnamBusinessDate(new Date(`${dto.businessDate}T00:00:00+07:00`))
+        : undefined,
+      createdByUserId: actor.id,
+    });
+  }
+}
+
+@Injectable()
 export class ReceiveFromProviderUseCase {
   constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
   execute(dto: ReceiveFromProviderDto, createdByUserId: string): Promise<BankMovement> {
     return this.bankRepo.receiveFromProvider({ ...dto, createdByUserId });
-  }
-}
-
-// ---- Tạm ứng CK hằng ngày (DongDav6) ----
-// Nhân viên CN ứng trước chuyển khoản cho khách -> ghi ADVANCE_CK (số dư tài khoản âm tạm thời);
-// cuối ngày KTTH/GĐ hoàn lại bằng tài khoản chính -> ADVANCE_SETTLE, số dư về 0.
-@Injectable()
-export class RecordAdvanceCkUseCase {
-  constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
-  execute(dto: RecordAdvanceCkDto, actor: BankActor): Promise<BankMovement> {
-    // STAFF chỉ được ghi cho chi nhánh mình
-    const branchId = GLOBAL_ROLES.includes(actor.role) ? dto.branchId : (actor.branchId ?? dto.branchId);
-    if (!branchId) throw new BadRequestException('Thiếu chi nhánh');
-    return this.bankRepo.recordAdvanceCk({ ...dto, branchId, createdByUserId: actor.id });
   }
 }
 

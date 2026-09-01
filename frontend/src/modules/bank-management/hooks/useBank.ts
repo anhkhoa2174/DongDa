@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { bankApi, type CreateBankAccountInput, type CreateBankMovementInput, type RecordAdvanceCkInput } from '../api/bank.api';
+import {
+  bankApi, type CreateBankAccountInput, type CreateBankMovementInput, type InternalBankTransferInput,
+} from '../api/bank.api';
 
 const KEY = ['bank'] as const;
 
@@ -44,16 +46,16 @@ export function useCreateBankMovement() {
     onSuccess: invalidate,
   });
 }
+export function useInternalBankTransfer() {
+  const invalidate = useInvalidateBank();
+  return useMutation({ mutationFn: (input: InternalBankTransferInput) => bankApi.internalTransfer(input), onSuccess: invalidate });
+}
 export function useAdvances(params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }, enabled = true) {
   return useQuery({
     queryKey: [...KEY, 'advances', params.bankAccountId ?? 'all', params.branchId ?? 'all', params.status ?? 'all'],
     queryFn: () => bankApi.advances(params),
     enabled,
   });
-}
-export function useRecordAdvanceCk() {
-  const invalidate = useInvalidateBank();
-  return useMutation({ mutationFn: (input: RecordAdvanceCkInput) => bankApi.recordAdvanceCk(input), onSuccess: invalidate });
 }
 export function useSettleAdvanceCk() {
   const invalidate = useInvalidateBank();

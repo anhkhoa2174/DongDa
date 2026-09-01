@@ -23,7 +23,7 @@ import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBranches } from '@/shared/hooks/useBranches';
 import { useAdvances, useBankAccounts, useDeactivateBankAccount, useSettleAdvanceCk } from '../hooks/useBank';
 import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
-import { AdvanceCkModal } from '../components/AdvanceCkModal';
+import { InternalBankTransferModal } from '../components/InternalBankTransferModal';
 import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
 import { CreateBankAccountModal } from '../components/CreateBankAccountModal';
 
@@ -32,13 +32,13 @@ function formatAccountMoney(account: BankAccountDto, value: number) {
 }
 
 function BankAccountCard({
-  account, canManage, canRecord, onRecord, onAdvance, onDeactivate,
+  account, canManage, canRecord, onRecord, onInternalTransfer, onDeactivate,
 }: {
   account: BankAccountDto;
   canManage: boolean;
   canRecord: boolean;
   onRecord: (direction: BankMovementDirection) => void;
-  onAdvance: () => void;
+  onInternalTransfer: () => void;
   onDeactivate: () => void;
 }) {
   const navigate = useNavigate();
@@ -86,8 +86,8 @@ function BankAccountCard({
         <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Lịch sử</Button>
         <Button icon={<ArrowDownOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('IN'); }}>Tiền vào</Button>
         <Button danger icon={<ArrowUpOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('OUT'); }}>Tiền ra</Button>
-        <Button icon={<SwapOutlined />} disabled={!canRecord} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }}
-          onClick={(event) => { event.stopPropagation(); onAdvance(); }}>Ứng CK</Button>
+        <Button icon={<SwapOutlined />} disabled={!canManage} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }}
+          onClick={(event) => { event.stopPropagation(); onInternalTransfer(); }}>CK nội bộ</Button>
         {canManage ? (
           <Popconfirm
             title="Ngưng tài khoản này?"
@@ -115,13 +115,14 @@ export function BankAccountsPage() {
   const [branchFilter, setBranchFilter] = useState<string | undefined>(undefined);
   const { data: branches = [] } = useBranches();
   const { data: accounts = [], isLoading } = useBankAccounts(isBranchUser ? undefined : branchFilter);
+  const { data: allAccounts = [] } = useBankAccounts(undefined, canManage);
   const deactivate = useDeactivateBankAccount();
   const [keyword, setKeyword] = useState('');
   const [bankFilter, setBankFilter] = useState('ALL');
   const [createOpen, setCreateOpen] = useState(false);
   const [recording, setRecording] = useState<{ account: BankAccountDto; direction: BankMovementDirection } | null>(null);
-  const [advancing, setAdvancing] = useState<BankAccountDto | null>(null);
-  // Tạm ứng CK chưa hoàn (DongDav6): NV ứng trước trong ngày, KTTH/GĐ hoàn lại cuối ngày
+  const [internalTransferSource, setInternalTransferSource] = useState<BankAccountDto | null>(null);
+  // Tạm ứng CK chỉ được sinh từ giao dịch "Nhận tiền mặt, chuyển khoản".
   const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
   const settle = useSettleAdvanceCk();
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
@@ -233,7 +234,7 @@ export function BankAccountsPage() {
         <Card
           title={`Tạm ứng CK chưa hoàn (${pendingAdvances.length})`}
           size="small"
-          extra={<Typography.Text type="secondary" className="text-xs!">NV ứng trước CK cho khách trong ngày · KTTH/GĐ bấm Hoàn khi đã thanh toán lại bằng tài khoản chính</Typography.Text>}
+          extra={<Typography.Text type="secondary" className="text-xs!">Sinh tự động từ giao dịch nhận tiền mặt, chuyển khoản · KTTH/GĐ bấm Hoàn khi đã thanh toán lại</Typography.Text>}
         >
           <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols} dataSource={pendingAdvances}
             pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 800 }}
@@ -253,7 +254,7 @@ export function BankAccountsPage() {
                   canManage={canManage}
                   canRecord={canRecord}
                   onRecord={(direction) => setRecording({ account, direction })}
-                  onAdvance={() => setAdvancing(account)}
+                  onInternalTransfer={() => setInternalTransferSource(account)}
                   onDeactivate={() => onDeactivate(account)}
                 />
               </Col>
@@ -263,7 +264,14 @@ export function BankAccountsPage() {
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      {advancing && <AdvanceCkModal account={advancing} open onClose={() => setAdvancing(null)} />}
+      {internalTransferSource && (
+        <InternalBankTransferModal
+          accounts={allAccounts}
+          sourceAccount={internalTransferSource}
+          open
+          onClose={() => setInternalTransferSource(null)}
+        />
+      )}
       {recording && (
         <BankMovementModal
           account={recording.account}

@@ -1,7 +1,9 @@
 // Repository Interface: Ngân hàng (Port)
 // Layer: Domain
 
-import type { Bank, BankAccount, BankMovement, BankMovementType, CurrencyCode } from '../entities/bank.entity';
+import type {
+  Bank, BankAccount, BankMovement, BankMovementType, CurrencyCode, InternalBankTransferResult,
+} from '../entities/bank.entity';
 
 export interface ReceiveFromProviderInput {
   bankAccountId: string;
@@ -34,12 +36,13 @@ export interface CreateBankMovementInput {
   createdByUserId: string;
 }
 
-// Tạm ứng CK hằng ngày (nhân viên CN ứng trước, cuối ngày hoàn lại)
-export interface RecordAdvanceCkInput {
-  bankAccountId: string;
-  branchId: string;
+export interface InternalBankTransferInput {
+  fromBankAccountId: string;
+  toBankAccountId: string;
   amount: number;
-  description: string;
+  description?: string;
+  bankReference?: string;
+  businessDate?: Date;
   createdByUserId: string;
 }
 
@@ -66,10 +69,10 @@ export interface IBankRepository {
   listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]>;
   // Nộp/rút/chuyển khoản thủ công: cập nhật số dư + ghi 1 dòng biến động (1 transaction)
   createMovement(input: CreateBankMovementInput): Promise<BankMovement>;
+  // Chuyển tiền giữa hai tài khoản nội bộ: giảm nguồn + tăng đích trong cùng transaction.
+  transferInternal(input: InternalBankTransferInput): Promise<InternalBankTransferResult>;
   // Ghi nhận tiền WU/MG về: NH tăng + công nợ giảm (1 transaction)
   receiveFromProvider(input: ReceiveFromProviderInput): Promise<BankMovement>;
-  // Tạm ứng CK hằng ngày
-  recordAdvanceCk(input: RecordAdvanceCkInput): Promise<BankMovement>;
   settleAdvanceCk(input: SettleAdvanceCkInput): Promise<BankMovement>;
   listAdvances(filter?: ListAdvancesFilter): Promise<BankMovement[]>;
 }

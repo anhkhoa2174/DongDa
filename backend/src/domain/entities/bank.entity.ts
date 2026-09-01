@@ -9,7 +9,14 @@
 import type { CurrencyCode } from './currency';
 export type { CurrencyCode } from './currency';
 
-export type BankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RECONCILIATION';
+export type BankMovementType =
+  | 'DEPOSIT'
+  | 'WITHDRAW'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'RECONCILIATION'
+  | 'ADVANCE_CK'
+  | 'ADVANCE_SETTLE';
 
 // Loại biến động làm TĂNG số dư; còn lại làm GIẢM.
 export const BANK_INFLOW_TYPES: BankMovementType[] = ['DEPOSIT', 'TRANSFER_IN'];
@@ -56,4 +63,10 @@ export interface BankMovement {
   // Chỉ có ở phiếu ADVANCE_CK: đã được hoàn (có ADVANCE_SETTLE tham chiếu tới) hay chưa
   settled?: boolean;
   settledMovementId?: string | null;
+}
+
+export interface InternalBankTransferResult {
+  transferReference: string;
+  fromMovement: BankMovement;
+  toMovement: BankMovement;
 }

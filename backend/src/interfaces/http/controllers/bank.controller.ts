@@ -5,9 +5,9 @@
 //   POST  /bank/accounts                  GĐ/KTTH tạo tài khoản NH cho chi nhánh/Hội sở
 //   PATCH /bank/accounts/:id/deactivate   GĐ/KTTH ngưng tài khoản (số dư phải = 0)
 //   GET   /bank/movements?bankAccountId=  lịch sử biến động
-//   POST  /bank/accounts/:id/movements    nộp/rút/chuyển khoản thủ công (STAFF: tài khoản chi nhánh mình)
+//   POST  /bank/accounts/:id/movements    nộp/rút tiền thủ công (STAFF: tài khoản chi nhánh mình)
+//   POST  /bank/internal-transfer         chuyển khoản giữa hai tài khoản nội bộ
 //   POST  /bank/receive                   ghi nhận tiền WU/MG về → NH tăng + công nợ giảm
-//   POST  /bank/advance-ck                ghi nhận số CK tạm ứng trong ngày (nhân viên CN ứng trước)
 //   POST  /bank/advance-ck/:id/settle     KTTH/GĐ hoàn lại tạm ứng CK cuối ngày bằng tài khoản chính
 //   GET   /bank/advances                  danh sách tạm ứng CK (chưa hoàn / tất cả)
 
@@ -17,10 +17,11 @@ import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import {
   ListBankUseCase, ReceiveFromProviderUseCase, ManageBankAccountUseCase, RecordBankMovementUseCase, BankActor,
-  RecordAdvanceCkUseCase, SettleAdvanceCkUseCase, ListAdvancesUseCase,
+  InternalBankTransferUseCase, SettleAdvanceCkUseCase, ListAdvancesUseCase,
 } from '../../../application/use-cases/bank/bank.use-cases';
 import {
-  ReceiveFromProviderDto, CreateBankAccountDto, CreateBankMovementDto, RecordAdvanceCkDto, SettleAdvanceCkDto,
+  ReceiveFromProviderDto, CreateBankAccountDto, CreateBankMovementDto, CreateInternalBankTransferDto,
+  SettleAdvanceCkDto,
 } from '../../../application/dtos/bank/bank.dto';
 
 @Controller('bank')
@@ -30,8 +31,8 @@ export class BankController {
     private readonly listBank: ListBankUseCase,
     private readonly manageAccount: ManageBankAccountUseCase,
     private readonly recordMovement: RecordBankMovementUseCase,
+    private readonly internalTransfer: InternalBankTransferUseCase,
     private readonly receive: ReceiveFromProviderUseCase,
-    private readonly recordAdvance: RecordAdvanceCkUseCase,
     private readonly settleAdvance: SettleAdvanceCkUseCase,
     private readonly listAdvances: ListAdvancesUseCase,
   ) {}
@@ -69,12 +70,19 @@ export class BankController {
     return this.listBank.movements(actorOf(req), bankAccountId || undefined);
   }
 
-  // Nộp/rút/chuyển khoản thủ công — GĐ/KTTH mọi tài khoản; STAFF chỉ tài khoản chi nhánh mình
+  // Nộp/rút tiền thủ công — GĐ/KTTH mọi tài khoản; STAFF chỉ tài khoản chi nhánh mình
   @Post('accounts/:id/movements')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   createMovement(@Request() req: any, @Param('id') id: string, @Body() dto: CreateBankMovementDto) {
     return this.recordMovement.execute(id, dto, actorOf(req));
+  }
+
+  @Post('internal-transfer')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  transferInternal(@Request() req: any, @Body() dto: CreateInternalBankTransferDto) {
+    return this.internalTransfer.execute(dto, actorOf(req));
   }
 
   // Ghi nhận tiền về — KTTH/GĐ
@@ -83,14 +91,6 @@ export class BankController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   receiveMoney(@Request() req: any, @Body() dto: ReceiveFromProviderDto) {
     return this.receive.execute(dto, req.user.id);
-  }
-
-  // Ghi nhận số CK tạm ứng trong ngày (DongDav6) — STAFF chỉ cho chi nhánh mình
-  @Post('advance-ck')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
-  recordAdvanceCk(@Request() req: any, @Body() dto: RecordAdvanceCkDto) {
-    return this.recordAdvance.execute(dto, actorOf(req));
   }
 
   // Hoàn lại tạm ứng CK cuối ngày bằng tài khoản chính — KTTH/GĐ

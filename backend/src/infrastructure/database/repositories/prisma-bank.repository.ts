@@ -5,8 +5,11 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma.service';
 import {
   IBankRepository, ReceiveFromProviderInput, CreateBankAccountInput, CreateBankMovementInput,
+  InternalBankTransferInput,
 } from '../../../domain/repositories/bank.repository';
-import { Bank, BankAccount, BankMovement, CurrencyCode, isBankInflow } from '../../../domain/entities/bank.entity';
+import {
+  Bank, BankAccount, BankMovement, CurrencyCode, InternalBankTransferResult, isBankInflow,
+} from '../../../domain/entities/bank.entity';
 import { toVietnamBusinessDate } from '../business-date';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
 import { NotificationService } from '../../notifications/notification.service';
@@ -156,6 +159,113 @@ export class PrismaBankRepository implements IBankRepository {
     return toMovement(row);
   }
 
+  async transferInternal(input: InternalBankTransferInput): Promise<InternalBankTransferResult> {
+    if (input.fromBankAccountId === input.toBankAccountId) {
+      throw new BadRequestException('Tài khoản nguồn và tài khoản đích phải khác nhau');
+    }
+    const now = new Date();
+    const businessDate = input.businessDate ?? toVietnamBusinessDate(now);
+    const transferReference = `CKNB-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const accountIds = [input.fromBankAccountId, input.toBankAccountId].sort();
+      for (const accountId of accountIds) await this.lockBankAccount(tx, accountId);
+
+      const accounts = await tx.bank_accounts.findMany({ where: { id: { in: accountIds } } });
+      const fromAccount = accounts.find((account) => account.id === input.fromBankAccountId);
+      const toAccount = accounts.find((account) => account.id === input.toBankAccountId);
+      if (!fromAccount || !toAccount) throw new NotFoundException('Không tìm thấy tài khoản nguồn hoặc tài khoản đích');
+      if (fromAccount.status !== 'ACTIVE' || toAccount.status !== 'ACTIVE') {
+        throw new BadRequestException('Chỉ được chuyển giữa các tài khoản đang hoạt động');
+      }
+      if (fromAccount.currency_code !== toAccount.currency_code) {
+        throw new BadRequestException('Tài khoản nguồn và tài khoản đích phải cùng loại tiền');
+      }
+
+      const amount = Number(input.amount);
+      const fromBefore = Number(fromAccount.current_balance);
+      const toBefore = Number(toAccount.current_balance);
+      if (amount > fromBefore) {
+        throw new BadRequestException(
+          `Tài khoản nguồn không đủ số dư (còn ${fromBefore} ${fromAccount.currency_code})`,
+        );
+      }
+      const fromAfter = fromBefore - amount;
+      const toAfter = toBefore + amount;
+      const description = [
+        input.description?.trim() || 'Chuyển khoản nội bộ',
+        input.bankReference?.trim() ? `Ref NH: ${input.bankReference.trim()}` : null,
+      ].filter(Boolean).join(' · ');
+
+      const [fromMovement, destinationMovement] = await Promise.all([
+        tx.bank_balance_movements.create({
+          data: {
+            movement_no: `${transferReference}-OUT`,
+            bank_account_id: fromAccount.id,
+            branch_id: fromAccount.branch_id,
+            movement_type: 'TRANSFER_OUT',
+            business_date: businessDate,
+            amount,
+            currency_code: fromAccount.currency_code,
+            balance_before: fromBefore,
+            balance_after: fromAfter,
+            bank_reference: transferReference,
+            description: `${description} → ${toAccount.account_no}`,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.createdByUserId,
+          },
+        }),
+        tx.bank_balance_movements.create({
+          data: {
+            movement_no: `${transferReference}-IN`,
+            bank_account_id: toAccount.id,
+            branch_id: toAccount.branch_id,
+            movement_type: 'TRANSFER_IN',
+            business_date: businessDate,
+            amount,
+            currency_code: toAccount.currency_code,
+            balance_before: toBefore,
+            balance_after: toAfter,
+            bank_reference: transferReference,
+            description: `${description} ← ${fromAccount.account_no}`,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.createdByUserId,
+          },
+        }),
+      ]);
+
+      await Promise.all([
+        tx.bank_accounts.update({
+          where: { id: fromAccount.id },
+          data: { current_balance: fromAfter, available_balance: fromAfter, updated_at: now },
+        }),
+        tx.bank_accounts.update({
+          where: { id: toAccount.id },
+          data: { current_balance: toAfter, available_balance: toAfter, updated_at: now },
+        }),
+      ]);
+
+      await this.notifications.notifyUsers({
+        title: 'Chuyển khoản nội bộ thành công',
+        body: `${amount.toLocaleString('en-US')} ${fromAccount.currency_code}: ${fromAccount.account_no} → ${toAccount.account_no}.`,
+        sourceType: 'BANK_INTERNAL_TRANSFER',
+        sourceId: fromMovement.id,
+      }, {
+        userIds: [input.createdByUserId],
+        roles: ['ADMIN', 'MANAGER'],
+        branchIds: [...new Set([fromAccount.branch_id, toAccount.branch_id])],
+      }, tx);
+
+      return {
+        transferReference,
+        fromMovement: toMovement(fromMovement),
+        toMovement: toMovement(destinationMovement),
+      };
+    });
+  }
+
   async listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]> {
     const rows = await this.prisma.bank_balance_movements.findMany({
       where: { ...(bankAccountId && { bank_account_id: bankAccountId }), ...(branchId && { branch_id: branchId }) },
@@ -294,41 +404,6 @@ export class PrismaBankRepository implements IBankRepository {
 
   private async lockBankAccount(tx: any, bankAccountId: string) {
     await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${bankAccountId}::uuid FOR UPDATE`;
-  }
-
-  // Ghi nhận tạm ứng CK hằng ngày tại chi nhánh
-  async recordAdvanceCk(input: import('../../../domain/repositories/bank.repository').RecordAdvanceCkInput): Promise<BankMovement> {
-    const now = new Date();
-    const businessDate = toVietnamBusinessDate(now);
-    return this.prisma.$transaction(async (tx) => {
-      await this.lockBankAccount(tx, input.bankAccountId);
-      const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
-      if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
-      const before = Number(bankAcc.current_balance);
-      const after = before - input.amount; // CK ra → số dư giảm
-      const movement = await tx.bank_balance_movements.create({
-        data: {
-          movement_no: `ADV-CK-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          bank_account_id: input.bankAccountId,
-          branch_id: input.branchId,
-          movement_type: 'ADVANCE_CK' as any,
-          business_date: businessDate,
-          amount: input.amount,
-          currency_code: bankAcc.currency_code,
-          balance_before: before,
-          balance_after: after,
-          description: input.description,
-          status: 'POSTED',
-          posted_at: now,
-          created_by_user_id: input.createdByUserId,
-        },
-      });
-      await tx.bank_accounts.update({
-        where: { id: input.bankAccountId },
-        data: { current_balance: after, available_balance: after },
-      });
-      return toMovement(movement);
-    });
   }
 
   // Hoàn lại tạm ứng CK cuối ngày

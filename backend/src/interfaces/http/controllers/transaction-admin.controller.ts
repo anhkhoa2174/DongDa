@@ -974,7 +974,7 @@ export class TransactionAdminController {
 
       if (domesticBankMovement && domesticBankBalance !== null) {
         const amount = Number(domesticBankMovement.amount);
-        const reversesTransferOut = domesticBankMovement.movement_type === 'TRANSFER_OUT';
+        const reversesTransferOut = ['TRANSFER_OUT', 'ADVANCE_CK'].includes(domesticBankMovement.movement_type);
         const balanceAfter = reversesTransferOut
           ? domesticBankBalance + amount
           : domesticBankBalance - amount;

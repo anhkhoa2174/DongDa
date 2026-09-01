@@ -17,7 +17,7 @@ import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBankAccounts, useBankMovements } from '../hooks/useBank';
 import type { BankAccountDto, BankMovementDto, BankMovementType } from '../api/bank.api';
 import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
-import { AdvanceCkModal } from '../components/AdvanceCkModal';
+import { InternalBankTransferModal } from '../components/InternalBankTransferModal';
 
 const movementMeta: Record<BankMovementType, { label: string; color: string; inflow: boolean }> = {
   DEPOSIT: { label: 'Tiền vào', color: 'green', inflow: true },
@@ -38,8 +38,9 @@ export function BankAccountMovementsPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const canRecord = user?.role === 'director' || user?.role === 'accountant' || user?.role === 'branch';
+  const canManage = user?.role === 'director' || user?.role === 'accountant';
   const [direction, setDirection] = useState<BankMovementDirection | null>(null);
-  const [advanceOpen, setAdvanceOpen] = useState(false);
+  const [internalTransferOpen, setInternalTransferOpen] = useState(false);
   const { data: accounts = [], isLoading } = useBankAccounts();
   const { data: movements = [] } = useBankMovements(accountKey);
   const account = accounts.find((a) => a.id === accountKey);
@@ -108,7 +109,7 @@ export function BankAccountMovementsPage() {
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/bank-management/accounts')}>Danh sách tài khoản</Button>
           {canRecord && <Button icon={<ArrowDownOutlined />} onClick={() => setDirection('IN')}>Tiền vào</Button>}
           {canRecord && <Button danger icon={<ArrowUpOutlined />} onClick={() => setDirection('OUT')}>Tiền ra</Button>}
-          {canRecord && <Button icon={<SwapOutlined />} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }} onClick={() => setAdvanceOpen(true)}>Ứng CK</Button>}
+          {canManage && <Button icon={<SwapOutlined />} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }} onClick={() => setInternalTransferOpen(true)}>CK nội bộ</Button>}
         </Space>
       )}
     >
@@ -152,7 +153,12 @@ export function BankAccountMovementsPage() {
       {direction && (
         <BankMovementModal account={account} direction={direction} open onClose={() => setDirection(null)} />
       )}
-      <AdvanceCkModal account={account} open={advanceOpen} onClose={() => setAdvanceOpen(false)} />
+      <InternalBankTransferModal
+        accounts={accounts}
+        sourceAccount={account}
+        open={internalTransferOpen}
+        onClose={() => setInternalTransferOpen(false)}
+      />
     </PageScaffold>
   );
 }

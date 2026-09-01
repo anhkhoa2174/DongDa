@@ -56,10 +56,10 @@ export class CreateBankAccountDto {
   openingBalance?: number;
 }
 
-export const MANUAL_BANK_MOVEMENT_TYPES = ['DEPOSIT', 'WITHDRAW', 'TRANSFER_IN', 'TRANSFER_OUT'] as const;
+export const MANUAL_BANK_MOVEMENT_TYPES = ['DEPOSIT', 'WITHDRAW'] as const;
 
 export class CreateBankMovementDto {
-  @IsEnum(MANUAL_BANK_MOVEMENT_TYPES as unknown as object, { message: 'movementType phải là DEPOSIT/WITHDRAW/TRANSFER_IN/TRANSFER_OUT' })
+  @IsEnum(MANUAL_BANK_MOVEMENT_TYPES as unknown as object, { message: 'movementType phải là DEPOSIT/WITHDRAW' })
   movementType: (typeof MANUAL_BANK_MOVEMENT_TYPES)[number];
 
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -86,22 +86,30 @@ export class CreateBankMovementDto {
   businessDate?: string;
 }
 
-// Tạm ứng CK hằng ngày (DongDav6): nhân viên chi nhánh ứng trước để chuyển khoản cho khách,
-// cuối ngày KTTH dùng tài khoản chính thanh toán lại.
-export class RecordAdvanceCkDto {
+export class CreateInternalBankTransferDto {
   @IsUUID()
-  bankAccountId: string;
+  fromBankAccountId: string;
 
   @IsUUID()
-  branchId: string;
+  toBankAccountId: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  description: string; // Ghi rõ mục đích CK
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  bankReference?: string;
+
+  @IsOptional()
+  @IsDateString()
+  businessDate?: string;
 }
 
 // Hoàn lại tạm ứng CK

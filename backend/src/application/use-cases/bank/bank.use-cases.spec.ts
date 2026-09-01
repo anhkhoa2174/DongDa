@@ -1,5 +1,7 @@
 import { ForbiddenException, BadRequestException } from '@nestjs/common';
-import { ListBankUseCase, RecordBankMovementUseCase, ManageBankAccountUseCase } from './bank.use-cases';
+import {
+  InternalBankTransferUseCase, ListBankUseCase, RecordBankMovementUseCase, ManageBankAccountUseCase,
+} from './bank.use-cases';
 import { UserRole } from '../../../domain/entities/user.entity';
 
 const BRANCH_A = 'branch-a';
@@ -19,6 +21,7 @@ function makeRepo() {
     deactivateAccount: jest.fn(),
     listMovements: jest.fn().mockResolvedValue([]),
     createMovement: jest.fn().mockResolvedValue({ id: 'mv-1' }),
+    transferInternal: jest.fn().mockResolvedValue({ transferReference: 'CKNB-1' }),
     receiveFromProvider: jest.fn(),
   };
 }
@@ -43,9 +46,31 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
       .rejects.toBeInstanceOf(ForbiddenException);
 
     repo.findAccount.mockResolvedValue(account(BRANCH_A));
-    await uc.execute('acc-1', { movementType: 'TRANSFER_IN', amount: 100, counterparty: 'Khách A' }, staffA);
+    await uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100, counterparty: 'Khách A' }, staffA);
     expect(repo.createMovement).toHaveBeenCalledWith(expect.objectContaining({
-      bankAccountId: 'acc-1', movementType: 'TRANSFER_IN', amount: 100, counterparty: 'Khách A', createdByUserId: 'staff-a',
+      bankAccountId: 'acc-1', movementType: 'DEPOSIT', amount: 100, counterparty: 'Khách A', createdByUserId: 'staff-a',
+    }));
+  });
+
+  it('CK nội bộ không cho chọn cùng một tài khoản nguồn và đích', async () => {
+    const repo = makeRepo();
+    const uc = new InternalBankTransferUseCase(repo as any);
+    await expect(uc.execute({
+      fromBankAccountId: 'acc-1', toBankAccountId: 'acc-1', amount: 100,
+    }, admin)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.transferInternal).not.toHaveBeenCalled();
+  });
+
+  it('CK nội bộ chuyển actor và dữ liệu đã chuẩn hóa xuống repository', async () => {
+    const repo = makeRepo();
+    const uc = new InternalBankTransferUseCase(repo as any);
+    await uc.execute({
+      fromBankAccountId: 'acc-1', toBankAccountId: 'acc-2', amount: 100,
+      description: '  Điều chuyển vốn  ', bankReference: ' REF-01 ',
+    }, admin);
+    expect(repo.transferInternal).toHaveBeenCalledWith(expect.objectContaining({
+      fromBankAccountId: 'acc-1', toBankAccountId: 'acc-2', amount: 100,
+      description: 'Điều chuyển vốn', bankReference: 'REF-01', createdByUserId: 'admin',
     }));
   });
 

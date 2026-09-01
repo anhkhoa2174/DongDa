@@ -120,14 +120,16 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
           movement_no: `DT-BM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           bank_account_id: bankAccount.id,
           branch_id: input.branchId,
-          movement_type: input.transferType === 'CASH_TO_BANK' ? 'TRANSFER_OUT' : 'TRANSFER_IN',
+          movement_type: input.transferType === 'CASH_TO_BANK' ? 'ADVANCE_CK' : 'TRANSFER_IN',
           business_date: businessDate,
           amount: input.amount,
           currency_code: 'VND',
           balance_before: bankBalance,
           balance_after: bankBalanceAfter,
           bank_reference: `DOMESTIC:${transaction.id}`,
-          description: `${transaction.transaction_no} - ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}`,
+          description: input.transferType === 'CASH_TO_BANK'
+            ? `${transaction.transaction_no} - Ứng CK cho giao dịch nhận tiền mặt: ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}`
+            : `${transaction.transaction_no} - ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}`,
           status: 'POSTED',
           posted_at: now,
           created_by_user_id: input.createdByUserId,
