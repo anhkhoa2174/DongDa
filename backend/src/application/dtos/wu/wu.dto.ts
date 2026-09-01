@@ -54,6 +54,11 @@ export class CreateWuDto {
   @MaxLength(100)
   identityDocumentNumber: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  identityPlaceOfIssue?: string;
+
   @IsString()
   @MaxLength(100)
   identityIssuingCountry: string;
@@ -87,6 +92,11 @@ export class CreateWuDto {
   @IsString()
   @MaxLength(100)
   countryOfBirth: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  nationality?: string;
 
   @IsString()
   @MaxLength(100)

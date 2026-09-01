@@ -17,6 +17,7 @@ export interface WuTransactionDto {
   identityAddress?: string | null;
   identityDocumentType?: string | null;
   identityDocumentNumber?: string | null;
+  identityPlaceOfIssue?: string | null;
   identityIssuingCountry?: string | null;
   identityIssueDate?: string | null;
   identityExpiryDate?: string | null;
@@ -27,6 +28,7 @@ export interface WuTransactionDto {
   visaExpiryDate?: string | null;
   employmentStatus?: string | null;
   countryOfBirth?: string | null;
+  nationality?: string | null;
   senderRelationship?: string | null;
   receivePurpose?: string | null;
   senderName?: string | null;
@@ -58,6 +60,7 @@ export interface CreateWuPayload {
   identityAddress?: string;
   identityDocumentType: string;
   identityDocumentNumber: string;
+  identityPlaceOfIssue: string;
   identityIssuingCountry: string;
   identityIssueDate: string;
   identityExpiryDate: string;
@@ -67,6 +70,7 @@ export interface CreateWuPayload {
   visaExpiryDate?: string;
   employmentStatus: string;
   countryOfBirth: string;
+  nationality: string;
   senderRelationship: string;
   receivePurpose: string;
   senderName: string;
@@ -80,9 +84,17 @@ export interface CreateWuPayload {
   paidCurrency: string;
 }
 
+export interface WuRecentOptionsDto {
+  employmentStatuses: string[];
+  senderRelationships: string[];
+  receivePurposes: string[];
+}
+
 export const wuApi = {
   list: (branchId?: string) =>
     httpClient.get<WuTransactionDto[]>('/wu/transactions', { params: { branchId } }).then((r) => r.data),
+  recentOptions: (branchId?: string) =>
+    httpClient.get<WuRecentOptionsDto>('/wu/transactions/recent-options', { params: branchId ? { branchId } : {} }).then((r) => r.data),
   create: (payload: CreateWuPayload) =>
     httpClient.post<WuTransactionDto>('/wu/transactions', payload).then((r) => r.data),
   exportForm: (bank: 'ACB' | 'MSB', payload: CreateWuPayload) =>

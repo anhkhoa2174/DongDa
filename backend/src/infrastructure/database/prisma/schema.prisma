@@ -1195,6 +1195,7 @@ model wu_transaction_details {
   identity_address         String?
   identity_document_type   String?               @db.VarChar(50)
   identity_document_number String?               @db.VarChar(100)
+  identity_place_of_issue  String?               @db.VarChar(150)
   identity_issuing_country String?               @db.VarChar(100)
   identity_issue_date      DateTime?             @db.Date
   identity_expiry_date     DateTime?             @db.Date
@@ -1205,6 +1206,7 @@ model wu_transaction_details {
   visa_expiry_date         DateTime?             @db.Date
   employment_status        String?               @db.VarChar(100)
   country_of_birth         String?               @db.VarChar(100)
+  nationality              String?               @db.VarChar(100)
   sender_relationship      String?               @db.VarChar(100)
   receive_purpose          String?               @db.VarChar(150)
   sender_name              String?               @db.VarChar(150)

@@ -3,6 +3,7 @@ import { App, DatePicker, Form, Input, InputNumber, Modal } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
+import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import type { BankAccountDto, ManualBankMovementType } from '../api/bank.api';
 import { useCreateBankMovement } from '../hooks/useBank';
 
@@ -89,7 +90,7 @@ export function BankMovementModal({
           <Input placeholder="Số bút toán / mã giao dịch trên app ngân hàng" maxLength={150} />
         </Form.Item>
         <Form.Item name="businessDate" label="Ngày nghiệp vụ">
-          <DatePicker className="w-full" format="DD/MM/YYYY" disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+          <DatePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
         </Form.Item>
         <Form.Item name="description" label="Nội dung">
           <Input.TextArea rows={2} maxLength={500} placeholder={direction === 'IN' ? 'Nội dung tiền vào' : 'Nội dung tiền ra'} />

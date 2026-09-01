@@ -6,6 +6,12 @@ const KEY = ['wu'] as const;
 export function useWuTransactions(branchId?: string) {
   return useQuery({ queryKey: [...KEY, 'list', branchId], queryFn: () => wuApi.list(branchId) });
 }
+export function useWuRecentOptions(branchId?: string) {
+  return useQuery({
+    queryKey: [...KEY, 'recent-options', branchId ?? 'all'],
+    queryFn: () => wuApi.recentOptions(branchId),
+  });
+}
 export function useCreateWu() {
   const qc = useQueryClient();
   return useMutation({

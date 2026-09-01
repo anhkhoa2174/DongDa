@@ -21,6 +21,7 @@ import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import { formatNumber, numberInputFormatter, numberInputParser } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
+import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 
 const money = (n: number) => formatNumber(n, 2);
 
@@ -317,7 +318,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                 <Row gutter={12}>
                   <Col xs={24} md={10}>
                     <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
-                      <DatePicker className="w-full" format="DD/MM/YYYY" />
+                      <DatePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={14}>

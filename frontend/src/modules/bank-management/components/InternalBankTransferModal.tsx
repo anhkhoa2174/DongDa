@@ -3,6 +3,7 @@ import { Alert, App, DatePicker, Form, Input, InputNumber, Modal, Select, Typogr
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo } from 'react';
 import { getApiErrorMessage } from '@/shared/utils/errors';
+import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import {
   numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser,
 } from '@/shared/utils/formatters';
@@ -136,7 +137,7 @@ export function InternalBankTransferModal({
           />
         </Form.Item>
         <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
-          <DatePicker className="w-full" format="DD/MM/YYYY" disabledDate={(date) => date.isAfter(dayjs(), 'day')} />
+          <DatePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(date) => date.isAfter(dayjs(), 'day')} />
         </Form.Item>
         <Form.Item name="bankReference" label="Mã tham chiếu ngân hàng">
           <Input maxLength={150} placeholder="Không bắt buộc" />

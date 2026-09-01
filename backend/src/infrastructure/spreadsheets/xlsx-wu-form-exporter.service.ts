@@ -4,6 +4,9 @@ import { join, posix } from 'path';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { CreateWuDto } from '../../application/dtos/wu/wu.dto';
 import type { IWuFormExporter, WuFormBank, WuFormExport } from '../../application/ports/wu-form-exporter.port';
+import {
+  isVietnamCountry, normalizeCountryName, normalizeUpperText, normalizeUsStateName,
+} from '../../domain/services/wu-reference-data';
 
 const TEMPLATE_PATH = join(process.cwd(), 'src', 'assets', 'wu-form-template.xlsx');
 const WORKBOOK_XML = 'xl/workbook.xml';
@@ -20,7 +23,7 @@ export class XlsxWuFormExporterService implements IWuFormExporter {
       const entries = unzipSync(await readFile(TEMPLATE_PATH));
       const workbookXml = readXml(entries, WORKBOOK_XML);
       const paths = resolveSheetPaths(workbookXml, readXml(entries, WORKBOOK_RELS_XML));
-      const isVietnamese = normalizeCountry(dto.identityIssuingCountry) === 'VIET NAM';
+      const isVietnamese = isVietnamCountry(dto.identityIssuingCountry);
       const targetName = bank === 'ACB'
         ? (isVietnamese ? 'PHIẾU ACB (VN)' : 'PHIẾU ACB (NƯỚC NGOÀI)')
         : (isVietnamese ? 'PHIẾU MSB (vn)' : 'PHIẾU MSB (nước ngoài)');
@@ -51,15 +54,21 @@ function outputCells(dto: CreateWuDto, bank: WuFormBank, isVietnamese: boolean):
   const dob = formatDate(dto.receiverDateOfBirth);
   const issueDate = formatDate(dto.identityIssueDate);
   const expiryDate = formatDate(dto.identityExpiryDate);
+  const sendingCountry = normalizeCountryName(dto.sendingCountry);
+  const senderState = normalizeUsStateName(dto.senderState);
+  const placeOfIssue = normalizeUpperText(dto.identityPlaceOfIssue || dto.identityIssuingCountry);
+  const issuingCountry = normalizeCountryName(dto.identityIssuingCountry);
+  const countryOfBirth = normalizeCountryName(dto.countryOfBirth);
+  const nationality = normalizeCountryName(dto.nationality?.trim() || dto.countryOfBirth);
   if (bank === 'ACB') {
     const cells: Record<string, CellValue> = {
-      D6: mtcn, D7: dto.sendingCountry, [isVietnamese ? 'H9' : 'H10']: dto.senderState,
+      D6: mtcn, D7: sendingCountry, [isVietnamese ? 'H9' : 'H10']: senderState,
       D11: paidAmount, [isVietnamese ? 'J11' : 'M11']: dto.paidCurrency,
       [isVietnamese ? 'D13' : 'C13']: dto.customerName, D14: dob, K14: dto.customerPhone,
       D15: dto.currentAddress, D16: dto.identityAddress, G18: dto.identityDocumentType,
-      K18: dto.identityDocumentNumber, C19: dto.identityIssuingCountry,
+      K18: dto.identityDocumentNumber, C19: issuingCountry,
       J19: issueDate, M19: expiryDate, D22: dto.employmentStatus,
-      [isVietnamese ? 'D23' : 'D24']: dto.countryOfBirth,
+      [isVietnamese ? 'D23' : 'D24']: countryOfBirth,
       [isVietnamese ? 'F24' : 'F25']: dto.senderRelationship,
       [isVietnamese ? 'K24' : 'K25']: dto.receivePurpose,
       [isVietnamese ? 'B27' : 'B28']: dto.senderName,
@@ -71,12 +80,12 @@ function outputCells(dto: CreateWuDto, bank: WuFormBank, isVietnamese: boolean):
     return cells;
   }
   return {
-    D10: mtcn, D12: dto.senderName, D14: dto.sendingCountry, G16: dto.senderState,
+    D10: mtcn, D12: dto.senderName, D14: sendingCountry, G16: senderState,
     D18: paidAmount, I18: dto.paidCurrency, D21: dto.customerName, C23: dob,
     G23: dto.customerPhone, D25: dto.currentAddress, F27: dto.identityAddress,
     C29: dto.identityDocumentType, G29: dto.identityDocumentNumber,
-    C31: issueDate, G31: expiryDate, C33: dto.identityIssuingCountry,
-    G33: dto.identityIssuingCountry, C35: dto.countryOfBirth, G35: dto.countryOfBirth,
+    C31: issueDate, G31: expiryDate, C33: placeOfIssue,
+    G33: issuingCountry, C35: nationality, G35: countryOfBirth,
   };
 }
 
@@ -205,8 +214,4 @@ function formatDate(value?: string) {
   if (!value) return '';
   const [year, month, day] = value.slice(0, 10).split('-');
   return `${day}/${month}/${year}`;
-}
-
-function normalizeCountry(value: string) {
-  return value.trim().toUpperCase().replace('VIETNAM', 'VIET NAM');
 }

@@ -37,6 +37,11 @@ describe('WU financial rules', () => {
     expect(() => validateAppliedRate(27_000, 25_500, 26_000)).toThrow(BadRequestException);
   });
 
+  it('uses WU, Paid and USD FX rates as the complete adjustable band', () => {
+    expect(() => validateAppliedRate(27_000, 25_500, 26_000, 27_500)).not.toThrow();
+    expect(() => validateAppliedRate(28_000, 25_500, 26_000, 27_500)).toThrow(BadRequestException);
+  });
+
   it('requires the WU transaction rate to use a 5 VND step', () => {
     expect(() => validateAppliedRate(25_975, 25_500, 26_000)).not.toThrow();
     expect(() => validateAppliedRate(25_973, 25_500, 26_000)).toThrow(BadRequestException);

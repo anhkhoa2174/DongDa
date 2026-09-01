@@ -22,6 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getCurrencyMetadata } from '@/shared/constants/currencies';
 import { formatDateTime, formatExchangeRate } from '@/shared/utils/formatters';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import type {
   ExchangeRateGroup,
   ExchangeRateHistoryGroupDto,
@@ -197,7 +198,8 @@ export function ExchangeRateHistoryPage() {
           <Col xs={24} lg={5}>
             <DatePicker.RangePicker
               className="w-full"
-              format="DD/MM/YYYY"
+              format={DATE_INPUT_FORMAT}
+              placeholder={DATE_RANGE_PLACEHOLDERS}
               onChange={(dates) => {
                 setFrom(dates?.[0]?.format('YYYY-MM-DD'));
                 setTo(dates?.[1]?.format('YYYY-MM-DD'));

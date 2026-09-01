@@ -30,6 +30,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
@@ -762,7 +763,8 @@ export function TransactionsMainPage() {
             <Col xs={24} lg={4}>
               <DatePicker.RangePicker
                 className="w-full"
-                format="DD/MM/YYYY"
+                format={DATE_INPUT_FORMAT}
+                placeholder={DATE_RANGE_PLACEHOLDERS}
                 value={dateRange}
                 onChange={(dates) => setDateRange(dates as [Dayjs | null, Dayjs | null] | null)}
               />

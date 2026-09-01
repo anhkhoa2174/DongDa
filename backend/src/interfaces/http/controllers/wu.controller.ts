@@ -34,6 +34,12 @@ export class WuController {
     return this.listWu.execute(query);
   }
 
+  @Get('recent-options')
+  recentOptions(@Request() req: any, @Query('branchId') branchId?: string) {
+    const scopedBranchId = req.user?.role === UserRole.STAFF ? req.user.branchId : branchId;
+    return this.listWu.recentOptions(scopedBranchId);
+  }
+
   // Tạo GD — Staff tạo tại chi nhánh mình; GĐ/KTTH được tạo tại chi nhánh cần điều chỉnh.
   @Post()
   @UseGuards(RolesGuard)

@@ -20,6 +20,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { formatVnd } from '@/shared/utils/formatters';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import { summaryApi, type ReportPreviewDto } from '../api/summary.api';
 import { useNotify } from '@/app/providers/notifications/useNotify';
 import { useBranches } from '@/shared/hooks/useBranches';
@@ -120,7 +121,7 @@ export function ReportsPage() {
           </Col>
           <Col xs={24} md={9}>
             <Typography.Text type="secondary" className="text-xs!">Khoảng thời gian</Typography.Text>
-            <DatePicker.RangePicker className="w-full" value={range} onChange={(value) => value && setRange(value as [Dayjs, Dayjs])} />
+            <DatePicker.RangePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_RANGE_PLACEHOLDERS} value={range} onChange={(value) => value && setRange(value as [Dayjs, Dayjs])} />
           </Col>
           <Col xs={24} md={5}>
             <Typography.Text type="secondary" className="text-xs!">Chi nhánh</Typography.Text>

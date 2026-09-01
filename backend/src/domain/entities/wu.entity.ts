@@ -26,6 +26,7 @@ export interface WuTransaction {
   identityAddress?: string | null;
   identityDocumentType?: string | null;
   identityDocumentNumber?: string | null;
+  identityPlaceOfIssue?: string | null;
   identityIssuingCountry?: string | null;
   identityIssueDate?: Date | null;
   identityExpiryDate?: Date | null;
@@ -36,6 +37,7 @@ export interface WuTransaction {
   visaExpiryDate?: Date | null;
   employmentStatus?: string | null;
   countryOfBirth?: string | null;
+  nationality?: string | null;
   senderRelationship?: string | null;
   receivePurpose?: string | null;
   senderName?: string | null;

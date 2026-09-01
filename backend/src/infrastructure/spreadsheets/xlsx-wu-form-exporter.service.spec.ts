@@ -9,6 +9,7 @@ const dto = {
   customerName: 'ALEX ROBERTS', customerPhone: '0783269349', sendingCountry: 'AUSTRALIA',
   receiverDateOfBirth: '1983-06-21', currentAddress: '97DUONG 66 P THAO DIEN Q2',
   identityDocumentType: 'PASSPORT', identityDocumentNumber: '146171983',
+  identityPlaceOfIssue: 'Home Office',
   identityIssuingCountry: 'UNITED KINGDOM', identityIssueDate: '2024-04-11', identityExpiryDate: '2034-04-11',
   hasVisa: true, visaNumber: 'F-146171983', visaIssueDate: '2025-05-17', visaExpiryDate: '2025-06-30',
   employmentStatus: 'Nghề tự do / Freelancer', countryOfBirth: 'UNITED KINGDOM',
@@ -48,5 +49,30 @@ describe('XlsxWuFormExporterService', () => {
     const sheet = strFromU8(unzipSync(result.buffer)['xl/worksheets/sheet6.xml']);
     expect(sheet).toMatch(/<c[^>]*r="D18"[^>]*><v>4100000<\/v><\/c>/);
     expect(sheet).toMatch(/<c[^>]*r="I18"[^>]*>[\s\S]*?<t[^>]*>VND<\/t>/);
+  });
+
+  it('recognizes accented Việt Nam and selects the Vietnamese form', async () => {
+    const result = await new XlsxWuFormExporterService().export('ACB', {
+      ...dto,
+      identityIssuingCountry: 'Việt Nam',
+      nationality: 'VIETNAM',
+    });
+    expect(Object.keys(unzipSync(result.buffer)).filter((path) => /^xl\/worksheets\/sheet\d+\.xml$/.test(path)))
+      .toEqual(['xl/worksheets/sheet1.xml']);
+    expect(strFromU8(unzipSync(result.buffer)['xl/workbook.xml']))
+      .toContain('name="PHIẾU ACB (VN)" sheetId="1" r:id="rId1"/>');
+  });
+
+  it('writes place, issuing country, nationality and country of birth to their MSB cells', async () => {
+    const result = await new XlsxWuFormExporterService().export('MSB', {
+      ...dto,
+      countryOfBirth: 'UNITED KINGDOM',
+      nationality: 'VIETNAM',
+    });
+    const sheet = strFromU8(unzipSync(result.buffer)['xl/worksheets/sheet6.xml']);
+    expect(sheet).toMatch(/<c[^>]*r="C33"[^>]*>[\s\S]*?<t[^>]*>HOME OFFICE<\/t>/);
+    expect(sheet).toMatch(/<c[^>]*r="G33"[^>]*>[\s\S]*?<t[^>]*>UNITED KINGDOM<\/t>/);
+    expect(sheet).toMatch(/<c[^>]*r="C35"[^>]*>[\s\S]*?<t[^>]*>VIETNAM<\/t>/);
+    expect(sheet).toMatch(/<c[^>]*r="G35"[^>]*>[\s\S]*?<t[^>]*>UNITED KINGDOM<\/t>/);
   });
 });

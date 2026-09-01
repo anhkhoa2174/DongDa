@@ -23,6 +23,7 @@ import {
   BankOutlined, EyeOutlined, PayCircleOutlined, ReloadOutlined, SearchOutlined, WalletOutlined,
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
@@ -332,7 +333,7 @@ export function DebtSettlementPage() {
               </Col>
               <Col xs={24} md={12} xl={5}>
                 <Form.Item name="dateRange" noStyle>
-                  <RangePicker className="w-full" format="DD/MM/YYYY" placeholder={['Từ ngày', 'Đến ngày']} onChange={(dates) => setQuery((current) => ({ ...current, dateFrom: dates?.[0]?.format('YYYY-MM-DD'), dateTo: dates?.[1]?.format('YYYY-MM-DD') }))} />
+                  <RangePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_RANGE_PLACEHOLDERS} onChange={(dates) => setQuery((current) => ({ ...current, dateFrom: dates?.[0]?.format('YYYY-MM-DD'), dateTo: dates?.[1]?.format('YYYY-MM-DD') }))} />
                 </Form.Item>
               </Col>
               <Col xs={12} md={8} xl={3}>

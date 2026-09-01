@@ -26,6 +26,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { FormInstance } from 'antd';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -427,7 +428,7 @@ export function TransactionWorkspacePage({
                 ]}
               />
             </Col>
-            <Col xs={24} sm={12} md={8}><DatePicker.RangePicker className="w-full" format="DD/MM/YYYY" /></Col>
+            <Col xs={24} sm={12} md={8}><DatePicker.RangePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_RANGE_PLACEHOLDERS} /></Col>
           </Row>
           <Table columns={tableColumns} dataSource={filteredRecords} scroll={{ x: 1500 }} pagination={{ pageSize: 10 }} />
         </Card>

@@ -1,11 +1,12 @@
 // Flow WU — Tạo giao dịch Western Union (nối API thật)
-import { App, Alert, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
+import { App, Alert, AutoComplete, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
 import { DownloadOutlined, SendOutlined } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import type { Dayjs } from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import { getApiErrorMessage } from '@/shared/utils/errors';
+import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
@@ -20,7 +21,7 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useCreateWu } from '../hooks/useWu';
+import { useCreateWu, useWuRecentOptions } from '../hooks/useWu';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
 import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/transactions/utils/paidRateSlider';
 import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
@@ -29,6 +30,14 @@ import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 import { wuApi } from '../api/wu.api';
 import type { CreateWuPayload } from '../api/wu.api';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
+import {
+  countryOptions,
+  filterReferenceOption,
+  normalizeCountryName,
+  normalizeUpperText,
+  normalizeUsStateName,
+  usStateOptions,
+} from '../model/wuReferenceData';
 
 export function WuWorkspacePage() {
   const { message } = App.useApp();
@@ -44,6 +53,7 @@ export function WuWorkspacePage() {
 
   const resetTransactionForm = () => {
     form.resetFields();
+    form.setFieldValue('receivedDate', dayjs());
     resetBranchField();
   };
 
@@ -54,15 +64,19 @@ export function WuWorkspacePage() {
   const payoutCurrency = Form.useWatch('payoutCurrency', form) ?? 'USD';
   const paidCurrency = Form.useWatch('paidCurrency', form) ?? 'USD';
   const bankAccountId = Form.useWatch('bankAccountId', form);
+  const selectedBranchId = Form.useWatch('branchId', form) as string | undefined;
+  const { data: recentOptions } = useWuRecentOptions(selectedBranchId);
   const eligibleBankAccounts = bankAccounts.filter((account) => (
     account.status === 'ACTIVE' && account.currencyCode === paidCurrency
   ));
   const selectedBank = eligibleBankAccounts.find((account) => account.id === bankAccountId);
   const rateType: ExchangeRateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
-  const rateSelectionKey = `${rateType}:${systemRate ?? 0}`;
+  const fxRateType: ExchangeRateType = payoutCurrency === 'VND' ? 'FX_BUY' : 'FX_SELL';
+  const fxUsdRate = findActiveRate(activeRates, fxRateType, 'USD', 'INTERNAL')?.rate;
+  const rateSelectionKey = `${rateType}:${systemRate ?? 0}:${fxRateType}:${fxUsdRate ?? 0}`;
   const implied = wuUsd > 0 ? wuVnd / wuUsd : 0;
-  const rateBounds = getPaidRateBounds(implied, systemRate);
+  const rateBounds = getPaidRateBounds(implied, systemRate, fxUsdRate);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
   const hasVisa = Form.useWatch('hasVisa', form) ?? false;
@@ -84,6 +98,7 @@ export function WuWorkspacePage() {
       rateSelectionChanged && systemRate ? systemRate : transactionRate,
       implied,
       systemRate,
+      fxUsdRate,
     );
     const payoutCurrencyChanged = previousPayoutCurrency.current !== payoutCurrency;
     const wuUsdChanged = previousWuUsd.current !== wuUsd;
@@ -101,7 +116,7 @@ export function WuWorkspacePage() {
     previousPayoutCurrency.current = payoutCurrency;
     previousRateSelectionKey.current = rateSelectionKey;
     previousWuUsd.current = wuUsd;
-  }, [form, implied, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
+  }, [form, fxUsdRate, implied, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
 
   useEffect(() => {
     if (!hasVisa) form.setFieldsValue({ visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
@@ -119,14 +134,15 @@ export function WuWorkspacePage() {
     mtcn: v.mtcn,
     customerName: v.customerName,
     customerPhone: v.customerPhone,
-    sendingCountry: v.sendingCountry,
-    senderState: v.senderState,
+    sendingCountry: normalizeCountryName(v.sendingCountry),
+    senderState: normalizeUsStateName(v.senderState),
     receiverDateOfBirth: v.receiverDateOfBirth.format('YYYY-MM-DD'),
     currentAddress: v.currentAddress,
     identityAddress: v.identityAddress,
     identityDocumentType: v.identityDocumentType,
     identityDocumentNumber: v.identityDocumentNumber,
-    identityIssuingCountry: v.identityIssuingCountry,
+    identityPlaceOfIssue: normalizeUpperText(v.identityPlaceOfIssue),
+    identityIssuingCountry: normalizeCountryName(v.identityIssuingCountry),
     identityIssueDate: v.identityIssueDate.format('YYYY-MM-DD'),
     identityExpiryDate: v.identityExpiryDate.format('YYYY-MM-DD'),
     hasVisa: v.hasVisa,
@@ -134,7 +150,8 @@ export function WuWorkspacePage() {
     visaIssueDate: v.hasVisa ? v.visaIssueDate?.format('YYYY-MM-DD') : undefined,
     visaExpiryDate: v.hasVisa ? v.visaExpiryDate?.format('YYYY-MM-DD') : undefined,
     employmentStatus: v.employmentStatus,
-    countryOfBirth: v.countryOfBirth,
+    countryOfBirth: normalizeCountryName(v.countryOfBirth),
+    nationality: normalizeCountryName(v.nationality),
     senderRelationship: v.senderRelationship,
     receivePurpose: v.receivePurpose,
     senderName: v.senderName,
@@ -203,6 +220,8 @@ export function WuWorkspacePage() {
                 receivedUsd: 0,
                 receivedVnd: 0,
                 appliedRate: 0,
+                receivedDate: dayjs(),
+                nationality: 'VIETNAM',
               }}>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
                 <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
@@ -220,28 +239,29 @@ export function WuWorkspacePage() {
               </Row>
               <Typography.Title level={5}>Thông tin giao dịch và người gửi</Typography.Title>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="sendingCountry" label="Nước gửi tiền" rules={[requiredRule]}><Input placeholder="AUSTRALIA" /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="senderState" label="Tiểu bang (USA, CAN, MEX)" extra="Không bắt buộc"><Input /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="sendingCountry" label="Nước gửi tiền" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'sendingCountry')} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="senderState" label="Tiểu bang (USA, CAN, MEX)" extra="Không bắt buộc · Tiểu bang Mỹ lưu bằng tên đầy đủ"><AutoComplete options={usStateOptions} filterOption={filterReferenceOption} placeholder="Ví dụ: California" /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="senderName" label="Tên người gửi" rules={[requiredRule]}><Input /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="receivedDate" label="Ngày nhận tiền" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receivedDate" label="Ngày nhận tiền" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(date) => date.isAfter(dayjs(), 'day')} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><Select options={relationshipOptions} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><Select options={purposeOptions} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Nhập quan hệ" options={toRecentOptions(recentOptions?.senderRelationships)} filterOption={filterRecentOption} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><AutoComplete allowClear maxLength={150} placeholder="Nhập mục đích nhận tiền" options={toRecentOptions(recentOptions?.receivePurposes)} filterOption={filterRecentOption} /></Form.Item></Col>
               </Row>
 
               <Typography.Title level={5}>Thông tin người nhận</Typography.Title>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="receiverDateOfBirth" label="Ngày sinh" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receiverDateOfBirth" label="Ngày sinh" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item name="customerPhone" label="Số điện thoại" rules={[requiredRule]}><Input inputMode="tel" /></Form.Item></Col>
               </Row>
               <Form.Item name="currentAddress" label="Địa chỉ hiện tại" rules={[requiredRule]}><Input /></Form.Item>
               <Form.Item name="identityAddress" label="Địa chỉ CCCD" extra="Không bắt buộc"><Input /></Form.Item>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="employmentStatus" label="Tình trạng việc làm" rules={[requiredRule]}><Select options={employmentOptions} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><Input /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="employmentStatus" label="Nghề nghiệp" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Nhập nghề nghiệp" options={toRecentOptions(recentOptions?.employmentStatuses)} filterOption={filterRecentOption} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'countryOfBirth')} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="nationality" label="Quốc tịch" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="VIETNAM" onBlur={() => normalizeCountryField(form, 'nationality')} /></Form.Item></Col>
               </Row>
 
               <Typography.Title level={5}>Giấy tờ tùy thân</Typography.Title>
@@ -250,9 +270,12 @@ export function WuWorkspacePage() {
                 <Col xs={24} md={12}><Form.Item name="identityDocumentNumber" label="Số giấy tờ / Passport" rules={[requiredRule]}><Input /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col xs={24} md={8}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><Input /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="identityExpiryDate" label="Ngày hết hạn" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityPlaceOfIssue" label="Nơi cấp" rules={[requiredRule]}><Input maxLength={150} placeholder="Ví dụ: CỤC CẢNH SÁT QLHC VỀ TTXH" onBlur={(event) => form.setFieldValue('identityPlaceOfIssue', normalizeUpperText(event.currentTarget.value))} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'identityIssuingCountry')} /></Form.Item></Col>
+              </Row>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityExpiryDate" label="Ngày hết hạn" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
 
               <Typography.Title level={5}>Thông tin Visa</Typography.Title>
@@ -260,8 +283,8 @@ export function WuWorkspacePage() {
               {hasVisa && (
                 <Row gutter={8}>
                   <Col xs={24} md={8}><Form.Item name="visaNumber" label="Số Visa" rules={[requiredRule]}><Input /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name="visaIssueDate" label="Ngày cấp Visa" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name="visaExpiryDate" label="Ngày hết hạn Visa" rules={[requiredRule]}><DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name="visaIssueDate" label="Ngày cấp Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={24} md={8}><Form.Item name="visaExpiryDate" label="Ngày hết hạn Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
                 </Row>
               )}
 
@@ -328,8 +351,8 @@ export function WuWorkspacePage() {
                 min={rateBounds.min}
                 max={rateBounds.max}
                 step={PAID_RATE_STEP}
-                value={clampPaidRate(transactionRate, implied, systemRate)}
-                disabled={!systemRate || !implied}
+                value={clampPaidRate(transactionRate, implied, systemRate, fxUsdRate)}
+                disabled={!systemRate || !fxUsdRate || !implied}
                 tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
                 marks={{
                   [rateBounds.min]: formatExchangeRate(rateBounds.min),
@@ -361,6 +384,8 @@ export function WuWorkspacePage() {
                     <Typography.Text type="secondary">Tỷ giá</Typography.Text>
                     <div className="text-lg font-semibold">{formatExchangeRate(transactionRate)}</div>
                     <Typography.Text type="secondary">{rateType === 'PAID_BUY' ? 'Paid mua' : 'Paid bán'} {formatExchangeRate(systemRate ?? 0)}</Typography.Text>
+                    <br />
+                    <Typography.Text type="secondary">{fxRateType === 'FX_BUY' ? 'Mua USD' : 'Bán USD'} {formatExchangeRate(fxUsdRate ?? 0)}</Typography.Text>
                   </Col>
                   <Col xs={24}>
                     <Typography.Text type="secondary">Ngân hàng thanh toán công nợ</Typography.Text>
@@ -370,6 +395,9 @@ export function WuWorkspacePage() {
               </div>
               {!systemRate && (
                 <Alert type="warning" showIcon className="mb-3" message="Chưa có tỷ giá hệ thống ACTIVE cho WU. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch." />
+              )}
+              {systemRate && !fxUsdRate && (
+                <Alert type="warning" showIcon className="mb-3" message={`Chưa có tỷ giá ${fxRateType === 'FX_BUY' ? 'mua USD' : 'bán USD'} ACTIVE. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch.`} />
               )}
 
               <Row gutter={8} className="mb-3">
@@ -385,7 +413,7 @@ export function WuWorkspacePage() {
                 </Col>
               </Row>
 
-              <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate} block>
+              <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate || !fxUsdRate} block>
                 Tạo giao dịch
               </Button>
             </Form>
@@ -409,6 +437,7 @@ interface WuFormValues {
   identityAddress?: string;
   identityDocumentType: string;
   identityDocumentNumber: string;
+  identityPlaceOfIssue: string;
   identityIssuingCountry: string;
   identityIssueDate: Dayjs;
   identityExpiryDate: Dayjs;
@@ -418,6 +447,7 @@ interface WuFormValues {
   visaExpiryDate?: Dayjs;
   employmentStatus: string;
   countryOfBirth: string;
+  nationality: string;
   senderRelationship: string;
   receivePurpose: string;
   senderName: string;
@@ -432,26 +462,18 @@ interface WuFormValues {
 }
 
 const requiredRule = { required: true, message: 'Vui lòng nhập thông tin' };
-const relationshipOptions = [
-  { value: 'FAMILY', label: 'Gia đình (FAMILY)' },
-  { value: 'FRIEND', label: 'Bạn bè (FRIEND)' },
-  { value: 'BUSINESS', label: 'Công việc (BUSINESS)' },
-  { value: 'OTHER', label: 'Khác (OTHER)' },
-];
-const purposeOptions = [
-  { value: 'TRAVEL_EXPENSE', label: 'Chi phí đi lại (TRAVEL EXPENSE)' },
-  { value: 'FAMILY_SUPPORT', label: 'Hỗ trợ gia đình (FAMILY SUPPORT)' },
-  { value: 'EDUCATION', label: 'Giáo dục (EDUCATION)' },
-  { value: 'MEDICAL', label: 'Y tế (MEDICAL)' },
-  { value: 'OTHER', label: 'Khác (OTHER)' },
-];
-const employmentOptions = [
-  { value: 'FREELANCER', label: 'Nghề tự do / Freelancer' },
-  { value: 'EMPLOYED', label: 'Đang làm việc / Employed' },
-  { value: 'SELF_EMPLOYED', label: 'Tự kinh doanh / Self-employed' },
-  { value: 'RETIRED', label: 'Nghỉ hưu / Retired' },
-  { value: 'UNEMPLOYED', label: 'Không có việc làm / Unemployed' },
-];
+function normalizeCountryField(form: ReturnType<typeof Form.useForm>[0], field: string) {
+  form.setFieldValue(field, normalizeCountryName(form.getFieldValue(field)));
+}
+
+function toRecentOptions(values?: string[]) {
+  return (values ?? []).map((value) => ({ value }));
+}
+
+function filterRecentOption(inputValue: string, option?: { value?: string }) {
+  return String(option?.value ?? '').toLocaleLowerCase('vi-VN')
+    .includes(inputValue.toLocaleLowerCase('vi-VN'));
+}
 function findActiveRate(
   rates: ExchangeRateDto[],
   rateType: ExchangeRateType,

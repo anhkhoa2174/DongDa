@@ -16,6 +16,7 @@ export interface CreateWuInput {
   identityAddress?: string;
   identityDocumentType: string;
   identityDocumentNumber: string;
+  identityPlaceOfIssue: string;
   identityIssuingCountry: string;
   identityIssueDate: Date;
   identityExpiryDate: Date;
@@ -26,6 +27,7 @@ export interface CreateWuInput {
   visaExpiryDate?: Date;
   employmentStatus: string;
   countryOfBirth: string;
+  nationality: string;
   senderRelationship: string;
   receivePurpose: string;
   senderName: string;
@@ -45,9 +47,16 @@ export interface ListWuFilter {
   branchId?: string;
 }
 
+export interface WuRecentOptions {
+  employmentStatuses: string[];
+  senderRelationships: string[];
+  receivePurposes: string[];
+}
+
 export interface IWuRepository {
   mtcnExists(mtcn: string): Promise<boolean>;
   create(input: CreateWuInput): Promise<WuTransaction>;
   findById(id: string): Promise<WuTransaction | null>;
   list(filter?: ListWuFilter): Promise<WuTransaction[]>;
+  recentOptions(branchId?: string): Promise<WuRecentOptions>;
 }

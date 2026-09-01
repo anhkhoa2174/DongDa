@@ -2,12 +2,17 @@
 // Layer: Application
 
 import { Injectable, Inject, BadRequestException, ConflictException } from '@nestjs/common';
-import { IWuRepository, ListWuFilter } from '../../../domain/repositories/wu.repository';
+import { IWuRepository, ListWuFilter, WuRecentOptions } from '../../../domain/repositories/wu.repository';
 import { IExchangeRateRepository } from '../../../domain/repositories/exchange-rate.repository';
 import { WuTransaction, Currency2 } from '../../../domain/entities/wu.entity';
 import { ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateWuDto } from '../../dtos/wu/wu.dto';
 import { validatePaidAppliedRate } from '../exchange-rate/validate-paid-rate';
+import {
+  normalizeCountryName,
+  normalizeUpperText,
+  normalizeUsStateName,
+} from '../../../domain/services/wu-reference-data';
 
 @Injectable()
 export class CreateWuUseCase {
@@ -23,21 +28,43 @@ export class CreateWuUseCase {
     if (Number(dto.receivedUsd ?? 0) <= 0 && Number(dto.receivedVnd ?? 0) <= 0) {
       throw new BadRequestException('Phải nhập số tiền thực trả cho khách');
     }
+    const employmentStatus = requiredOpenText(dto.employmentStatus, 'Nghề nghiệp');
+    const senderRelationship = requiredOpenText(dto.senderRelationship, 'Quan hệ với người gửi');
+    const receivePurpose = requiredOpenText(dto.receivePurpose, 'Mục đích nhận tiền');
+    const nationality = normalizeCountryName(dto.nationality?.trim() || dto.countryOfBirth);
+    const identityPlaceOfIssue = normalizeUpperText(requiredOpenText(
+      dto.identityPlaceOfIssue ?? dto.identityIssuingCountry,
+      'Nơi cấp giấy tờ',
+    ));
 
     const rateType = dto.payoutCurrency === 'VND'
       ? ExchangeRateType.PAID_BUY
       : ExchangeRateType.PAID_SELL;
-    const active = await this.rateRepo.findActive({
-      rateType,
-      provider: ServiceProvider.WU_MG,
-      fromCurrency: 'USD',
-    });
+    const fxRateType = dto.payoutCurrency === 'VND'
+      ? ExchangeRateType.FX_BUY
+      : ExchangeRateType.FX_SELL;
+    const [active, fxRates] = await Promise.all([
+      this.rateRepo.findActive({
+        rateType,
+        provider: ServiceProvider.WU_MG,
+        fromCurrency: 'USD',
+      }),
+      this.rateRepo.findActive({
+        rateType: fxRateType,
+        provider: ServiceProvider.INTERNAL,
+        fromCurrency: 'USD',
+      }),
+    ]);
     const systemRate = active[0]?.rate;
     if (!systemRate) {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${rateType} cho WU/MG USD`);
     }
+    const fxUsdRate = fxRates[0]?.rate;
+    if (!fxUsdRate) {
+      throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${fxRateType} cho USD`);
+    }
     const wuRate = dto.wuUsdAmount > 0 ? dto.wuVndAmount / dto.wuUsdAmount : systemRate;
-    const appliedRate = validateAppliedRate(dto.appliedRate, wuRate, systemRate);
+    const appliedRate = validateAppliedRate(dto.appliedRate, wuRate, systemRate, fxUsdRate);
     assertWuPayoutMatches(dto, appliedRate);
 
     return this.wuRepo.create({
@@ -46,14 +73,15 @@ export class CreateWuUseCase {
       mtcn: dto.mtcn,
       customerName: dto.customerName,
       customerPhone: dto.customerPhone,
-      sendingCountry: dto.sendingCountry,
-      senderState: dto.senderState,
+      sendingCountry: normalizeCountryName(dto.sendingCountry),
+      senderState: normalizeUsStateName(dto.senderState),
       receiverDateOfBirth: new Date(dto.receiverDateOfBirth),
       currentAddress: dto.currentAddress,
       identityAddress: dto.identityAddress,
       identityDocumentType: dto.identityDocumentType,
       identityDocumentNumber: dto.identityDocumentNumber,
-      identityIssuingCountry: dto.identityIssuingCountry,
+      identityPlaceOfIssue,
+      identityIssuingCountry: normalizeCountryName(dto.identityIssuingCountry),
       identityIssueDate: new Date(dto.identityIssueDate),
       identityExpiryDate: new Date(dto.identityExpiryDate),
       hasVisa: dto.hasVisa,
@@ -61,10 +89,11 @@ export class CreateWuUseCase {
       visaNumber: dto.visaNumber,
       visaIssueDate: dto.visaIssueDate ? new Date(dto.visaIssueDate) : undefined,
       visaExpiryDate: dto.visaExpiryDate ? new Date(dto.visaExpiryDate) : undefined,
-      employmentStatus: dto.employmentStatus,
-      countryOfBirth: dto.countryOfBirth,
-      senderRelationship: dto.senderRelationship,
-      receivePurpose: dto.receivePurpose,
+      employmentStatus,
+      countryOfBirth: normalizeCountryName(dto.countryOfBirth),
+      nationality,
+      senderRelationship,
+      receivePurpose,
       senderName: dto.senderName,
       receivedDate: new Date(dto.receivedDate),
       wuUsdAmount: dto.wuUsdAmount,
@@ -80,6 +109,12 @@ export class CreateWuUseCase {
   }
 }
 
+function requiredOpenText(value: string, label: string): string {
+  const normalized = value?.trim();
+  if (!normalized) throw new BadRequestException(`${label} không được để trống`);
+  return normalized;
+}
+
 @Injectable()
 export class ListWuUseCase {
   constructor(@Inject('IWuRepository') private readonly wuRepo: IWuRepository) {}
@@ -89,10 +124,13 @@ export class ListWuUseCase {
   findById(id: string): Promise<WuTransaction | null> {
     return this.wuRepo.findById(id);
   }
+  recentOptions(branchId?: string): Promise<WuRecentOptions> {
+    return this.wuRepo.recentOptions(branchId);
+  }
 }
 
-export function validateAppliedRate(value: number, firstRate: number, secondRate: number) {
-  return validatePaidAppliedRate(value, firstRate, secondRate, 'WU');
+export function validateAppliedRate(value: number, firstRate: number, secondRate: number, thirdRate?: number) {
+  return validatePaidAppliedRate(value, firstRate, secondRate, 'WU', thirdRate);
 }
 
 export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {

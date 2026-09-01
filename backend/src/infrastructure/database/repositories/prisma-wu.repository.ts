@@ -4,7 +4,7 @@
 import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
-import { IWuRepository, CreateWuInput, ListWuFilter } from '../../../domain/repositories/wu.repository';
+import { IWuRepository, CreateWuInput, ListWuFilter, WuRecentOptions } from '../../../domain/repositories/wu.repository';
 import { WuTransaction, Currency2, wuImpliedRate } from '../../../domain/entities/wu.entity';
 import { toVietnamBusinessDate } from '../business-date';
 
@@ -17,6 +17,29 @@ export class PrismaWuRepository implements IWuRepository {
       where: { mtcn, customer_transactions: { status: 'COMPLETED' } },
     });
     return count > 0;
+  }
+
+  async recentOptions(branchId?: string): Promise<WuRecentOptions> {
+    const rows = await this.prisma.wu_transaction_details.findMany({
+      where: {
+        customer_transactions: {
+          status: 'COMPLETED',
+          ...(branchId && { branch_id: branchId }),
+        },
+      },
+      select: {
+        employment_status: true,
+        sender_relationship: true,
+        receive_purpose: true,
+      },
+      orderBy: { customer_transactions: { created_at: 'desc' } },
+      take: 100,
+    });
+    return {
+      employmentStatuses: recentDistinct(rows.map((row) => row.employment_status)),
+      senderRelationships: recentDistinct(rows.map((row) => row.sender_relationship)),
+      receivePurposes: recentDistinct(rows.map((row) => row.receive_purpose)),
+    };
   }
 
   async create(input: CreateWuInput): Promise<WuTransaction> {
@@ -79,6 +102,7 @@ export class PrismaWuRepository implements IWuRepository {
             identity_address: input.identityAddress ?? null,
             identity_document_type: input.identityDocumentType,
             identity_document_number: input.identityDocumentNumber,
+            identity_place_of_issue: input.identityPlaceOfIssue,
             identity_issuing_country: input.identityIssuingCountry,
             identity_issue_date: input.identityIssueDate,
             identity_expiry_date: input.identityExpiryDate,
@@ -89,6 +113,7 @@ export class PrismaWuRepository implements IWuRepository {
             visa_expiry_date: input.visaExpiryDate ?? null,
             employment_status: input.employmentStatus,
             country_of_birth: input.countryOfBirth,
+            nationality: input.nationality,
             sender_relationship: input.senderRelationship,
             receive_purpose: input.receivePurpose,
             sender_name: input.senderName,
@@ -251,6 +276,21 @@ export class PrismaWuRepository implements IWuRepository {
   }
 }
 
+function recentDistinct(values: Array<string | null>, limit = 5): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const rawValue of values) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    const key = value.toLocaleLowerCase('vi-VN');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+    if (result.length === limit) break;
+  }
+  return result;
+}
+
 function toDomain(row: any): WuTransaction {
   const d = row.wu_transaction_details;
   const wuUsd = Number(d.wu_usd_amount);
@@ -274,6 +314,7 @@ function toDomain(row: any): WuTransaction {
     identityAddress: d.identity_address ?? null,
     identityDocumentType: d.identity_document_type,
     identityDocumentNumber: d.identity_document_number,
+    identityPlaceOfIssue: d.identity_place_of_issue,
     identityIssuingCountry: d.identity_issuing_country,
     identityIssueDate: d.identity_issue_date,
     identityExpiryDate: d.identity_expiry_date,
@@ -284,6 +325,7 @@ function toDomain(row: any): WuTransaction {
     visaExpiryDate: d.visa_expiry_date,
     employmentStatus: d.employment_status,
     countryOfBirth: d.country_of_birth,
+    nationality: d.nationality,
     senderRelationship: d.sender_relationship,
     receivePurpose: d.receive_purpose,
     senderName: d.sender_name,
