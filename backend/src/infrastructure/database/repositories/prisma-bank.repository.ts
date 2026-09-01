@@ -11,6 +11,7 @@ import {
   Bank, BankAccount, BankMovement, CurrencyCode, InternalBankTransferResult, isBankInflow,
 } from '../../../domain/entities/bank.entity';
 import { toVietnamBusinessDate } from '../business-date';
+import { canonicalActiveFundAccount } from '../canonical-fund-account';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
 import { NotificationService } from '../../notifications/notification.service';
 
@@ -467,7 +468,9 @@ export class PrismaBankRepository implements IBankRepository {
     await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${bankAccountId}::uuid FOR UPDATE`;
   }
 
-  // Hoàn lại tạm ứng CK cuối ngày
+  // Hoàn lại tạm ứng CK cuối ngày — PHẢI có tài khoản đối ứng (không tự sinh tiền):
+  //   BRANCH_CASH : chi quỹ tiền mặt chi nhánh đã ứng (ghi cash_movements + ledger CREDIT) -> TK ngân hàng tăng
+  //   BANK_ACCOUNT: chuyển khoản nội bộ — TK nguồn giảm (TRANSFER_OUT) -> TK đã ứng tăng
   async settleAdvanceCk(input: import('../../../domain/repositories/bank.repository').SettleAdvanceCkInput): Promise<BankMovement> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
@@ -476,43 +479,169 @@ export class PrismaBankRepository implements IBankRepository {
       if (!advance || advance.movement_type !== 'ADVANCE_CK') {
         throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
       }
-      if (advance.bank_account_id !== input.bankAccountId) {
-        throw new BadRequestException('Phiếu tạm ứng không thuộc tài khoản ngân hàng này');
-      }
       const already = await tx.bank_balance_movements.findFirst({
         where: { movement_type: 'ADVANCE_SETTLE', bank_reference: input.advanceMovementId },
         select: { movement_no: true },
       });
       if (already) throw new BadRequestException(`Phiếu tạm ứng ${advance.movement_no} đã được hoàn (${already.movement_no})`);
-      await this.lockBankAccount(tx, input.bankAccountId);
-      const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
-      if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
-      const before = Number(bankAcc.current_balance);
-      const after = before + Number(advance.amount); // hoàn lại → số dư tăng
+
+      const amount = Number(advance.amount);
+      const targetId = advance.bank_account_id;
+      await this.lockBankAccount(tx, targetId);
+      const target = await tx.bank_accounts.findUniqueOrThrow({ where: { id: targetId } });
+
+      let sourceLabel: string;
+      if (input.source === 'BANK_ACCOUNT') {
+        if (!input.sourceBankAccountId) throw new BadRequestException('Thiếu tài khoản ngân hàng nguồn');
+        if (input.sourceBankAccountId === targetId) {
+          throw new BadRequestException('Tài khoản nguồn phải khác tài khoản đã ứng');
+        }
+        await this.lockBankAccount(tx, input.sourceBankAccountId);
+        const source = await tx.bank_accounts.findUnique({ where: { id: input.sourceBankAccountId } });
+        if (!source || source.status !== 'ACTIVE') throw new NotFoundException('Không tìm thấy tài khoản nguồn đang hoạt động');
+        if (source.currency_code !== target.currency_code) {
+          throw new BadRequestException(`Tài khoản nguồn dùng ${source.currency_code}, không khớp ${target.currency_code}`);
+        }
+        const srcBefore = Number(source.current_balance);
+        if (amount > srcBefore) {
+          throw new BadRequestException(`Số dư tài khoản nguồn ${source.account_no} không đủ (còn ${srcBefore} ${source.currency_code})`);
+        }
+        await tx.bank_balance_movements.create({
+          data: {
+            movement_no: `ADV-SETTLE-SRC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            bank_account_id: source.id,
+            branch_id: source.branch_id,
+            movement_type: 'TRANSFER_OUT',
+            business_date: businessDate,
+            amount,
+            currency_code: source.currency_code,
+            balance_before: srcBefore,
+            balance_after: srcBefore - amount,
+            bank_reference: `SRC-${input.advanceMovementId}`,
+            description: `Hoàn tạm ứng CK ${advance.movement_no}${input.note ? ` - ${input.note}` : ''}`,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: input.settledByUserId,
+          },
+        });
+        await tx.bank_accounts.update({
+          where: { id: source.id },
+          data: { current_balance: srcBefore - amount, available_balance: srcBefore - amount },
+        });
+        sourceLabel = `từ TK ${source.account_no}`;
+      } else {
+        // BRANCH_CASH: chi quỹ tiền mặt của chi nhánh đã ứng (tiền mặt đã thu của khách)
+        const cashAccount = await canonicalActiveFundAccount(tx, advance.branch_id, target.currency_code as CurrencyCode, false);
+        if (!cashAccount) {
+          throw new BadRequestException(`Chi nhánh chưa có sổ tiền mặt ${target.currency_code} để hoàn ứng`);
+        }
+        const lines = await tx.ledger_lines.findMany({
+          where: { fund_account_id: cashAccount.id, ledger_entries: { status: 'POSTED' } },
+          select: { direction: true, amount: true },
+        });
+        const cashBalance = lines.reduce((sum: number, l: any) => sum + (l.direction === 'DEBIT' ? Number(l.amount) : -Number(l.amount)), 0);
+        if (amount > cashBalance) {
+          throw new BadRequestException(`Quỹ tiền mặt chi nhánh không đủ (còn ${cashBalance} ${target.currency_code})`);
+        }
+        const rate = await this.activeCashRate(tx, String(target.currency_code));
+        const movementNo = `ADV-SETTLE-CASH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const cashMovement = await tx.cash_movements.create({
+          data: {
+            movement_no: movementNo,
+            branch_id: advance.branch_id,
+            fund_account_id: cashAccount.id,
+            movement_type: 'CASH_OUT',
+            business_date: businessDate,
+            amount,
+            currency_code: target.currency_code,
+            source_name: 'Hoàn tạm ứng CK',
+            description: `Hoàn tạm ứng CK ${advance.movement_no}${input.note ? ` - ${input.note}` : ''}`,
+            status: 'POSTED',
+            approved_by_user_id: input.settledByUserId,
+            created_by_user_id: input.settledByUserId,
+            posted_at: now,
+          },
+        });
+        await tx.ledger_entries.create({
+          data: {
+            entry_no: `LE-${movementNo}`,
+            business_date: businessDate,
+            branch_id: advance.branch_id,
+            source_type: 'CASH_MOVEMENT',
+            source_id: cashMovement.id,
+            status: 'POSTED',
+            posted_at: now,
+            description: `Chi tiền mặt hoàn tạm ứng CK ${advance.movement_no}${input.note ? ` - ${input.note}` : ''}`,
+            created_by_user_id: input.settledByUserId,
+            approved_by_user_id: input.settledByUserId,
+            ledger_lines: {
+              create: [{
+                fund_account_id: cashAccount.id,
+                direction: 'CREDIT',
+                amount,
+                currency_code: target.currency_code,
+                exchange_rate: rate,
+                base_amount_vnd: amount * rate,
+              }],
+            },
+          },
+        });
+        sourceLabel = 'từ quỹ tiền mặt chi nhánh';
+      }
+
+      const before = Number(target.current_balance);
+      const after = before + amount;
       const movement = await tx.bank_balance_movements.create({
         data: {
           movement_no: `ADV-SETTLE-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          bank_account_id: input.bankAccountId,
+          bank_account_id: targetId,
           branch_id: advance.branch_id,
           movement_type: 'ADVANCE_SETTLE' as any,
           business_date: businessDate,
-          amount: Number(advance.amount),
-          currency_code: bankAcc.currency_code,
+          amount,
+          currency_code: target.currency_code,
           balance_before: before,
           balance_after: after,
-          description: input.note ?? `Hoàn lại CK ${advance.movement_no}`,
-          bank_reference: input.advanceMovementId, // liên kết tới phiếu gốc
+          bank_reference: input.advanceMovementId, // liên kết tới phiếu ứng gốc
+          description: `Hoàn tạm ứng ${advance.movement_no} ${sourceLabel}${input.note ? ` - ${input.note}` : ''}`,
           status: 'POSTED',
           posted_at: now,
           created_by_user_id: input.settledByUserId,
         },
       });
       await tx.bank_accounts.update({
-        where: { id: input.bankAccountId },
+        where: { id: targetId },
         data: { current_balance: after, available_balance: after },
       });
       return toMovement(movement);
     });
+  }
+
+  // Tỷ giá quy đổi VND cho bút toán tiền mặt: VND = 1, ngoại tệ lấy FX_BUY active (fallback 1)
+  private async activeCashRate(db: any, currency: string): Promise<number> {
+    if (currency === 'VND') return 1;
+    const fx = await db.exchange_rates.findFirst({
+      where: {
+        status: 'ACTIVE', rate_type: 'FX_BUY', provider: 'INTERNAL',
+        from_currency: currency, to_currency: 'VND',
+        effective_from: { lte: new Date() },
+        OR: [{ effective_to: null }, { effective_to: { gt: new Date() } }],
+      },
+      orderBy: { effective_from: 'desc' },
+      select: { rate: true },
+    });
+    if (fx) return Number(fx.rate);
+    const paid = await db.exchange_rates.findFirst({
+      where: {
+        status: 'ACTIVE', rate_type: 'PAID_BUY',
+        from_currency: currency, to_currency: 'VND',
+        effective_from: { lte: new Date() },
+        OR: [{ effective_to: null }, { effective_to: { gt: new Date() } }],
+      },
+      orderBy: { effective_from: 'desc' },
+      select: { rate: true },
+    });
+    return paid ? Number(paid.rate) : 1;
   }
 
   // Liệt kê tạm ứng CK theo filter.

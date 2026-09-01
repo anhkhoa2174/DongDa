@@ -135,8 +135,18 @@ export class ReceiveFromProviderUseCase {
 export class SettleAdvanceCkUseCase {
   constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
   execute(advanceMovementId: string, dto: SettleAdvanceCkDto, settledByUserId: string): Promise<BankMovement> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(advanceMovementId)) {
+      throw new BadRequestException('ID phiếu tạm ứng không hợp lệ');
+    }
+    if (dto.source === 'BANK_ACCOUNT' && !dto.sourceBankAccountId) {
+      throw new BadRequestException('Hoàn bằng chuyển khoản nội bộ phải chọn tài khoản nguồn');
+    }
     return this.bankRepo.settleAdvanceCk({
-      advanceMovementId, bankAccountId: dto.bankAccountId, note: dto.note, settledByUserId,
+      advanceMovementId,
+      source: dto.source,
+      sourceBankAccountId: dto.sourceBankAccountId,
+      note: dto.note?.trim() || undefined,
+      settledByUserId,
     });
   }
 }

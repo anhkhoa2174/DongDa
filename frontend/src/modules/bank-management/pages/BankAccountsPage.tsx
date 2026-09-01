@@ -21,9 +21,10 @@ import { formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBranches } from '@/shared/hooks/useBranches';
-import { useAdvances, useBankAccounts, useDeactivateBankAccount, useSettleAdvanceCk } from '../hooks/useBank';
+import { useAdvances, useBankAccounts, useDeactivateBankAccount } from '../hooks/useBank';
 import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
 import { InternalBankTransferModal } from '../components/InternalBankTransferModal';
+import { SettleAdvanceModal } from '../components/SettleAdvanceModal';
 import { BankMovementModal, type BankMovementDirection } from '../components/BankMovementModal';
 import { CreateBankAccountModal } from '../components/CreateBankAccountModal';
 
@@ -124,16 +125,9 @@ export function BankAccountsPage() {
   const [internalTransferSource, setInternalTransferSource] = useState<BankAccountDto | null>(null);
   // Tạm ứng CK chỉ được sinh từ giao dịch "Nhận tiền mặt, chuyển khoản".
   const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
-  const settle = useSettleAdvanceCk();
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
-  const onSettle = async (adv: BankMovementDto) => {
-    try {
-      await settle.mutateAsync({ advanceId: adv.id, bankAccountId: adv.bankAccountId });
-      message.success(`Đã hoàn tạm ứng ${adv.movementNo}`);
-    } catch (error: unknown) {
-      message.error(getApiErrorMessage(error, 'Hoàn tạm ứng thất bại'));
-    }
-  };
+  // Hoàn ứng phải chọn nguồn đối ứng (quỹ tiền mặt CN / TK ngân hàng khác) -> mở form
+  const [settling, setSettling] = useState<BankMovementDto | null>(null);
   const advanceCols: ColumnsType<BankMovementDto> = [
     { title: 'Ngày', dataIndex: 'businessDate', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
     { title: 'Số phiếu', dataIndex: 'movementNo', width: 200 },
@@ -144,9 +138,7 @@ export function BankAccountsPage() {
     ...(canManage ? [{
       title: '', width: 110,
       render: (_: unknown, r: BankMovementDto) => (
-        <Popconfirm title="Hoàn lại khoản ứng này bằng tài khoản chính?" okText="Hoàn" cancelText="Hủy" onConfirm={() => onSettle(r)}>
-          <Button size="small" type="primary" icon={<CheckOutlined />} loading={settle.isPending}>Hoàn</Button>
-        </Popconfirm>
+        <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setSettling(r)}>Hoàn</Button>
       ),
     }] : []),
   ];
@@ -264,6 +256,7 @@ export function BankAccountsPage() {
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      {settling && <SettleAdvanceModal advance={settling} accounts={accounts} open onClose={() => setSettling(null)} />}
       {internalTransferSource && (
         <InternalBankTransferModal
           accounts={allAccounts}

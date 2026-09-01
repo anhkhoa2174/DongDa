@@ -101,7 +101,7 @@ export const bankApi = {
     httpClient.post<InternalBankTransferResult>('/bank/internal-transfer', payload).then((r) => r.data),
   advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }) =>
     httpClient.get<BankMovementDto[]>('/bank/advances', { params }).then((r) => r.data),
-  settleAdvanceCk: (advanceId: string, payload: { bankAccountId: string; note?: string }) =>
+  settleAdvanceCk: (advanceId: string, payload: { source: 'BRANCH_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
     httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload).then((r) => r.data),
   debts: () => httpClient.get<DebtAccountDto[]>('/debts').then((r) => r.data),
   receive: (payload: { bankAccountId: string; debtAccountId: string; amount: number; bankReference?: string; description?: string }) =>

@@ -116,12 +116,15 @@ export class CreateInternalBankTransferDto {
 
 // Hoàn lại tạm ứng CK
 export class SettleAdvanceCkDto {
+  // Nguồn tiền hoàn ứng — bắt buộc có tài khoản đối ứng, không được "in tiền":
+  //   BRANCH_CASH  = quỹ tiền mặt chi nhánh đã ứng (tiền mặt thu của khách) giảm, TK ngân hàng đã ứng tăng
+  //   BANK_ACCOUNT = chuyển khoản nội bộ: TK nguồn giảm, TK đã ứng tăng
+  @IsIn(['BRANCH_CASH', 'BANK_ACCOUNT'])
+  source: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+
   @IsOptional()
   @IsUUID()
-  advanceMovementId?: string; // lấy từ :id trên URL
-
-  @IsUUID()
-  bankAccountId: string;
+  sourceBankAccountId?: string; // bắt buộc khi source = BANK_ACCOUNT
 
   @IsOptional()
   @IsString()

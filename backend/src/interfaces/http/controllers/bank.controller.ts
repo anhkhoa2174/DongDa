@@ -71,9 +71,10 @@ export class BankController {
   }
 
   // Nộp/rút tiền thủ công — GĐ/KTTH mọi tài khoản; STAFF chỉ tài khoản chi nhánh mình
+  // Thao tác tiền ra/vào tài khoản chỉ KTTH/GĐ; mọi role xem được danh sách/lịch sử
   @Post('accounts/:id/movements')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
   createMovement(@Request() req: any, @Param('id') id: string, @Body() dto: CreateBankMovementDto) {
     return this.recordMovement.execute(id, dto, actorOf(req));
   }
