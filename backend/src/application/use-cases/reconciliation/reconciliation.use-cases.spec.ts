@@ -16,6 +16,7 @@ function makeRepo() {
     getItems: jest.fn().mockResolvedValue([]),
     fundReconciliation: jest.fn(),
     getBranchRunsForFinal: jest.fn(),
+    listSubmittedBranchRuns: jest.fn().mockResolvedValue([]),
   };
 }
 
@@ -76,6 +77,21 @@ describe('RunReconciliationUseCase', () => {
     }));
   });
 
+  it('chuẩn hóa MTCN có dấu gạch trước khi đối chiếu', async () => {
+    const repo = makeRepo();
+    const useCase = new RunReconciliationUseCase(repo as any);
+    await useCase.execute({
+      provider: 'WU', businessDate: '2026-08-01',
+      rows: [{ code: '633-775-1692', amount: 100, currencyCode: 'USD' }],
+    }, staffA);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      result: expect.objectContaining({
+        items: expect.arrayContaining([expect.objectContaining({ code: '6337751692' })]),
+      }),
+    }));
+  });
+
   it('GĐ/KTTH không chạy WU trực tiếp, phải chọn bản chi nhánh', async () => {
     const useCase = new RunReconciliationUseCase(makeRepo() as any);
     await expect(useCase.execute({
@@ -86,26 +102,79 @@ describe('RunReconciliationUseCase', () => {
 });
 
 describe('CreateProviderFinalRunUseCase', () => {
+  function branchRun(id: string, branchId: string, provider: 'WU' | 'MG', businessDate: Date, code: string, amount = 100) {
+    return {
+      summary: {
+        id, runNo: `RC-${id}`, provider, scope: 'BRANCH', branchId,
+        branchCode: branchId === BRANCH_A ? 'A' : 'B', currencyCode: 'USD', businessDate,
+        status: 'MATCHED', stage: 'BRANCH', systemTotal: amount, journalTotal: amount,
+        varianceTotal: 0, matchRate: 1, matchedCount: 1, totalCount: 1,
+        createdAt: businessDate, submittedAt: businessDate,
+      },
+      rows: [{ code, amount, currencyCode: 'USD', branchId }],
+    };
+  }
+
   it.each(['WU', 'MG'] as const)('tạo bản FINAL %s từ các bản chi nhánh đã gửi và chỉ post khi khớp', async (provider) => {
     const repo = makeRepo();
     const businessDate = new Date('2026-08-01T00:00:00.000Z');
-    repo.getBranchRunsForFinal.mockResolvedValue([{
-      summary: {
-        id: 'run-a', runNo: 'RC-A', provider, scope: 'BRANCH', branchId: BRANCH_A,
-        branchCode: 'A', currencyCode: 'USD', businessDate, status: 'MATCHED', stage: 'BRANCH',
-        systemTotal: 100, journalTotal: 100, varianceTotal: 0, matchRate: 1,
-        matchedCount: 1, totalCount: 1, createdAt: businessDate, submittedAt: businessDate,
-      },
-      rows: [{ code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A }],
-    }]);
+    const source = branchRun('run-a', BRANCH_A, provider, businessDate, provider === 'WU' ? '1234567890' : 'AB12CD34');
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSubmittedBranchRuns.mockResolvedValue([source.summary]);
     repo.listSystemTxByProvider.mockResolvedValue([
-      { code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1' },
+      { code: source.rows[0].code, amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1' },
     ]);
     const useCase = new CreateProviderFinalRunUseCase(repo as any);
     await useCase.execute(provider, ['run-a'], admin);
     expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
       provider, stage: 'FINAL', postFinancial: true, sourceRunIds: ['run-a'], scope: 'COMPANY',
     }));
+  });
+
+  it('rejects a final run when another branch run in the same group is omitted', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-08-01T00:00:00.000Z');
+    const runA = branchRun('run-a', BRANCH_A, 'WU', businessDate, '1234567890');
+    const runB = branchRun('run-b', BRANCH_B, 'WU', businessDate, '0987654321');
+    repo.getBranchRunsForFinal.mockResolvedValue([runA]);
+    repo.listSubmittedBranchRuns.mockResolvedValue([runA.summary, runB.summary]);
+
+    const useCase = new CreateProviderFinalRunUseCase(repo as any);
+    await expect(useCase.execute('WU', ['run-a'], admin)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.saveRun).not.toHaveBeenCalled();
+  });
+
+  it('consumes source branch runs even when Final has discrepancies so the branch must submit a new run', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-08-01T00:00:00.000Z');
+    const source = branchRun('run-a', BRANCH_A, 'WU', businessDate, '1234567890', 100);
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSubmittedBranchRuns.mockResolvedValue([source.summary]);
+    repo.listSystemTxByProvider.mockResolvedValue([
+      { code: '1234567890', amount: 120, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1' },
+    ]);
+
+    const useCase = new CreateProviderFinalRunUseCase(repo as any);
+    await useCase.execute('WU', ['run-a'], admin);
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'FINAL', postFinancial: false, sourceRunIds: ['run-a'],
+    }));
+  });
+
+  it('rejects final reconciliation until every branch with system transactions has submitted', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-08-01T00:00:00.000Z');
+    const source = branchRun('run-a', BRANCH_A, 'WU', businessDate, '1234567890');
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSubmittedBranchRuns.mockResolvedValue([source.summary]);
+    repo.listSystemTxByProvider.mockResolvedValue([
+      { code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1' },
+      { code: '0987654321', amount: 50, currencyCode: 'USD', branchId: BRANCH_B, transactionId: 'tx-2' },
+    ]);
+
+    const useCase = new CreateProviderFinalRunUseCase(repo as any);
+    await expect(useCase.execute('WU', ['run-a'], admin)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.saveRun).not.toHaveBeenCalled();
   });
 });
 

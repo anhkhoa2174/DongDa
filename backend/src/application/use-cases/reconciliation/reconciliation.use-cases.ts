@@ -9,7 +9,9 @@
 
 import { Injectable, Inject, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { IReconciliationRepository } from '../../../domain/repositories/reconciliation.repository';
-import { reconcile } from '../../../domain/entities/reconciliation.entity';
+import {
+  reconcile, isValidReconciliationCode, normalizeReconciliationCode,
+} from '../../../domain/entities/reconciliation.entity';
 import { UserRole } from '../../../domain/entities/user.entity';
 import type { RunReconciliationDto } from '../../dtos/reconciliation/reconciliation.dto';
 import { toVietnamBusinessDate } from '../../../infrastructure/database/business-date';
@@ -49,10 +51,16 @@ export class RunReconciliationUseCase {
     const scope: 'BRANCH' = 'BRANCH';
     const rows = dto.rows.map((row) => ({
       ...row,
-      code: row.code.trim().toUpperCase(),
+      code: normalizeReconciliationCode(row.code),
       currencyCode: row.currencyCode ?? 'USD',
       branchId,
     }));
+    const invalidCodes = rows.filter((row) => !isValidReconciliationCode(row.code, dto.provider as 'WU' | 'MG'));
+    if (invalidCodes.length > 0) {
+      throw new BadRequestException(
+        `${dto.provider === 'WU' ? 'MTCN' : 'Reference Number'} không đúng định dạng: ${invalidCodes.map((row) => row.code || '(trống)').join(', ')}`,
+      );
+    }
     const currencies = new Set(rows.map((row) => row.currencyCode));
     if (currencies.size !== 1) {
       throw new BadRequestException('Mỗi lần đối chiếu chỉ được dùng một loại tiền');
@@ -155,16 +163,41 @@ export class CreateProviderFinalRunUseCase {
     }
     const rows = sources.flatMap((source) => source.rows.map((row) => ({
       ...row,
+      code: normalizeReconciliationCode(row.code),
       customerName: row.customerName ?? undefined,
     })));
-    const system = (await Promise.all(branchIds.map((branchId) =>
-      this.repo.listSystemTxByProvider(provider, first.summary.businessDate, branchId))))
-      .flat()
+    const waitingRuns = (await this.repo.listSubmittedBranchRuns(provider))
+      .filter((run) => run.businessDate.toISOString().slice(0, 10) === dateKey
+        && run.currencyCode === currencyCode);
+    const omittedRun = waitingRuns.find((run) => !uniqueIds.includes(run.id));
+    if (omittedRun) {
+      throw new BadRequestException(
+        `Phải chọn đủ các bản chi nhánh đang chờ của ngày ${dateKey}, còn thiếu ${omittedRun.branchName ?? omittedRun.branchCode ?? omittedRun.id}`,
+      );
+    }
+
+    const allSystem = (await this.repo.listSystemTxByProvider(provider, first.summary.businessDate))
       .filter((item) => item.currencyCode === currencyCode);
+    const requiredBranchIds = [...new Set(allSystem.map((item) => item.branchId))];
+    const missingBranchId = requiredBranchIds.find((branchId) => !branchIds.includes(branchId));
+    if (missingBranchId) {
+      throw new BadRequestException('Còn chi nhánh có giao dịch hệ thống nhưng chưa gửi bản đối chiếu');
+    }
+    const system = allSystem.filter((item) => branchIds.includes(item.branchId));
     const result = reconcile(system, rows);
+    const matchedTransactionIds = new Set(result.items
+      .filter((item) => item.status === 'MATCHED' && item.transactionId)
+      .map((item) => item.transactionId));
+    const canPost = result.totalCount > 0
+      && result.matchRate >= 1
+      && Math.abs(result.varianceTotal) < 0.01
+      && matchedTransactionIds.size === system.length
+      && matchedTransactionIds.size === rows.length;
     return this.repo.saveRun({
       provider, businessDate: first.summary.businessDate, scope: 'COMPANY', currencyCode,
-      result, createdByUserId: actor.id, stage: 'FINAL', postFinancial: result.matchRate >= 1,
+      result, createdByUserId: actor.id, stage: 'FINAL', postFinancial: canPost,
+      // Bản chi nhánh chỉ được dùng cho một lần đối chiếu Final. Nếu Final lệch,
+      // chi nhánh sửa giao dịch rồi tạo và gửi một bản đối chiếu chi nhánh mới.
       sourceRunIds: uniqueIds,
     });
   }
@@ -215,12 +248,18 @@ export class UploadJournalUseCase {
     if (!parsedRows.length) throw new BadRequestException('File Journal không có dòng hợp lệ nào');
     const businessDate = toVietnamBusinessDate(new Date(`${businessDateStr}T00:00:00+07:00`));
     const rows = parsedRows.map((row) => ({
-      code: row.code.trim().toUpperCase(),
+      code: normalizeReconciliationCode(row.code),
       amount: row.amount,
       currencyCode: (row.currencyCode ?? 'USD') as 'USD' | 'VND',
       branchId,
       customerName: row.customerName,
     }));
+    const invalidCodes = rows.filter((row) => !isValidReconciliationCode(row.code, provider));
+    if (invalidCodes.length > 0) {
+      throw new BadRequestException(
+        `${provider === 'WU' ? 'MTCN' : 'Reference Number'} không đúng định dạng: ${invalidCodes.map((row) => row.code || '(trống)').join(', ')}`,
+      );
+    }
 
     const pending = await this.repo.savePendingJournal({
       provider, businessDate, branchId, rows, createdByUserId: actor.id,

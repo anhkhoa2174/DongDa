@@ -6,7 +6,9 @@ import { PrismaService } from '../prisma.service';
 import {
   IReconciliationRepository, SaveRunInput, ReconRunSummary,
 } from '../../../domain/repositories/reconciliation.repository';
-import { SystemTxn, ReconItem, ReconItemStatus, FundReconItem } from '../../../domain/entities/reconciliation.entity';
+import {
+  SystemTxn, ReconItem, ReconItemStatus, FundReconItem, normalizeReconciliationCode,
+} from '../../../domain/entities/reconciliation.entity';
 import { NotificationService } from '../../notifications/notification.service';
 
 @Injectable()
@@ -33,7 +35,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         : r.mg_transaction_details?.reference_no;
       if (!code) continue;
       out.push({
-        code,
+        code: normalizeReconciliationCode(code),
         transactionId: r.id,
         branchId: r.branch_id,
         amount: provider === 'WU'
@@ -51,17 +53,29 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
   async saveRun(input: SaveRunInput): Promise<ReconRunSummary> {
     const { result } = input;
     const now = new Date();
-    const status = result.matchRate >= 1 ? 'MATCHED' : 'PENDING_REVIEW';
     const stage = input.stage ?? 'FINAL';
-    const postFinancial = input.postFinancial ?? true;
+    const postFinancial = input.postFinancial ?? false;
     const submitForFinal = input.submitForFinal ?? false;
     const rnd = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
     // Các dòng có mặt trong Journal (khớp / lệch / thiếu-hệ-thống)
     const journalItems = result.items.filter((i) => i.status !== 'MISSING_IN_JOURNAL');
+    const matchedTransactionIds = new Set(result.items
+      .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
+      .map((item) => item.transactionId));
+    const fullyMatched = result.totalCount > 0
+      && result.items.every((item) => item.status === ReconItemStatus.MATCHED)
+      && Math.abs(result.varianceTotal) < 0.01
+      && matchedTransactionIds.size === result.items.length;
+    const status = fullyMatched ? 'MATCHED' : 'PENDING_REVIEW';
+    if (postFinancial && !fullyMatched) {
+      throw new BadRequestException('Bản đối chiếu chưa khớp tuyệt đối hoặc có giao dịch bị ghép trùng; không thể ghi công nợ');
+    }
 
     const run = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.provider}:${input.scope}:${input.branchId ?? 'ALL'}:${input.businessDate.toISOString().slice(0, 10)}:${input.currencyCode}`}))`;
+      // Mọi bản chi nhánh và bản tổng cùng nhóm dùng chung một lock. Nhờ vậy một
+      // chi nhánh không thể gửi chen vào đúng lúc bản toàn công ty đang được chốt.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`RECON:${input.provider}:${input.businessDate.toISOString().slice(0, 10)}:${input.currencyCode}`}))`;
       const posted = postFinancial ? await tx.reconciliation_runs.findFirst({
         where: {
           provider: input.provider as any,
@@ -72,6 +86,28 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         },
       }) : null;
       if (posted) throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
+      if (stage === 'FINAL' && postFinancial) {
+        if (!input.sourceRunIds?.length) {
+          throw new BadRequestException('Bản đối chiếu tổng phải có các bản chi nhánh nguồn');
+        }
+        const omitted = await tx.reconciliation_runs.findFirst({
+          where: {
+            provider: input.provider as any,
+            stage: 'BRANCH',
+            business_date: input.businessDate,
+            currency_code: input.currencyCode,
+            submitted_at: { not: null },
+            final_targets: { none: {} },
+            id: { notIn: input.sourceRunIds },
+          },
+          include: { branches: { select: { name: true, code: true } } },
+        });
+        if (omitted) {
+          throw new BadRequestException(
+            `Còn bản chi nhánh chưa được chọn: ${omitted.branches?.name ?? omitted.branches?.code ?? omitted.id}`,
+          );
+        }
+      }
       if (submitForFinal) {
         const finalized = await tx.reconciliation_runs.findFirst({
           where: {
@@ -151,6 +187,9 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         },
       });
 
+      // Mọi bản chi nhánh đã tham gia Final đều được tiêu thụ đúng một lần. Không xóa
+      // vật lý để giữ audit; final_targets làm bản cũ rời hàng chờ. Nếu Final lệch,
+      // chi nhánh phải sửa giao dịch và gửi một bản đối chiếu chi nhánh mới.
       if (input.sourceRunIds?.length) {
         await tx.reconciliation_final_sources.createMany({
           data: input.sourceRunIds.map((branchRunId) => ({ final_run_id: createdRun.id, branch_run_id: branchRunId })),
