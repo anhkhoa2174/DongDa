@@ -36,13 +36,14 @@ export function SettleAdvanceModal({
   const submit = async () => {
     const values = await form.validateFields();
     try {
-      await settle.mutateAsync({
+      const result = await settle.mutateAsync({
         advanceId: advance.id,
         source: values.source,
         sourceBankAccountId: values.source === 'BANK_ACCOUNT' ? values.sourceBankAccountId : undefined,
         note: values.note?.trim() || undefined,
       });
-      message.success(`Đã hoàn tạm ứng ${advance.movementNo}`);
+      // Nói rõ tiền bị trừ ở đâu để KTTH nhìn thấy bút toán đối ứng
+      message.success(result?.description ?? `Đã hoàn tạm ứng ${advance.movementNo}`, 6);
       form.resetFields();
       onClose();
     } catch (error: unknown) {

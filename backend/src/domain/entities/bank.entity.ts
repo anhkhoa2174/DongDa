@@ -63,6 +63,8 @@ export interface BankMovement {
   // Chỉ có ở phiếu ADVANCE_CK: đã được hoàn (có ADVANCE_SETTLE tham chiếu tới) hay chưa
   settled?: boolean;
   settledMovementId?: string | null;
+  settledAt?: Date | null;
+  settledDescription?: string | null; // "Hoàn tạm ứng ... từ quỹ tiền mặt chi nhánh / từ TK ..."
 }
 
 export interface InternalBankTransferResult {

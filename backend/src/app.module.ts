@@ -2,6 +2,7 @@
 // Layer: Interface
 
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -64,6 +65,7 @@ import { JwtStrategy } from './interfaces/http/guards/jwt.strategy';
 import { HashService } from './infrastructure/config/hash.service';
 import { NotificationController } from './interfaces/http/controllers/notification.controller';
 import { NotificationService } from './infrastructure/notifications/notification.service';
+import { AdvanceReminderService } from './infrastructure/notifications/advance-reminder.service';
 import { DomesticTransferController } from './interfaces/http/controllers/domestic-transfer.controller';
 import { PrismaDomesticTransferRepository } from './infrastructure/database/repositories/prisma-domestic-transfer.repository';
 import { CreateDomesticTransferUseCase, ListDomesticTransferBankAccountsUseCase, ListDomesticTransferUseCase } from './application/use-cases/domestic-transfer/domestic-transfer.use-cases';
@@ -86,6 +88,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
 
     // Rate limiting (NF1) — enforce qua APP_GUARD bên dưới
@@ -106,6 +109,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
   providers: [
     PrismaService,
     NotificationService,
+    AdvanceReminderService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },

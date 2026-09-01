@@ -7,7 +7,7 @@ import { useBranches } from '@/shared/hooks/useBranches';
 import { useBanks, useCreateBankAccount } from '../hooks/useBank';
 
 interface FormValues {
-  branchId: string;
+  branchId?: string;
   bankCode: string;
   bankName?: string;
   accountNo: string;
@@ -41,7 +41,7 @@ export function CreateBankAccountModal({ open, onClose }: { open: boolean; onClo
     const values = await form.validateFields();
     try {
       await create.mutateAsync({
-        branchId: values.branchId,
+        branchId: values.branchId || undefined,
         bankCode: values.bankCode.trim().toUpperCase(),
         bankName: values.bankName?.trim() || bankOptions.find((b) => b.value === values.bankCode.trim().toUpperCase())?.name,
         accountNo: values.accountNo.trim(),
@@ -69,11 +69,13 @@ export function CreateBankAccountModal({ open, onClose }: { open: boolean; onClo
       destroyOnClose
     >
       <Form form={form} layout="vertical" initialValues={{ currencyCode: 'VND', openingBalance: 0 }}>
-        <Form.Item name="branchId" label="Chi nhánh sở hữu" rules={[{ required: true, message: 'Chọn chi nhánh' }]}
-          extra="Mỗi chi nhánh có tài khoản ngân hàng riêng; Hội sở giữ tài khoản chung của công ty.">
+        <Form.Item name="branchId" label="Chi nhánh quản lý (không bắt buộc)"
+          extra="Bỏ trống = tài khoản dùng chung toàn công ty. Mọi chi nhánh đều chọn được mọi tài khoản khi chuyển cho khách.">
           <Select
+            allowClear
             showSearch
             optionFilterProp="label"
+            placeholder="Dùng chung toàn công ty (Hội sở)"
             options={branches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))}
           />
         </Form.Item>

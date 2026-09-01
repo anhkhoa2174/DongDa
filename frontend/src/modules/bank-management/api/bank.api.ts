@@ -40,6 +40,8 @@ export interface BankMovementDto {
   // chỉ có ở phiếu ADVANCE_CK
   settled?: boolean;
   settledMovementId?: string | null;
+  settledAt?: string | null;
+  settledDescription?: string | null;
 }
 
 export interface InternalBankTransferInput {
@@ -67,7 +69,7 @@ export interface DebtAccountDto {
 }
 
 export interface CreateBankAccountInput {
-  branchId: string;
+  branchId?: string; // bỏ trống = tài khoản dùng chung toàn công ty (Hội sở)
   bankCode: string;
   bankName?: string;
   accountNo: string;

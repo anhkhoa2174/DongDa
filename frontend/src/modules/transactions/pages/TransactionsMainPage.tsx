@@ -458,12 +458,20 @@ export function TransactionsMainPage() {
       title: 'Giá trị giao dịch',
       key: 'transactionValue',
       align: 'right',
-      width: 180,
+      width: 210,
+      // FX: góc trái hiện tỷ giá giao dịch, góc phải giữ ngoại tệ gốc (feedback a Kiển)
       render: (_, record) => (
-        <Space direction="vertical" size={0} align="end">
-          <Typography.Text strong>{formatVnd(record.vndAmount)}</Typography.Text>
-          <Typography.Text type="secondary" className="text-xs!">{record.amountLabel}</Typography.Text>
-        </Space>
+        <div className="flex items-end justify-between gap-2">
+          {record.source === 'FX' && record.financialData?.appliedRate ? (
+            <Typography.Text type="secondary" className="text-xs! whitespace-nowrap">
+              TG {formatExchangeRate(record.financialData.appliedRate)}
+            </Typography.Text>
+          ) : <span />}
+          <Space direction="vertical" size={0} align="end">
+            <Typography.Text strong>{formatVnd(record.vndAmount)}</Typography.Text>
+            <Typography.Text type="secondary" className="text-xs!">{record.amountLabel}</Typography.Text>
+          </Space>
+        </div>
       ),
     },
     {

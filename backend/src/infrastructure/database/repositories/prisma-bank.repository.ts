@@ -51,7 +51,10 @@ export class PrismaBankRepository implements IBankRepository {
   async createAccount(input: CreateBankAccountInput): Promise<BankAccount> {
     const now = new Date();
     const id = await this.prisma.$transaction(async (tx) => {
-      const branch = await tx.branch.findUnique({ where: { id: input.branchId }, select: { id: true } });
+      // Không chọn chi nhánh -> tài khoản dùng chung, gắn Hội sở
+      const branch = input.branchId
+        ? await tx.branch.findUnique({ where: { id: input.branchId }, select: { id: true } })
+        : await tx.branch.findFirst({ where: { type: 'HEAD_OFFICE' }, select: { id: true } });
       if (!branch) throw new NotFoundException('Không tìm thấy chi nhánh');
 
       let bank = await tx.banks.findUnique({ where: { code: input.bankCode } });
@@ -69,7 +72,7 @@ export class PrismaBankRepository implements IBankRepository {
       const opening = Number(input.openingBalance ?? 0);
       const account = await tx.bank_accounts.create({
         data: {
-          branch_id: input.branchId,
+          branch_id: branch.id,
           bank_id: bank.id,
           account_no: input.accountNo,
           account_name: input.accountName,
@@ -85,7 +88,7 @@ export class PrismaBankRepository implements IBankRepository {
           data: {
             movement_no: newMovementNo(),
             bank_account_id: account.id,
-            branch_id: input.branchId,
+            branch_id: branch.id,
             movement_type: 'DEPOSIT',
             business_date: toVietnamBusinessDate(now),
             amount: opening,
@@ -661,12 +664,21 @@ export class PrismaBankRepository implements IBankRepository {
       }),
       this.prisma.bank_balance_movements.findMany({
         where: { movement_type: 'ADVANCE_SETTLE', bank_reference: { not: null } },
-        select: { id: true, bank_reference: true },
+        select: { id: true, bank_reference: true, description: true, posted_at: true, created_at: true },
       }),
     ]);
-    const settledBy = new Map(settles.map((s) => [s.bank_reference as string, s.id]));
+    const settledBy = new Map(settles.map((s) => [s.bank_reference as string, s]));
     return advances
-      .map((row) => ({ ...toMovement(row), settled: settledBy.has(row.id), settledMovementId: settledBy.get(row.id) ?? null }))
+      .map((row) => {
+        const st = settledBy.get(row.id);
+        return {
+          ...toMovement(row),
+          settled: !!st,
+          settledMovementId: st?.id ?? null,
+          settledAt: st ? (st.posted_at ?? st.created_at) : null,
+          settledDescription: st?.description ?? null,
+        };
+      })
       .filter((m) => (filter?.status === 'ADVANCE_CK' ? !m.settled : filter?.status === 'SETTLED' ? m.settled : true));
   }
 

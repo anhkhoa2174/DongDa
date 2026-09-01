@@ -11,7 +11,7 @@ import {
   ShopOutlined,
   StopOutlined,
 } from '@ant-design/icons';
-import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
@@ -33,9 +33,10 @@ function formatAccountMoney(account: BankAccountDto, value: number) {
 }
 
 function BankAccountCard({
-  account, canManage, canRecord, onRecord, onInternalTransfer, onDeactivate,
+  account, pendingAdvance, canManage, canRecord, onRecord, onInternalTransfer, onDeactivate,
 }: {
   account: BankAccountDto;
+  pendingAdvance: number;
   canManage: boolean;
   canRecord: boolean;
   onRecord: (direction: BankMovementDirection) => void;
@@ -73,7 +74,12 @@ function BankAccountCard({
               {formatAccountMoney(account, account.currentBalance)}
             </Typography.Title>
           </Space>
-          <Tag className="m-0!">{account.currencyCode}</Tag>
+          <Space direction="vertical" size={0} align="end">
+            <Tag className="m-0!">{account.currencyCode}</Tag>
+            {pendingAdvance > 0 && (
+              <Tag color="volcano" className="m-0! mt-1!">Đang ứng {account.currencyCode === 'VND' ? formatVnd(pendingAdvance) : formatUsd(pendingAdvance)}</Tag>
+            )}
+          </Space>
         </div>
         <div className="flex items-center justify-between gap-3 rounded bg-slate-50 p-3">
           <Typography.Text type="secondary"><ShopOutlined /> Chi nhánh sở hữu</Typography.Text>
@@ -124,7 +130,15 @@ export function BankAccountsPage() {
   const [recording, setRecording] = useState<{ account: BankAccountDto; direction: BankMovementDirection } | null>(null);
   const [internalTransferSource, setInternalTransferSource] = useState<BankAccountDto | null>(null);
   // Tạm ứng CK chỉ được sinh từ giao dịch "Nhận tiền mặt, chuyển khoản".
+  const [advanceTab, setAdvanceTab] = useState<'ADVANCE_CK' | 'SETTLED'>('ADVANCE_CK');
   const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
+  const { data: settledAdvances = [] } = useAdvances({ status: 'SETTLED', branchId: isBranchUser ? undefined : branchFilter }, advanceTab === 'SETTLED');
+  // Tổng đang ứng theo tài khoản -> hiện trên thẻ TK để thấy ngay TK nào còn treo
+  const pendingByAccount = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const adv of pendingAdvances) map.set(adv.bankAccountId, (map.get(adv.bankAccountId) ?? 0) + adv.amount);
+    return map;
+  }, [pendingAdvances]);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   // Hoàn ứng phải chọn nguồn đối ứng (quỹ tiền mặt CN / TK ngân hàng khác) -> mở form
   const [settling, setSettling] = useState<BankMovementDto | null>(null);
@@ -135,7 +149,13 @@ export function BankAccountsPage() {
     { title: 'Chi nhánh', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a?.branchCode ?? '—'; } },
     { title: 'Nội dung', dataIndex: 'description', ellipsis: true },
     { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (v: number, r) => (r.currencyCode === 'VND' ? formatVnd(v) : formatUsd(v)) },
-    ...(canManage ? [{
+    ...(advanceTab === 'SETTLED' ? [
+      { title: 'Đã hoàn lúc', dataIndex: 'settledAt', width: 130,
+        render: (v: string | null) => (v ? dayjs(v).format('DD/MM HH:mm') : '—') },
+      { title: 'Nguồn hoàn (tiền bị trừ ở đâu)', dataIndex: 'settledDescription', ellipsis: true,
+        render: (v: string | null) => v ?? '—' },
+    ] : []),
+    ...(canManage && advanceTab === 'ADVANCE_CK' ? [{
       title: '', width: 110,
       render: (_: unknown, r: BankMovementDto) => (
         <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setSettling(r)}>Hoàn</Button>
@@ -224,13 +244,24 @@ export function BankAccountsPage() {
         </Card>
 
         <Card
-          title={`Tạm ứng CK chưa hoàn (${pendingAdvances.length})`}
+          title={`Tạm ứng CK ${advanceTab === 'ADVANCE_CK' ? `chưa hoàn (${pendingAdvances.length})` : 'đã hoàn'}`}
           size="small"
-          extra={<Typography.Text type="secondary" className="text-xs!">Sinh tự động từ giao dịch nhận tiền mặt, chuyển khoản · KTTH/GĐ bấm Hoàn khi đã thanh toán lại</Typography.Text>}
+          extra={(
+            <Space>
+              <Segmented
+                size="small"
+                value={advanceTab}
+                onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED')}
+                options={[{ value: 'ADVANCE_CK', label: 'Chưa hoàn' }, { value: 'SETTLED', label: 'Đã hoàn' }]}
+              />
+              <Typography.Text type="secondary" className="text-xs!">Sinh từ GD nhận tiền mặt, chuyển khoản · Hoàn = trừ quỹ tiền mặt CN hoặc TK nguồn</Typography.Text>
+            </Space>
+          )}
         >
-          <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols} dataSource={pendingAdvances}
-            pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 800 }}
-            locale={{ emptyText: 'Không có khoản tạm ứng nào đang chờ hoàn' }} />
+          <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols}
+            dataSource={advanceTab === 'ADVANCE_CK' ? pendingAdvances : settledAdvances}
+            pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 900 }}
+            locale={{ emptyText: advanceTab === 'ADVANCE_CK' ? 'Không có khoản tạm ứng nào đang chờ hoàn' : 'Chưa có khoản nào được hoàn' }} />
         </Card>
 
         {!isLoading && filteredAccounts.length === 0 ? (
@@ -243,6 +274,7 @@ export function BankAccountsPage() {
               <Col xs={24} xl={12} key={account.id}>
                 <BankAccountCard
                   account={account}
+                  pendingAdvance={pendingByAccount.get(account.id) ?? 0}
                   canManage={canManage}
                   canRecord={canRecord}
                   onRecord={(direction) => setRecording({ account, direction })}

@@ -15,7 +15,7 @@ export interface ReceiveFromProviderInput {
 }
 
 export interface CreateBankAccountInput {
-  branchId: string;
+  branchId?: string; // bỏ trống -> gắn Hội sở (tài khoản dùng chung)
   bankCode: string; // ACB, MSB... — chưa có thì tạo mới bank theo code + name
   bankName?: string;
   accountNo: string;

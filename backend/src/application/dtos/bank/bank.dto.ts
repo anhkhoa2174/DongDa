@@ -27,8 +27,11 @@ export class ReceiveFromProviderDto {
 }
 
 export class CreateBankAccountDto {
+  // Không bắt buộc: bỏ trống = tài khoản dùng chung toàn công ty (gắn Hội sở).
+  // Mọi chi nhánh đều chọn được mọi tài khoản khi chuyển cho khách (tiền trong TK có giới hạn).
+  @IsOptional()
   @IsUUID()
-  branchId: string;
+  branchId?: string;
 
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{2,20}$/, { message: 'Mã ngân hàng chỉ gồm chữ/số, 2-20 ký tự (vd ACB, MSB)' })
