@@ -1,4 +1,8 @@
-import type { DomesticTransferTransaction, DomesticTransferType } from '../entities/domestic-transfer.entity';
+import type {
+  DomesticTransferFeePaymentMethod,
+  DomesticTransferTransaction,
+  DomesticTransferType,
+} from '../entities/domestic-transfer.entity';
 
 export interface CreateDomesticTransferInput {
   branchId: string;
@@ -11,6 +15,7 @@ export interface CreateDomesticTransferInput {
   transferReference: string;
   amount: number;
   fee: number;
+  feePaymentMethod: DomesticTransferFeePaymentMethod;
   transferNote?: string;
   createdByUserId: string;
 }

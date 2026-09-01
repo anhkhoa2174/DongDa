@@ -78,13 +78,20 @@ export class RecordBankMovementUseCase {
     if (!GLOBAL_ROLES.includes(actor.role) && actor.branchId !== account.branchId) {
       throw new ForbiddenException('Chỉ được ghi biến động trên tài khoản ngân hàng của chi nhánh mình');
     }
+    const isExternalTransfer = dto.movementType === 'TRANSFER_IN' || dto.movementType === 'TRANSFER_OUT';
+    if (isExternalTransfer && !dto.description?.trim()) {
+      throw new BadRequestException('Nội dung chuyển khoản không được để trống');
+    }
+    if (dto.movementType === 'TRANSFER_OUT' && !dto.counterparty?.trim()) {
+      throw new BadRequestException('Chuyển khoản đi phải có người nhận hoặc số tài khoản');
+    }
     return this.bankRepo.createMovement({
       bankAccountId,
       movementType: dto.movementType,
       amount: dto.amount,
       description: dto.description?.trim() || undefined,
-      bankReference: dto.bankReference?.trim() || undefined,
-      counterparty: dto.counterparty?.trim() || undefined,
+      bankReference: dto.movementType === 'TRANSFER_OUT' ? dto.bankReference?.trim() || undefined : undefined,
+      counterparty: dto.movementType === 'TRANSFER_OUT' ? dto.counterparty?.trim() || undefined : undefined,
       businessDate: dto.businessDate ? toVietnamBusinessDate(new Date(`${dto.businessDate}T00:00:00+07:00`)) : undefined,
       createdByUserId: actor.id,
     });

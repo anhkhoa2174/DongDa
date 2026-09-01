@@ -1,6 +1,7 @@
 import { httpClient } from '@/shared/api/httpClient';
 
 export type DomesticTransferType = 'CASH_TO_BANK' | 'BANK_TO_CASH';
+export type DomesticTransferFeePaymentMethod = 'CASH' | 'BANK';
 
 export interface DomesticTransferDto {
   id: string;
@@ -17,6 +18,7 @@ export interface DomesticTransferDto {
   counterpartyAccount?: string | null;
   amount: number;
   fee: number;
+  feePaymentMethod: DomesticTransferFeePaymentMethod;
   cashAmount: number;
   transactionValueVnd: number;
   transferNote?: string | null;
@@ -43,6 +45,7 @@ export interface CreateDomesticTransferPayload {
   transferReference: string;
   amount: number;
   fee: number;
+  feePaymentMethod: DomesticTransferFeePaymentMethod;
   transferNote?: string;
 }
 

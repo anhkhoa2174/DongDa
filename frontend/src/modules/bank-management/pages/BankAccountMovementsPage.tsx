@@ -20,10 +20,10 @@ import { BankMovementModal, type BankMovementDirection } from '../components/Ban
 import { InternalBankTransferModal } from '../components/InternalBankTransferModal';
 
 const movementMeta: Record<BankMovementType, { label: string; color: string; inflow: boolean }> = {
-  DEPOSIT: { label: 'Tiền vào', color: 'green', inflow: true },
+  DEPOSIT: { label: 'Nạp từ quỹ', color: 'green', inflow: true },
   TRANSFER_IN: { label: 'Nhận CK', color: 'cyan', inflow: true },
-  WITHDRAW: { label: 'Rút tiền', color: 'red', inflow: false },
-  TRANSFER_OUT: { label: 'Chuyển đi', color: 'orange', inflow: false },
+  WITHDRAW: { label: 'Rút tiền mặt', color: 'red', inflow: false },
+  TRANSFER_OUT: { label: 'Chuyển khoản đi', color: 'orange', inflow: false },
   RECONCILIATION: { label: 'Đối chiếu', color: 'gold', inflow: true },
   ADVANCE_CK: { label: 'Ứng CK', color: 'volcano', inflow: false },
   ADVANCE_SETTLE: { label: 'Hoàn ứng CK', color: 'geekblue', inflow: true },

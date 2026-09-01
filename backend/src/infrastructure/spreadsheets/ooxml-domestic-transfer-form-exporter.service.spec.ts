@@ -7,7 +7,8 @@ const dto = {
   branchId: '00000000-0000-0000-0000-000000000001', transferType: 'CASH_TO_BANK' as const,
   bankAccountId: '00000000-0000-0000-0000-000000000002', customerName: 'NGUYEN VAN A',
   customerPhone: '0901234567', counterpartyBank: 'ACB', counterpartyAccount: '123456789',
-  transferReference: 'CK-001', amount: 100_000, fee: 0, transferNote: 'THANH TOAN DON HANG',
+  transferReference: 'CK-001', amount: 100_000, fee: 0, feePaymentMethod: 'CASH' as const,
+  transferNote: 'THANH TOAN DON HANG',
 };
 
 describe('OoxmlDomesticTransferFormExporterService', () => {

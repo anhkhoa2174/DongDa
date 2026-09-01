@@ -22,6 +22,7 @@ describe('CreateDomesticTransferUseCase', () => {
       transferReference: 'CK-001', transferNote: 'Thanh toan',
       amount: 1_000_000,
       fee: 10_000,
+      feePaymentMethod: 'CASH' as const,
     };
 
     await expect(useCase.execute(dto, 'user-id')).resolves.toEqual({ id: 'transaction-id' });
@@ -37,6 +38,7 @@ describe('CreateDomesticTransferUseCase', () => {
       transferReference: 'CK-002', transferNote: 'Thanh toan',
       amount: 100_000,
       fee: 100_000,
+      feePaymentMethod: 'BANK' as const,
     };
 
     expect(() => useCase.execute(dto, 'user-id')).toThrow(BadRequestException);

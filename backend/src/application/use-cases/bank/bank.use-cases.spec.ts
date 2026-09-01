@@ -46,10 +46,44 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
       .rejects.toBeInstanceOf(ForbiddenException);
 
     repo.findAccount.mockResolvedValue(account(BRANCH_A));
-    await uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100, counterparty: 'Khách A' }, staffA);
+    await uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100 }, staffA);
     expect(repo.createMovement).toHaveBeenCalledWith(expect.objectContaining({
-      bankAccountId: 'acc-1', movementType: 'DEPOSIT', amount: 100, counterparty: 'Khách A', createdByUserId: 'staff-a',
+      bankAccountId: 'acc-1', movementType: 'DEPOSIT', amount: 100, createdByUserId: 'staff-a',
     }));
+  });
+
+  it('cho phép ghi nhận chuyển khoản vào và chuyển khoản đi', async () => {
+    const repo = makeRepo();
+    repo.findAccount.mockResolvedValue(account(BRANCH_A));
+    const uc = new RecordBankMovementUseCase(repo as any);
+
+    await uc.execute('acc-1', {
+      movementType: 'TRANSFER_IN', amount: 500, description: 'Khách chuyển tiền',
+    }, staffA);
+    await uc.execute('acc-1', {
+      movementType: 'TRANSFER_OUT', amount: 200, description: 'Thanh toán', counterparty: 'NGUYEN VAN A',
+    }, staffA);
+
+    expect(repo.createMovement).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      movementType: 'TRANSFER_IN', amount: 500, description: 'Khách chuyển tiền',
+    }));
+    expect(repo.createMovement).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      movementType: 'TRANSFER_OUT', amount: 200, counterparty: 'NGUYEN VAN A',
+    }));
+  });
+
+  it('bắt buộc nội dung CK và người nhận khi chuyển khoản đi', async () => {
+    const repo = makeRepo();
+    repo.findAccount.mockResolvedValue(account(BRANCH_A));
+    const uc = new RecordBankMovementUseCase(repo as any);
+
+    await expect(uc.execute('acc-1', {
+      movementType: 'TRANSFER_IN', amount: 500,
+    }, staffA)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(uc.execute('acc-1', {
+      movementType: 'TRANSFER_OUT', amount: 500, description: 'Thanh toán',
+    }, staffA)).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.createMovement).not.toHaveBeenCalled();
   });
 
   it('CK nội bộ không cho chọn cùng một tài khoản nguồn và đích', async () => {

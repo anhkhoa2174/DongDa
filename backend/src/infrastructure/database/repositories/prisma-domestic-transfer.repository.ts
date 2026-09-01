@@ -17,7 +17,12 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
   async create(input: CreateDomesticTransferInput): Promise<DomesticTransferTransaction> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
-    const posting = domesticTransferPosting(input.transferType, input.amount, input.fee);
+    const posting = domesticTransferPosting(
+      input.transferType,
+      input.amount,
+      input.fee,
+      input.feePaymentMethod,
+    );
     const { cashAmount } = posting;
 
     const transactionId = await this.prisma.$transaction(async (tx) => {
@@ -51,8 +56,9 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
       if (input.transferType === 'BANK_TO_CASH' && cashAmount > cashBalance) {
         throw new BadRequestException(`Không đủ tiền mặt VND. Tồn ${cashBalance}, cần trả ${cashAmount}`);
       }
-      if (input.transferType === 'CASH_TO_BANK' && input.amount > bankBalance) {
-        throw new BadRequestException(`Tài khoản ngân hàng không đủ số dư. Có ${bankBalance}, cần chuyển ${input.amount}`);
+      const bankOutAmount = Math.abs(Math.min(posting.bankDelta, 0));
+      if (input.transferType === 'CASH_TO_BANK' && bankOutAmount > bankBalance) {
+        throw new BadRequestException(`Tài khoản ngân hàng không đủ số dư. Có ${bankBalance}, cần chuyển ${bankOutAmount}`);
       }
 
       const transaction = await tx.customer_transactions.create({
@@ -78,6 +84,7 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
           transfer_type: input.transferType,
           bank_account_id: bankAccount.id,
           fee: input.fee,
+          fee_payment_method: input.feePaymentMethod,
           counterparty_bank: input.counterpartyBank?.trim() || null,
           counterparty_account: input.counterpartyAccount?.trim() || null,
           transfer_reference: input.transferReference.trim(),
@@ -122,14 +129,14 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
           branch_id: input.branchId,
           movement_type: input.transferType === 'CASH_TO_BANK' ? 'ADVANCE_CK' : 'TRANSFER_IN',
           business_date: businessDate,
-          amount: input.amount,
+          amount: Math.abs(posting.bankDelta),
           currency_code: 'VND',
           balance_before: bankBalance,
           balance_after: bankBalanceAfter,
           bank_reference: `DOMESTIC:${transaction.id}`,
           description: input.transferType === 'CASH_TO_BANK'
-            ? `${transaction.transaction_no} - Ứng CK cho giao dịch nhận tiền mặt: ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}`
-            : `${transaction.transaction_no} - ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}`,
+            ? `${transaction.transaction_no} - Ứng CK cho giao dịch nhận tiền mặt: ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}; phí thu qua ${input.feePaymentMethod === 'CASH' ? 'tiền mặt' : 'ngân hàng'}`
+            : `${transaction.transaction_no} - ${input.transferNote?.trim() || 'Giao dịch chuyển tiền'}; phí thu qua ${input.feePaymentMethod === 'CASH' ? 'tiền mặt' : 'ngân hàng'}`,
           status: 'POSTED',
           posted_at: now,
           created_by_user_id: input.createdByUserId,
@@ -214,6 +221,8 @@ function toDomain(row: any): DomesticTransferTransaction {
   const bankAccount = detail.bank_accounts;
   const amount = Number(row.amount);
   const fee = Number(detail.fee);
+  const feePaymentMethod = detail.fee_payment_method as 'CASH' | 'BANK';
+  const posting = domesticTransferPosting(detail.transfer_type, amount, fee, feePaymentMethod);
   return {
     id: row.id,
     transactionNo: row.transaction_no,
@@ -234,7 +243,8 @@ function toDomain(row: any): DomesticTransferTransaction {
     transferReference: detail.transfer_reference,
     amount,
     fee,
-    cashAmount: detail.transfer_type === 'CASH_TO_BANK' ? amount + fee : amount - fee,
+    feePaymentMethod,
+    cashAmount: posting.cashAmount,
     transactionValueVnd: amount,
     transferNote: detail.transfer_note,
     createdByUserId: row.created_by_user_id,

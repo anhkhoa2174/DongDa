@@ -1,7 +1,7 @@
 import { httpClient } from '@/shared/api/httpClient';
 
 export type BankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RECONCILIATION' | 'ADVANCE_CK' | 'ADVANCE_SETTLE';
-export type ManualBankMovementType = 'DEPOSIT' | 'WITHDRAW';
+export type ManualBankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT';
 
 export interface BankDto {
   id: string;

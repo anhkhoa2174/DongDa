@@ -56,10 +56,12 @@ export class CreateBankAccountDto {
   openingBalance?: number;
 }
 
-export const MANUAL_BANK_MOVEMENT_TYPES = ['DEPOSIT', 'WITHDRAW'] as const;
+export const MANUAL_BANK_MOVEMENT_TYPES = ['DEPOSIT', 'WITHDRAW', 'TRANSFER_IN', 'TRANSFER_OUT'] as const;
 
 export class CreateBankMovementDto {
-  @IsEnum(MANUAL_BANK_MOVEMENT_TYPES as unknown as object, { message: 'movementType phải là DEPOSIT/WITHDRAW' })
+  @IsEnum(MANUAL_BANK_MOVEMENT_TYPES as unknown as object, {
+    message: 'movementType phải là DEPOSIT, WITHDRAW, TRANSFER_IN hoặc TRANSFER_OUT',
+  })
   movementType: (typeof MANUAL_BANK_MOVEMENT_TYPES)[number];
 
   @IsNumber({ maxDecimalPlaces: 2 })

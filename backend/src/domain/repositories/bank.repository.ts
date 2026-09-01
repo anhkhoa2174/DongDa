@@ -67,7 +67,7 @@ export interface IBankRepository {
   createAccount(input: CreateBankAccountInput): Promise<BankAccount>;
   deactivateAccount(id: string): Promise<BankAccount>;
   listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]>;
-  // Nộp/rút/chuyển khoản thủ công: cập nhật số dư + ghi 1 dòng biến động (1 transaction)
+  // Nạp/rút tiền mặt cập nhật cả quỹ; nhận/chuyển khoản chỉ cập nhật ngân hàng.
   createMovement(input: CreateBankMovementInput): Promise<BankMovement>;
   // Chuyển tiền giữa hai tài khoản nội bộ: giảm nguồn + tăng đích trong cùng transaction.
   transferInternal(input: InternalBankTransferInput): Promise<InternalBankTransferResult>;

@@ -13,11 +13,20 @@ import type { TransactionRecord } from '@/modules/transactions/model/transaction
 import { useBranches } from '@/shared/hooks/useBranches';
 import { formatVnd } from '@/shared/utils/formatters';
 import { domesticTransferApi } from '../api/domesticTransfer.api';
-import type { CreateDomesticTransferPayload, DomesticTransferType } from '../api/domesticTransfer.api';
+import type {
+  CreateDomesticTransferPayload,
+  DomesticTransferFeePaymentMethod,
+  DomesticTransferType,
+} from '../api/domesticTransfer.api';
 
 const TRANSACTION_TYPES = [
   { value: 'CASH_TO_BANK', label: 'Nhận tiền mặt, chuyển khoản' },
   { value: 'BANK_TO_CASH', label: 'Nhận chuyển khoản, trả tiền mặt' },
+];
+
+const FEE_PAYMENT_METHODS = [
+  { value: 'CASH', label: 'Tiền mặt' },
+  { value: 'BANK', label: 'Ngân hàng' },
 ];
 
 const columns: ColumnsType<TransactionRecord> = [
@@ -35,6 +44,11 @@ const columns: ColumnsType<TransactionRecord> = [
   { title: 'Số tài khoản', dataIndex: 'accountNumber' },
   { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (value: number) => formatVnd(Number(value)) },
   { title: 'Phí', dataIndex: 'fee', align: 'right', render: (value: number) => formatVnd(Number(value)) },
+  {
+    title: 'Thu phí qua',
+    dataIndex: 'feePaymentMethod',
+    render: (value: DomesticTransferFeePaymentMethod) => value === 'BANK' ? 'Ngân hàng' : 'Tiền mặt',
+  },
 ];
 
 type DomesticTransferTransactionsPageProps = {
@@ -98,6 +112,10 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
       placeholder: 'Ví dụ: 10,000',
     },
+    {
+      name: 'feePaymentMethod', label: 'Thu phí bằng', kind: 'segmented', required: true,
+      options: FEE_PAYMENT_METHODS, span: 12,
+    },
     { name: 'transferNote', label: 'Nội dung chuyển tiền', kind: 'text', required: true, span: 16, maxLength: 500 },
     { name: 'transferReference', label: 'Giao dịch số', kind: 'text', required: true, span: 8, maxLength: 100 },
   ], [bankAccountOptions, branchOptions, isBranchUser]);
@@ -106,7 +124,8 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
     const type = (values.transactionType ?? 'CASH_TO_BANK') as DomesticTransferType;
     const amount = Number(values.amount ?? 0);
     const fee = Number(values.fee ?? 0);
-    const cashAmount = type === 'CASH_TO_BANK' ? amount + fee : Math.max(amount - fee, 0);
+    const feePaymentMethod = values.feePaymentMethod as DomesticTransferFeePaymentMethod | undefined;
+    const posting = getDomesticTransferPosting(type, amount, fee, feePaymentMethod);
     const selectedBranch = branches.find((branch) => branch.id === values.branchId);
     const selectedBank = bankAccounts.find((account) => account.id === values.bankAccountId);
 
@@ -137,7 +156,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
           </Col>
           <Col xs={12} md={6}>
             <Typography.Text type="secondary">Chuyển khoản</Typography.Text>
-            <div className="mt-1 font-semibold text-slate-900">{formatVnd(amount)}</div>
+            <div className="mt-1 font-semibold text-slate-900">{formatVnd(Math.abs(posting.bankDelta))}</div>
             <Typography.Text type="secondary" className="text-xs!">
               {selectedBank ? `${selectedBank.bankCode} - ${selectedBank.accountNo}` : 'Chưa chọn tài khoản'}
             </Typography.Text>
@@ -146,8 +165,10 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
             <Typography.Text type="secondary">
               {type === 'CASH_TO_BANK' ? 'Tiền mặt nhận vào' : 'Tiền mặt trả ra'}
             </Typography.Text>
-            <div className="mt-1 text-lg font-semibold text-brand-700">{formatVnd(cashAmount)}</div>
-            <Typography.Text type="secondary" className="text-xs!">Đã gồm phí {formatVnd(fee)}</Typography.Text>
+            <div className="mt-1 text-lg font-semibold text-brand-700">{formatVnd(posting.cashAmount)}</div>
+            <Typography.Text type="secondary" className="text-xs!">
+              Phí {formatVnd(fee)} thu qua {feePaymentMethod === 'BANK' ? 'ngân hàng' : feePaymentMethod === 'CASH' ? 'tiền mặt' : 'chưa chọn'}
+            </Typography.Text>
           </Col>
         </Row>
       </div>
@@ -208,6 +229,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
           transferReference: String(values.transferReference),
           amount: Number(values.amount),
           fee: Number(values.fee ?? 0),
+          feePaymentMethod: values.feePaymentMethod as DomesticTransferFeePaymentMethod,
           transferNote: values.transferNote ? String(values.transferNote) : undefined,
         };
         await domesticTransferApi.create(payload);
@@ -260,8 +282,25 @@ function toDomesticTransferPayload(values: TransactionFormValues, branchId?: str
     transferReference: String(values.transferReference),
     amount: Number(values.amount),
     fee: Number(values.fee ?? 0),
+    feePaymentMethod: values.feePaymentMethod as DomesticTransferFeePaymentMethod,
     transferNote: String(values.transferNote),
   };
+}
+
+function getDomesticTransferPosting(
+  type: DomesticTransferType,
+  amount: number,
+  fee: number,
+  feePaymentMethod?: DomesticTransferFeePaymentMethod,
+) {
+  if (type === 'CASH_TO_BANK') {
+    return feePaymentMethod === 'BANK'
+      ? { cashAmount: amount, bankDelta: -(amount - fee) }
+      : { cashAmount: amount + fee, bankDelta: -amount };
+  }
+  return feePaymentMethod === 'BANK'
+    ? { cashAmount: amount, bankDelta: amount + fee }
+    : { cashAmount: Math.max(amount - fee, 0), bankDelta: amount };
 }
 
 function downloadBlob(blob: Blob, filename: string) {

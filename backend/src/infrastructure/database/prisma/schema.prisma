@@ -670,6 +670,7 @@ model domestic_transfer_details {
   transfer_type         String                @default("CASH_TO_BANK") @db.VarChar(30)
   bank_account_id       String?               @db.Uuid
   fee                   Decimal               @default(0) @db.Decimal(20, 2)
+  fee_payment_method    String                @default("CASH") @db.VarChar(20)
   counterparty_bank     String?               @db.VarChar(150)
   counterparty_account  String?               @db.VarChar(100)
   transfer_reference    String?               @db.VarChar(100)

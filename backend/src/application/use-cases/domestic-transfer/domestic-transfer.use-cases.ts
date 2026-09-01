@@ -14,8 +14,8 @@ export class CreateDomesticTransferUseCase {
   ) {}
 
   execute(dto: CreateDomesticTransferDto, createdByUserId: string): Promise<DomesticTransferTransaction> {
-    if (dto.transferType === 'BANK_TO_CASH' && dto.fee >= dto.amount) {
-      throw new BadRequestException('Phí phải nhỏ hơn số tiền nhận chuyển khoản');
+    if (dto.fee >= dto.amount && dto.fee > 0) {
+      throw new BadRequestException('Phí phải nhỏ hơn số tiền giao dịch');
     }
     return this.repository.create({
       ...dto,

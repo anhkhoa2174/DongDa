@@ -41,6 +41,11 @@ export class CreateDomesticTransferDto {
   @Min(0)
   fee: number;
 
+  @IsEnum(['CASH', 'BANK'] as any, {
+    message: 'Nguồn thu phí phải là CASH hoặc BANK',
+  })
+  feePaymentMethod: 'CASH' | 'BANK';
+
   @IsString()
   @MaxLength(500)
   transferNote?: string;
