@@ -66,10 +66,9 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
       if (input.transferType === 'BANK_TO_CASH' && cashAmount > cashBalance) {
         throw new BadRequestException(`Không đủ tiền mặt VND. Tồn ${cashBalance}, cần trả ${cashAmount}`);
       }
-      const bankOutAmount = Math.abs(Math.min(posting.bankDelta, 0));
-      if (input.transferType === 'CASH_TO_BANK' && bankOutAmount > bankBalance) {
-        throw new BadRequestException(`Tài khoản ngân hàng không đủ số dư. Có ${bankBalance}, cần chuyển ${bankOutAmount}`);
-      }
+      // CASH_TO_BANK ghi ADVANCE_CK (yêu cầu nghiệp vụ a Kiển 17/08): chi nhánh nhận tiền mặt của khách
+      // rồi ghi ÂM tạm thời vào TK ngân hàng, KTTH/GĐ hoàn ứng sau khi đã thực chuyển tiền đi. Vì vậy
+      // KHÔNG kiểm tra đủ số dư ở đây — số dư âm tạm thời là đúng thiết kế, không phải lỗi.
 
       const transaction = await tx.customer_transactions.create({
         data: {
