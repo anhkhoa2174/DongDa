@@ -14,6 +14,7 @@ import { toVietnamBusinessDate } from '../business-date';
 import { canonicalActiveFundAccount } from '../canonical-fund-account';
 import { allocateDebtSettlement } from './debt-settlement-allocation';
 import { NotificationService } from '../../notifications/notification.service';
+import { claimFinancialRequest, completeFinancialRequest } from '../financial-idempotency';
 
 const INCREASE_TYPES = ['EXPECTED_DEBT', 'ACTUAL_DEBT'];
 
@@ -108,7 +109,19 @@ export class PrismaBankRepository implements IBankRepository {
   }
 
   async deactivateAccount(id: string): Promise<BankAccount> {
-    await this.prisma.bank_accounts.update({ where: { id }, data: { status: 'INACTIVE', updated_at: new Date() } });
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockBankAccount(tx, id);
+      const account = await tx.bank_accounts.findUnique({ where: { id } });
+      if (!account) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
+      if (account.status !== 'ACTIVE') throw new BadRequestException('Tài khoản ngân hàng đã ngưng hoạt động');
+      if (Number(account.current_balance) !== 0 || Number(account.available_balance) !== 0) {
+        throw new BadRequestException('Chỉ được ngưng tài khoản khi số dư bằng 0. Hãy chuyển hết số dư trước.');
+      }
+      await tx.bank_accounts.update({
+        where: { id },
+        data: { status: 'INACTIVE', updated_at: new Date() },
+      });
+    });
     return (await this.findAccount(id))!;
   }
 
@@ -118,8 +131,14 @@ export class PrismaBankRepository implements IBankRepository {
     const businessDate = input.businessDate ?? toVietnamBusinessDate(now);
     const inflow = isBankInflow(input.movementType);
     const movesCash = input.movementType === 'DEPOSIT' || input.movementType === 'WITHDRAW';
+    const idempotencyScope = `BANK_MOVEMENT_CREATE:${input.createdByUserId}`;
 
     const movementId = await this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<{ movementId: string }>(
+        tx, idempotencyScope, input.idempotencyKey, input,
+      );
+      if (replay) return replay.movementId;
+
       const accountSnapshot = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
       if (!accountSnapshot) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
 
@@ -217,6 +236,9 @@ export class PrismaBankRepository implements IBankRepository {
           },
         });
       }
+      await completeFinancialRequest(
+        tx, idempotencyScope, input.idempotencyKey, { movementId: movement.id },
+      );
       return movement.id;
     });
 
@@ -231,8 +253,16 @@ export class PrismaBankRepository implements IBankRepository {
     const now = new Date();
     const businessDate = input.businessDate ?? toVietnamBusinessDate(now);
     const transferReference = `CKNB-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const idempotencyScope = `BANK_INTERNAL_TRANSFER:${input.createdByUserId}`;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<{
+        transferReference: string;
+        fromMovementId: string;
+        toMovementId: string;
+      }>(tx, idempotencyScope, input.idempotencyKey, input);
+      if (replay) return replay;
+
       const accountIds = [input.fromBankAccountId, input.toBankAccountId].sort();
       for (const accountId of accountIds) await this.lockBankAccount(tx, accountId);
 
@@ -323,12 +353,28 @@ export class PrismaBankRepository implements IBankRepository {
         branchIds: [...new Set([fromAccount.branch_id, toAccount.branch_id])],
       }, tx);
 
-      return {
+      const completed = {
         transferReference,
-        fromMovement: toMovement(fromMovement),
-        toMovement: toMovement(destinationMovement),
+        fromMovementId: fromMovement.id,
+        toMovementId: destinationMovement.id,
       };
+      await completeFinancialRequest(tx, idempotencyScope, input.idempotencyKey, completed);
+      return completed;
     });
+
+    const movements = await this.prisma.bank_balance_movements.findMany({
+      where: { id: { in: [result.fromMovementId, result.toMovementId] } },
+    });
+    const fromMovement = movements.find((movement) => movement.id === result.fromMovementId);
+    const toMovementRow = movements.find((movement) => movement.id === result.toMovementId);
+    if (!fromMovement || !toMovementRow) {
+      throw new NotFoundException('Không tìm thấy biến động của giao dịch chuyển khoản nội bộ');
+    }
+    return {
+      transferReference: result.transferReference,
+      fromMovement: toMovement(fromMovement),
+      toMovement: toMovement(toMovementRow),
+    };
   }
 
   async listMovements(bankAccountId?: string, branchId?: string): Promise<BankMovement[]> {
@@ -345,8 +391,8 @@ export class PrismaBankRepository implements IBankRepository {
     const businessDate = toVietnamBusinessDate(now);
 
     const movementId = await this.prisma.$transaction(async (tx) => {
-      await this.lockBankAccount(tx, input.bankAccountId);
       await this.lockDebtAccount(tx, input.debtAccountId);
+      await this.lockBankAccount(tx, input.bankAccountId);
       const bankAcc = await tx.bank_accounts.findUnique({ where: { id: input.bankAccountId } });
       if (!bankAcc) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
       const debtAcc = await tx.debt_accounts.findUnique({
@@ -471,6 +517,10 @@ export class PrismaBankRepository implements IBankRepository {
     await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${bankAccountId}::uuid FOR UPDATE`;
   }
 
+  private async lockFundAccount(tx: any, fundAccountId: string) {
+    await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+  }
+
   // Hoàn lại tạm ứng CK cuối ngày — PHẢI có tài khoản đối ứng (không tự sinh tiền):
   //   BRANCH_CASH : chi quỹ tiền mặt chi nhánh đã ứng (ghi cash_movements + ledger CREDIT) -> TK ngân hàng tăng
   //   BANK_ACCOUNT: chuyển khoản nội bộ — TK nguồn giảm (TRANSFER_OUT) -> TK đã ứng tăng
@@ -482,25 +532,68 @@ export class PrismaBankRepository implements IBankRepository {
       if (!advance || advance.movement_type !== 'ADVANCE_CK') {
         throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
       }
+
+      const transactionId = advance.bank_reference?.startsWith('DOMESTIC:')
+        ? advance.bank_reference.slice('DOMESTIC:'.length)
+        : null;
+      if (!transactionId) {
+        throw new BadRequestException('Phiếu tạm ứng không liên kết đúng giao dịch chuyển tiền');
+      }
+      await tx.$queryRaw`SELECT id FROM customer_transactions WHERE id = ${transactionId}::uuid FOR UPDATE`;
+      const transaction = await tx.customer_transactions.findUnique({
+        where: { id: transactionId },
+        select: { status: true },
+      });
+      if (!transaction || transaction.status !== 'COMPLETED') {
+        throw new BadRequestException('Không thể hoàn ứng vì giao dịch chuyển tiền đã bị hủy hoặc không còn hiệu lực');
+      }
+
+      const amount = Number(advance.amount);
+      const targetId = advance.bank_account_id;
+      const sourceBankAccountId = input.source === 'BANK_ACCOUNT' ? input.sourceBankAccountId : undefined;
+      const targetSnapshot = await tx.bank_accounts.findUnique({ where: { id: targetId } });
+      if (!targetSnapshot) throw new NotFoundException('Không tìm thấy tài khoản đã ứng');
+      if (input.source === 'BANK_ACCOUNT') {
+        if (!sourceBankAccountId) throw new BadRequestException('Thiếu tài khoản ngân hàng nguồn');
+        if (sourceBankAccountId === targetId) {
+          throw new BadRequestException('Tài khoản nguồn phải khác tài khoản đã ứng');
+        }
+      }
+
+      // Quy ước khóa toàn hệ thống: quỹ trước, ngân hàng sau; mỗi nhóm theo ID tăng dần.
+      const cashAccount = input.source === 'BRANCH_CASH'
+        ? await canonicalActiveFundAccount(
+            tx,
+            advance.branch_id,
+            targetSnapshot.currency_code as CurrencyCode,
+            false,
+          )
+        : null;
+      if (input.source === 'BRANCH_CASH' && !cashAccount) {
+        throw new BadRequestException(
+          `Chi nhánh chưa có sổ tiền mặt ${targetSnapshot.currency_code} để hoàn ứng`,
+        );
+      }
+      if (cashAccount) await this.lockFundAccount(tx, cashAccount.id);
+
+      const bankAccountIds = [...new Set([targetId, sourceBankAccountId].filter((id): id is string => Boolean(id)))].sort();
+      for (const bankAccountId of bankAccountIds) {
+        await this.lockBankAccount(tx, bankAccountId);
+      }
+
+      // Kiểm tra sau khi khóa tài khoản đích để tuần tự hóa hai request hoàn cùng phiếu.
       const already = await tx.bank_balance_movements.findFirst({
         where: { movement_type: 'ADVANCE_SETTLE', bank_reference: input.advanceMovementId },
         select: { movement_no: true },
       });
       if (already) throw new BadRequestException(`Phiếu tạm ứng ${advance.movement_no} đã được hoàn (${already.movement_no})`);
 
-      const amount = Number(advance.amount);
-      const targetId = advance.bank_account_id;
-      await this.lockBankAccount(tx, targetId);
       const target = await tx.bank_accounts.findUniqueOrThrow({ where: { id: targetId } });
+      if (target.status !== 'ACTIVE') throw new BadRequestException('Tài khoản đã ứng không còn hoạt động');
 
       let sourceLabel: string;
       if (input.source === 'BANK_ACCOUNT') {
-        if (!input.sourceBankAccountId) throw new BadRequestException('Thiếu tài khoản ngân hàng nguồn');
-        if (input.sourceBankAccountId === targetId) {
-          throw new BadRequestException('Tài khoản nguồn phải khác tài khoản đã ứng');
-        }
-        await this.lockBankAccount(tx, input.sourceBankAccountId);
-        const source = await tx.bank_accounts.findUnique({ where: { id: input.sourceBankAccountId } });
+        const source = await tx.bank_accounts.findUnique({ where: { id: sourceBankAccountId! } });
         if (!source || source.status !== 'ACTIVE') throw new NotFoundException('Không tìm thấy tài khoản nguồn đang hoạt động');
         if (source.currency_code !== target.currency_code) {
           throw new BadRequestException(`Tài khoản nguồn dùng ${source.currency_code}, không khớp ${target.currency_code}`);
@@ -534,12 +627,8 @@ export class PrismaBankRepository implements IBankRepository {
         sourceLabel = `từ TK ${source.account_no}`;
       } else {
         // BRANCH_CASH: chi quỹ tiền mặt của chi nhánh đã ứng (tiền mặt đã thu của khách)
-        const cashAccount = await canonicalActiveFundAccount(tx, advance.branch_id, target.currency_code as CurrencyCode, false);
-        if (!cashAccount) {
-          throw new BadRequestException(`Chi nhánh chưa có sổ tiền mặt ${target.currency_code} để hoàn ứng`);
-        }
         const lines = await tx.ledger_lines.findMany({
-          where: { fund_account_id: cashAccount.id, ledger_entries: { status: 'POSTED' } },
+          where: { fund_account_id: cashAccount!.id, ledger_entries: { status: 'POSTED' } },
           select: { direction: true, amount: true },
         });
         const cashBalance = lines.reduce((sum: number, l: any) => sum + (l.direction === 'DEBIT' ? Number(l.amount) : -Number(l.amount)), 0);
@@ -552,7 +641,7 @@ export class PrismaBankRepository implements IBankRepository {
           data: {
             movement_no: movementNo,
             branch_id: advance.branch_id,
-            fund_account_id: cashAccount.id,
+            fund_account_id: cashAccount!.id,
             movement_type: 'CASH_OUT',
             business_date: businessDate,
             amount,
@@ -579,7 +668,7 @@ export class PrismaBankRepository implements IBankRepository {
             approved_by_user_id: input.settledByUserId,
             ledger_lines: {
               create: [{
-                fund_account_id: cashAccount.id,
+                fund_account_id: cashAccount!.id,
                 direction: 'CREDIT',
                 amount,
                 currency_code: target.currency_code,

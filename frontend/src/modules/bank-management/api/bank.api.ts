@@ -1,4 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
+import { runIdempotent } from '@/shared/utils/idempotency';
 
 export type BankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RECONCILIATION' | 'ADVANCE_CK' | 'ADVANCE_SETTLE';
 export type ManualBankMovementType = 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER_IN' | 'TRANSFER_OUT';
@@ -98,9 +99,11 @@ export const bankApi = {
   movements: (bankAccountId?: string) =>
     httpClient.get<BankMovementDto[]>('/bank/movements', { params: { bankAccountId } }).then((r) => r.data),
   createMovement: (bankAccountId: string, payload: CreateBankMovementInput) =>
-    httpClient.post<BankMovementDto>(`/bank/accounts/${bankAccountId}/movements`, payload).then((r) => r.data),
+    runIdempotent(`BANK_MOVEMENT_CREATE:${bankAccountId}`, payload, (headers) =>
+      httpClient.post<BankMovementDto>(`/bank/accounts/${bankAccountId}/movements`, payload, { headers }).then((r) => r.data)),
   internalTransfer: (payload: InternalBankTransferInput) =>
-    httpClient.post<InternalBankTransferResult>('/bank/internal-transfer', payload).then((r) => r.data),
+    runIdempotent('BANK_INTERNAL_TRANSFER', payload, (headers) =>
+      httpClient.post<InternalBankTransferResult>('/bank/internal-transfer', payload, { headers }).then((r) => r.data)),
   advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }) =>
     httpClient.get<BankMovementDto[]>('/bank/advances', { params }).then((r) => r.data),
   settleAdvanceCk: (advanceId: string, payload: { source: 'BRANCH_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>

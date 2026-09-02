@@ -13,7 +13,11 @@ export class CreateDomesticTransferUseCase {
     @Inject('IDomesticTransferRepository') private readonly repository: IDomesticTransferRepository,
   ) {}
 
-  execute(dto: CreateDomesticTransferDto, createdByUserId: string): Promise<DomesticTransferTransaction> {
+  execute(
+    dto: CreateDomesticTransferDto,
+    createdByUserId: string,
+    idempotencyKey: string,
+  ): Promise<DomesticTransferTransaction> {
     if (dto.fee >= dto.amount && dto.fee > 0) {
       throw new BadRequestException('Phí phải nhỏ hơn số tiền giao dịch');
     }
@@ -21,6 +25,7 @@ export class CreateDomesticTransferUseCase {
       ...dto,
       fee: Number(dto.fee ?? 0),
       createdByUserId,
+      idempotencyKey,
     });
   }
 }

@@ -1,4 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
+import { runIdempotent } from '@/shared/utils/idempotency';
 
 export interface CentralFundCurrencyBalanceDto {
   currency: string;
@@ -87,12 +88,14 @@ export const centralFundApi = {
   getSummary: () => httpClient
     .get<CentralFundSummaryDto>('/fund/central-summary')
     .then((response) => response.data),
-  createMovement: (payload: CreateCentralFundMovementPayload) => httpClient
-    .post<CentralFundMovementDto>('/fund/central-movements', payload)
-    .then((response) => response.data),
-  createBranchMovement: (payload: CreateCentralFundMovementPayload) => httpClient
-    .post<CentralFundMovementDto>('/fund/branch-movements', payload)
-    .then((response) => response.data),
+  createMovement: (payload: CreateCentralFundMovementPayload) =>
+    runIdempotent('CENTRAL_FUND_MOVEMENT_CREATE', payload, (headers) => httpClient
+      .post<CentralFundMovementDto>('/fund/central-movements', payload, { headers })
+      .then((response) => response.data)),
+  createBranchMovement: (payload: CreateCentralFundMovementPayload) =>
+    runIdempotent('BRANCH_FUND_MOVEMENT_CREATE', payload, (headers) => httpClient
+      .post<CentralFundMovementDto>('/fund/branch-movements', payload, { headers })
+      .then((response) => response.data)),
   convertFundA: (payload: {
     items: Array<{ currencyCode: string; amount: number; rate: number; deduction: number }>;
     note?: string;

@@ -25,8 +25,13 @@ describe('CreateDomesticTransferUseCase', () => {
       feePaymentMethod: 'CASH' as const,
     };
 
-    await expect(useCase.execute(dto, 'user-id')).resolves.toEqual({ id: 'transaction-id' });
-    expect(repository.create).toHaveBeenCalledWith({ ...dto, fee: 10_000, createdByUserId: 'user-id' });
+    await expect(useCase.execute(dto, 'user-id', 'request-key-1')).resolves.toEqual({ id: 'transaction-id' });
+    expect(repository.create).toHaveBeenCalledWith({
+      ...dto,
+      fee: 10_000,
+      createdByUserId: 'user-id',
+      idempotencyKey: 'request-key-1',
+    });
   });
 
   it('rejects bank-to-cash when fee consumes the whole transfer', () => {
@@ -41,7 +46,7 @@ describe('CreateDomesticTransferUseCase', () => {
       feePaymentMethod: 'BANK' as const,
     };
 
-    expect(() => useCase.execute(dto, 'user-id')).toThrow(BadRequestException);
+    expect(() => useCase.execute(dto, 'user-id', 'request-key-2')).toThrow(BadRequestException);
     expect(repository.create).not.toHaveBeenCalled();
   });
 });

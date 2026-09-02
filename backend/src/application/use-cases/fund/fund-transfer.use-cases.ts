@@ -111,11 +111,17 @@ export class ListFundUseCase {
 export class CreateFundMovementUseCase {
   constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
 
-  execute(dto: CreateCentralFundMovementDto, userId: string, targetBranchId?: string): Promise<CentralFundMovement> {
+  execute(
+    dto: CreateCentralFundMovementDto,
+    userId: string,
+    idempotencyKey: string,
+    targetBranchId?: string,
+  ): Promise<CentralFundMovement> {
     if (targetBranchId && dto.sourceType !== 'CASH') {
       throw new BadRequestException('Quỹ Chi Nhánh chỉ cho phép thu/chi từ nguồn tiền mặt');
     }
     return this.fundRepo.createFundMovement({
+      idempotencyKey,
       direction: dto.direction,
       sourceType: dto.sourceType,
       items: dto.items.map((item) => ({

@@ -1,4 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
+import { runIdempotent } from '@/shared/utils/idempotency';
 
 export interface FxTransactionDto {
   id: string;
@@ -32,6 +33,6 @@ export const fxApi = {
     httpClient.get<FxTransactionDto[]>('/fx/transactions', { params: { branchId } }).then((r) => r.data),
   stock: (branchId?: string) =>
     httpClient.get<FxStockDto[]>('/fx/stock', { params: { branchId } }).then((r) => r.data),
-  create: (payload: CreateFxPayload) =>
-    httpClient.post<FxTransactionDto>('/fx/transactions', payload).then((r) => r.data),
+  create: (payload: CreateFxPayload) => runIdempotent('FX_CREATE', payload, (headers) =>
+    httpClient.post<FxTransactionDto>('/fx/transactions', payload, { headers }).then((r) => r.data)),
 };

@@ -37,8 +37,8 @@ export function BankAccountMovementsPage() {
   const { accountKey } = useParams();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const canRecord = user?.role === 'director' || user?.role === 'accountant' || user?.role === 'branch';
   const canManage = user?.role === 'director' || user?.role === 'accountant';
+  const canRecord = canManage;
   const [direction, setDirection] = useState<BankMovementDirection | null>(null);
   const [internalTransferOpen, setInternalTransferOpen] = useState(false);
   const { data: accounts = [], isLoading } = useBankAccounts();

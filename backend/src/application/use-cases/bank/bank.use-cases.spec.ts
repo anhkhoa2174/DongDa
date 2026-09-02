@@ -42,13 +42,14 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
     const repo = makeRepo();
     repo.findAccount.mockResolvedValue(account(BRANCH_B));
     const uc = new RecordBankMovementUseCase(repo as any);
-    await expect(uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100 }, staffA))
+    await expect(uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100 }, staffA, 'request-key-1'))
       .rejects.toBeInstanceOf(ForbiddenException);
 
     repo.findAccount.mockResolvedValue(account(BRANCH_A));
-    await uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100 }, staffA);
+    await uc.execute('acc-1', { movementType: 'DEPOSIT', amount: 100 }, staffA, 'request-key-2');
     expect(repo.createMovement).toHaveBeenCalledWith(expect.objectContaining({
       bankAccountId: 'acc-1', movementType: 'DEPOSIT', amount: 100, createdByUserId: 'staff-a',
+      idempotencyKey: 'request-key-2',
     }));
   });
 
@@ -59,10 +60,10 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
 
     await uc.execute('acc-1', {
       movementType: 'TRANSFER_IN', amount: 500, description: 'Khách chuyển tiền',
-    }, staffA);
+    }, staffA, 'request-key-3');
     await uc.execute('acc-1', {
       movementType: 'TRANSFER_OUT', amount: 200, description: 'Thanh toán', counterparty: 'NGUYEN VAN A',
-    }, staffA);
+    }, staffA, 'request-key-4');
 
     expect(repo.createMovement).toHaveBeenNthCalledWith(1, expect.objectContaining({
       movementType: 'TRANSFER_IN', amount: 500, description: 'Khách chuyển tiền',
@@ -79,10 +80,10 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
 
     await expect(uc.execute('acc-1', {
       movementType: 'TRANSFER_IN', amount: 500,
-    }, staffA)).rejects.toBeInstanceOf(BadRequestException);
+    }, staffA, 'request-key-5')).rejects.toBeInstanceOf(BadRequestException);
     await expect(uc.execute('acc-1', {
       movementType: 'TRANSFER_OUT', amount: 500, description: 'Thanh toán',
-    }, staffA)).rejects.toBeInstanceOf(BadRequestException);
+    }, staffA, 'request-key-6')).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.createMovement).not.toHaveBeenCalled();
   });
 
@@ -91,7 +92,7 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
     const uc = new InternalBankTransferUseCase(repo as any);
     await expect(uc.execute({
       fromBankAccountId: 'acc-1', toBankAccountId: 'acc-1', amount: 100,
-    }, admin)).rejects.toBeInstanceOf(BadRequestException);
+    }, admin, 'request-key-7')).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.transferInternal).not.toHaveBeenCalled();
   });
 
@@ -101,18 +102,19 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
     await uc.execute({
       fromBankAccountId: 'acc-1', toBankAccountId: 'acc-2', amount: 100,
       description: '  Điều chuyển vốn  ', bankReference: ' REF-01 ',
-    }, admin);
+    }, admin, 'request-key-8');
     expect(repo.transferInternal).toHaveBeenCalledWith(expect.objectContaining({
       fromBankAccountId: 'acc-1', toBankAccountId: 'acc-2', amount: 100,
       description: 'Điều chuyển vốn', bankReference: 'REF-01', createdByUserId: 'admin',
+      idempotencyKey: 'request-key-8',
     }));
   });
 
   it('không ngưng tài khoản còn số dư', async () => {
     const repo = makeRepo();
-    repo.findAccount.mockResolvedValue(account(BRANCH_A, 500));
+    repo.deactivateAccount.mockRejectedValue(new BadRequestException('Chỉ được ngưng tài khoản khi số dư bằng 0'));
     const uc = new ManageBankAccountUseCase(repo as any);
     await expect(uc.deactivate('acc-1')).rejects.toBeInstanceOf(BadRequestException);
-    expect(repo.deactivateAccount).not.toHaveBeenCalled();
+    expect(repo.deactivateAccount).toHaveBeenCalledWith('acc-1');
   });
 });

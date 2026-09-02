@@ -11,7 +11,7 @@
 //   POST  /bank/advance-ck/:id/settle     KTTH/GĐ hoàn lại tạm ứng CK cuối ngày bằng tài khoản chính
 //   GET   /bank/advances                  danh sách tạm ứng CK (chưa hoàn / tất cả)
 
-import { Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Headers, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
@@ -23,6 +23,7 @@ import {
   ReceiveFromProviderDto, CreateBankAccountDto, CreateBankMovementDto, CreateInternalBankTransferDto,
   SettleAdvanceCkDto,
 } from '../../../application/dtos/bank/bank.dto';
+import { requireIdempotencyKey } from '../idempotency-key';
 
 @Controller('bank')
 @UseGuards(JwtAuthGuard)
@@ -70,20 +71,28 @@ export class BankController {
     return this.listBank.movements(actorOf(req), bankAccountId || undefined);
   }
 
-  // Nộp/rút tiền thủ công — GĐ/KTTH mọi tài khoản; STAFF chỉ tài khoản chi nhánh mình
   // Thao tác tiền ra/vào tài khoản chỉ KTTH/GĐ; mọi role xem được danh sách/lịch sử
   @Post('accounts/:id/movements')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  createMovement(@Request() req: any, @Param('id') id: string, @Body() dto: CreateBankMovementDto) {
-    return this.recordMovement.execute(id, dto, actorOf(req));
+  createMovement(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateBankMovementDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.recordMovement.execute(id, dto, actorOf(req), requireIdempotencyKey(idempotencyKey));
   }
 
   @Post('internal-transfer')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  transferInternal(@Request() req: any, @Body() dto: CreateInternalBankTransferDto) {
-    return this.internalTransfer.execute(dto, actorOf(req));
+  transferInternal(
+    @Request() req: any,
+    @Body() dto: CreateInternalBankTransferDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.internalTransfer.execute(dto, actorOf(req), requireIdempotencyKey(idempotencyKey));
   }
 
   // Ghi nhận tiền về — KTTH/GĐ

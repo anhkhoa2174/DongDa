@@ -23,6 +23,7 @@ export interface ListTransfersFilter {
 }
 
 export interface CreateFundMovementInput {
+  idempotencyKey: string;
   direction: CentralCashMovementDirection;
   sourceType: CentralFundSourceType;
   items: Array<{

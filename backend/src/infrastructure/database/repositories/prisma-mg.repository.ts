@@ -64,11 +64,21 @@ export class PrismaMgRepository implements IMgRepository {
       // Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT).
       // Nếu khách nhận USD lẻ, phần chẵn chi USD và phần lẻ quy đổi chi VND.
       const lines: any[] = [];
+      const usdAccountId = input.receivedUsd > 0
+        ? await this.cashAccount(tx, input.branchId, 'USD')
+        : null;
+      const vndAccountId = input.receivedVnd > 0
+        ? await this.cashAccount(tx, input.branchId, 'VND')
+        : null;
+      const payoutAccountIds = [usdAccountId, vndAccountId]
+        .filter((id): id is string => Boolean(id))
+        .sort();
+      for (const accountId of payoutAccountIds) await this.lockFundAccount(tx, accountId);
+
       if (input.receivedUsd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'USD');
-        await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
+        await this.assertEnoughBalance(tx, usdAccountId!, input.receivedUsd, 'USD');
         lines.push({
-          fund_account_id: acc,
+          fund_account_id: usdAccountId!,
           direction: 'CREDIT',
           amount: input.receivedUsd,
           currency_code: 'USD',
@@ -77,10 +87,9 @@ export class PrismaMgRepository implements IMgRepository {
         });
       }
       if (input.receivedVnd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'VND');
-        await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
+        await this.assertEnoughBalance(tx, vndAccountId!, input.receivedVnd, 'VND');
         lines.push({
-          fund_account_id: acc,
+          fund_account_id: vndAccountId!,
           direction: 'CREDIT',
           amount: input.receivedVnd,
           currency_code: 'VND',
@@ -168,8 +177,7 @@ export class PrismaMgRepository implements IMgRepository {
     return acc.id;
   }
 
-  private async ensureEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
-    await this.lockFundAccount(tx, fundAccountId);
+  private async assertEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
     const balance = await this.balance(tx, fundAccountId);
     if (amount > balance) {
       throw new BadRequestException(`Không đủ tiền mặt ${currency}. Tồn hiện tại ${balance}, cần chi ${amount}`);

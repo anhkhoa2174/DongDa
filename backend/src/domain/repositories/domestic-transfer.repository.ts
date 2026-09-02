@@ -5,6 +5,7 @@ import type {
 } from '../entities/domestic-transfer.entity';
 
 export interface CreateDomesticTransferInput {
+  idempotencyKey: string;
   branchId: string;
   transferType: DomesticTransferType;
   bankAccountId: string;

@@ -15,7 +15,7 @@ export class CreateFxUseCase {
     @Inject('IExchangeRateRepository') private readonly rateRepo: IExchangeRateRepository,
   ) {}
 
-  async execute(dto: CreateFxDto, createdByUserId: string): Promise<FxTransaction> {
+  async execute(dto: CreateFxDto, createdByUserId: string, idempotencyKey: string): Promise<FxTransaction> {
     const active = await this.rateRepo.findActive({
       rateType: dto.isBuy ? ExchangeRateType.FX_BUY : ExchangeRateType.FX_SELL,
       provider: ServiceProvider.INTERNAL,
@@ -28,6 +28,7 @@ export class CreateFxUseCase {
     const rate = validateFxAppliedRate(dto.rate, systemRate, active[0]?.margin ?? 0, dto.isBuy);
 
     return this.fxRepo.create({
+      idempotencyKey,
       branchId: dto.branchId,
       isBuy: dto.isBuy,
       fxCurrency: dto.fxCurrency as CurrencyCode,

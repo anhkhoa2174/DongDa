@@ -16,6 +16,7 @@ import type { CreateFundMovementInput } from '../../../domain/repositories/fund.
 import { canonicalFundAccount } from '../../../domain/entities/fund-account';
 import { canonicalActiveFundAccount } from '../canonical-fund-account';
 import { NotificationService } from '../../notifications/notification.service';
+import { claimFinancialRequest, completeFinancialRequest } from '../financial-idempotency';
 
 const CURRENCY_NAMES: Partial<Record<CurrencyCode, string>> = {
   VND: 'Việt Nam đồng', USD: 'Đô la Mỹ', EUR: 'Euro', AUD: 'Đô la Úc', JPY: 'Yên Nhật',
@@ -278,8 +279,14 @@ export class PrismaFundRepository implements IFundRepository {
   async createFundMovement(input: CreateFundMovementInput): Promise<CentralFundMovement> {
     const now = new Date();
     const voucherNo = `${input.direction === 'IN' ? 'PT' : 'PC'}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const idempotencyScope = `FUND_MOVEMENT_CREATE:${input.createdByUserId}`;
 
     return this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<CentralFundMovement>(
+        tx, idempotencyScope, input.idempotencyKey, input,
+      );
+      if (replay) return { ...replay, postedAt: new Date(String(replay.postedAt)) };
+
       const targetBranch = await tx.branch.findFirst({
         where: input.targetBranchId
           ? { id: input.targetBranchId, status: 'ACTIVE' }
@@ -442,7 +449,7 @@ export class PrismaFundRepository implements IFundRepository {
         ...(targetBranch.type === 'BRANCH' && { branchIds: [targetBranch.id] }),
       }, tx);
 
-      return {
+      const result: CentralFundMovement = {
         voucherNo,
         direction: input.direction,
         sourceType: input.sourceType,
@@ -450,6 +457,8 @@ export class PrismaFundRepository implements IFundRepository {
         note: input.note ?? null,
         postedAt: now,
       };
+      await completeFinancialRequest(tx, idempotencyScope, input.idempotencyKey, result);
+      return result;
     });
   }
 
@@ -779,9 +788,12 @@ export class PrismaFundRepository implements IFundRepository {
         throw new BadRequestException('Người lập phiếu không được tự xác nhận phiếu tiếp quỹ');
       }
 
-      const sourceAccountIds = [...new Set(t.fund_transfer_items.map((item) => item.source_account_id))].sort();
-      for (const sourceAccountId of sourceAccountIds) {
-        await this.lockFundAccount(tx, sourceAccountId);
+      const accountIds = [...new Set(t.fund_transfer_items.flatMap((item) => [
+        item.source_account_id,
+        item.destination_account_id,
+      ]))].sort();
+      for (const accountId of accountIds) {
+        await this.lockFundAccount(tx, accountId);
       }
 
       const ledgerLines: Prisma.ledger_linesUncheckedCreateWithoutLedger_entriesInput[] = [];

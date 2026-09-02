@@ -9,6 +9,7 @@ import type {
   ListDomesticTransferFilter,
 } from '../../../domain/repositories/domestic-transfer.repository';
 import { toVietnamBusinessDate } from '../business-date';
+import { claimFinancialRequest, completeFinancialRequest } from '../financial-idempotency';
 
 @Injectable()
 export class PrismaDomesticTransferRepository implements IDomesticTransferRepository {
@@ -24,8 +25,14 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
       input.feePaymentMethod,
     );
     const { cashAmount } = posting;
+    const idempotencyScope = `DOMESTIC_TRANSFER_CREATE:${input.createdByUserId}`;
 
     const transactionId = await this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<{ transactionId: string }>(
+        tx, idempotencyScope, input.idempotencyKey, input,
+      );
+      if (replay) return replay.transactionId;
+
       const shift = await this.ensureOpenShift(tx, input.branchId);
       const cashAccount = await tx.fund_accounts.findFirst({
         where: {
@@ -169,6 +176,9 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
         data: { current_balance: bankBalanceAfter, available_balance: bankBalanceAfter },
       });
 
+      await completeFinancialRequest(
+        tx, idempotencyScope, input.idempotencyKey, { transactionId: transaction.id },
+      );
       return transaction.id;
     });
 

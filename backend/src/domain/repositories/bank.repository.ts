@@ -26,6 +26,7 @@ export interface CreateBankAccountInput {
 }
 
 export interface CreateBankMovementInput {
+  idempotencyKey: string;
   bankAccountId: string;
   movementType: BankMovementType; // DEPOSIT/TRANSFER_IN tăng; WITHDRAW/TRANSFER_OUT giảm
   amount: number;
@@ -37,6 +38,7 @@ export interface CreateBankMovementInput {
 }
 
 export interface InternalBankTransferInput {
+  idempotencyKey: string;
   fromBankAccountId: string;
   toBankAccountId: string;
   amount: number;

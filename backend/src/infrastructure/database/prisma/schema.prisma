@@ -182,6 +182,18 @@ model audit_logs {
   @@index([user_id, created_at(sort: Desc)], map: "idx_audit_logs_user")
 }
 
+model financial_idempotency_keys {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope           String   @db.VarChar(100)
+  idempotency_key String   @db.VarChar(200)
+  request_hash    String   @db.VarChar(64)
+  response        Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([scope, idempotency_key], map: "uq_financial_idempotency_scope_key")
+  @@index([created_at], map: "idx_financial_idempotency_created_at")
+}
+
 model bank_accounts {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   branch_id                 String                      @db.Uuid
@@ -208,6 +220,8 @@ model bank_accounts {
   @@index([bank_id], map: "idx_bank_accounts_bank")
   @@index([branch_id], map: "idx_bank_accounts_branch")
 }
+
+// CHECK current_balance >= 0 và available_balance >= 0 được quản lý bằng raw SQL migration.
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model bank_balance_movements {
@@ -241,6 +255,9 @@ model bank_balance_movements {
   @@index([bank_account_id, occurred_at(sort: Desc)], map: "idx_bank_movements_account_date")
   @@index([branch_id, business_date], map: "idx_bank_movements_branch_date")
 }
+
+// CHECK balance_before/balance_after >= 0 (NOT VALID cho dữ liệu lịch sử) và trigger
+// append-only khi POSTED được quản lý bằng raw SQL migration.
 
 model bank_balance_snapshots {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

@@ -9,7 +9,7 @@
 //   PATCH /fund/transfers/:id/cancel    người lập hủy trước khi xác nhận
 
 import {
-  Controller, Post, Get, Patch, Body, Param, Query, UseGuards, Request, ForbiddenException,
+  Controller, Post, Get, Headers, Patch, Body, Param, Query, UseGuards, Request, ForbiddenException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
@@ -21,6 +21,7 @@ import {
 import {
   ConvertCentralFundDto, CreateCentralFundMovementDto, CreateTransferDto, ListFundMovementHistoryQueryDto, ListTransfersQueryDto,
 } from '../../../application/dtos/fund/fund.dto';
+import { requireIdempotencyKey } from '../idempotency-key';
 
 @Controller('fund')
 @UseGuards(JwtAuthGuard)
@@ -61,8 +62,12 @@ export class FundController {
   @Post('central-movements')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  centralFundMovement(@Request() req: any, @Body() dto: CreateCentralFundMovementDto) {
-    return this.createFundMovement.execute(dto, req.user.id);
+  centralFundMovement(
+    @Request() req: any,
+    @Body() dto: CreateCentralFundMovementDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.createFundMovement.execute(dto, req.user.id, requireIdempotencyKey(idempotencyKey));
   }
 
   @Post('central-conversions')
@@ -75,8 +80,17 @@ export class FundController {
   @Post('branch-movements')
   @UseGuards(RolesGuard)
   @Roles(UserRole.STAFF)
-  branchFundMovement(@Request() req: any, @Body() dto: CreateCentralFundMovementDto) {
-    return this.createFundMovement.execute(dto, req.user.id, req.user.branchId);
+  branchFundMovement(
+    @Request() req: any,
+    @Body() dto: CreateCentralFundMovementDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.createFundMovement.execute(
+      dto,
+      req.user.id,
+      requireIdempotencyKey(idempotencyKey),
+      req.user.branchId,
+    );
   }
 
   @Get('transfers')

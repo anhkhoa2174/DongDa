@@ -33,19 +33,56 @@ describe('TransactionAdminController adjustment vouchers', () => {
     )).toEqual({ action: 'VOID' });
   });
 
-  it('blocks every edit or void path once the transaction debt is reconciled', async () => {
+  it.each(['RECONCILED', 'SETTLED'])('blocks every edit or void path when debt is %s', async (status) => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
       debt_accounts: {
         findUnique: jest.fn()
           .mockResolvedValueOnce({ id: 'debt-1' })
-          .mockResolvedValueOnce({ lifecycle_status: 'RECONCILED' }),
+          .mockResolvedValueOnce({ lifecycle_status: status }),
       },
     };
     const controller = new TransactionAdminController({} as any, {} as any);
 
     await expect((controller as any).assertTransactionNotReconciled(tx, transactionId))
       .rejects.toThrow('không được sửa, thay thế hoặc hủy');
+  });
+
+  it('blocks voiding a domestic transfer after its advance has been settled', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customer_transactions: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: transactionId,
+          transaction_no: 'DT-001',
+          operation_code: 'DOMESTIC_TRANSFER',
+          branch_id: 'branch-1',
+          shift_id: originalShiftId,
+          status: 'COMPLETED',
+        }),
+      },
+      debt_accounts: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
+      debt_movements: { findMany: jest.fn().mockResolvedValue([]) },
+      shifts: { findUnique: jest.fn().mockResolvedValue({ id: postingShiftId, branch_id: 'branch-1', status: 'OPEN' }) },
+      ledger_entries: { findMany: jest.fn().mockResolvedValue([]) },
+      bank_balance_movements: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({
+            id: 'advance-1', bank_account_id: 'bank-1', movement_type: 'ADVANCE_CK', amount: 100,
+          })
+          .mockResolvedValueOnce({ movement_no: 'ADV-SETTLE-001' }),
+      },
+    };
+    const controller = new TransactionAdminController({} as any, {} as any);
+
+    await expect((controller as any).voidPostedTransactionInTx(
+      tx,
+      transactionId,
+      userId,
+      'Sai số tiền',
+      'VOID_TRANSACTION',
+      { postingShiftId },
+    )).rejects.toThrow('khoản ứng chuyển khoản đã được hoàn');
   });
 
   it('rejects corrected monetary amounts with more than two decimal places', () => {

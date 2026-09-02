@@ -4,6 +4,7 @@
 import type { FxTransaction, CurrencyCode } from '../entities/fx.entity';
 
 export interface CreateFxInput {
+  idempotencyKey: string;
   branchId: string;
   isBuy: boolean;
   fxCurrency: CurrencyCode;

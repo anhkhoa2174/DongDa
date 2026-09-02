@@ -1,4 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
+import { runIdempotent } from '@/shared/utils/idempotency';
 
 export type DomesticTransferType = 'CASH_TO_BANK' | 'BANK_TO_CASH';
 export type DomesticTransferFeePaymentMethod = 'CASH' | 'BANK';
@@ -54,8 +55,8 @@ export const domesticTransferApi = {
     httpClient.get<DomesticTransferDto[]>('/domestic-transfers', { params: { branchId } }).then((response) => response.data),
   bankAccounts: () =>
     httpClient.get<DomesticTransferBankAccountDto[]>('/domestic-transfers/bank-accounts').then((response) => response.data),
-  create: (payload: CreateDomesticTransferPayload) =>
-    httpClient.post<DomesticTransferDto>('/domestic-transfers', payload).then((response) => response.data),
+  create: (payload: CreateDomesticTransferPayload) => runIdempotent('DOMESTIC_TRANSFER_CREATE', payload, (headers) =>
+    httpClient.post<DomesticTransferDto>('/domestic-transfers', payload, { headers }).then((response) => response.data)),
   exportForm: (payload: CreateDomesticTransferPayload) =>
     httpClient.post<Blob>('/domestic-transfers/form', payload, { responseType: 'blob' }).then((response) => response.data),
 };

@@ -546,8 +546,11 @@ export class TransactionAdminController {
       select: { lifecycle_status: true },
     });
     if (lockedDebt && lockedDebt.lifecycle_status !== 'PENDING') {
+      const settledMessage = lockedDebt.lifecycle_status === 'SETTLED'
+        ? 'Công nợ của giao dịch đã được thanh toán'
+        : 'Giao dịch đã được đối chiếu hoặc công nợ không còn PENDING';
       throw new BadRequestException(
-        `Giao dịch đã đối chiếu hoặc công nợ không còn PENDING (${lockedDebt.lifecycle_status}); không được sửa, thay thế hoặc hủy`,
+        `${settledMessage} (${lockedDebt.lifecycle_status}); không được sửa, thay thế hoặc hủy`,
       );
     }
   }
@@ -900,6 +903,42 @@ export class TransactionAdminController {
         });
       }
 
+      const postedEntries = await tx.ledger_entries.findMany({
+        where: {
+          source_type: 'CUSTOMER_TRANSACTION',
+          source_id: transactionId,
+          status: 'POSTED',
+          reversed_entry_id: null,
+        },
+        include: { ledger_lines: true },
+      });
+      const fundAccountIds = [...new Set(postedEntries.flatMap((entry) =>
+        entry.ledger_lines.map((line) => line.fund_account_id),
+      ))].sort();
+      for (const fundAccountId of fundAccountIds) {
+        await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+      }
+      for (const fundAccountId of fundAccountIds) {
+        const reduction = postedEntries.reduce((total, entry) => total + entry.ledger_lines
+          .filter((line) => line.fund_account_id === fundAccountId && line.direction === 'DEBIT')
+          .reduce((sum, line) => sum + Number(line.amount), 0), 0);
+        if (reduction <= 0) continue;
+        const balanceLines = await tx.ledger_lines.findMany({
+          where: { fund_account_id: fundAccountId, ledger_entries: { status: 'POSTED' } },
+          select: { direction: true, amount: true, currency_code: true },
+        });
+        const currentBalance = balanceLines.reduce(
+          (sum, line) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)),
+          0,
+        );
+        if (reduction > currentBalance) {
+          const currency = balanceLines[0]?.currency_code ?? '';
+          throw new BadRequestException(
+            `Không đủ tồn quỹ để đảo giao dịch: còn ${currentBalance} ${currency}, cần ${reduction}`,
+          );
+        }
+      }
+
       const domesticBankMovement = txn.operation_code === 'DOMESTIC_TRANSFER'
         ? await tx.bank_balance_movements.findFirst({
             where: {
@@ -914,6 +953,21 @@ export class TransactionAdminController {
           throw new BadRequestException('Không tìm thấy biến động ngân hàng của giao dịch chuyển tiền');
         }
         await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${domesticBankMovement.bank_account_id}::uuid FOR UPDATE`;
+        if (domesticBankMovement.movement_type === 'ADVANCE_CK') {
+          const advanceSettlement = await tx.bank_balance_movements.findFirst({
+            where: {
+              movement_type: 'ADVANCE_SETTLE',
+              bank_reference: domesticBankMovement.id,
+              status: 'POSTED',
+            },
+            select: { movement_no: true },
+          });
+          if (advanceSettlement) {
+            throw new BadRequestException(
+              `Không thể hủy hoặc thay thế vì khoản ứng chuyển khoản đã được hoàn (${advanceSettlement.movement_no})`,
+            );
+          }
+        }
         const account = await tx.bank_accounts.findUnique({ where: { id: domesticBankMovement.bank_account_id } });
         if (!account) throw new BadRequestException('Không tìm thấy tài khoản ngân hàng của giao dịch');
         domesticBankBalance = Number(account.current_balance);
@@ -933,16 +987,6 @@ export class TransactionAdminController {
         },
       });
       if (claimed.count !== 1) throw new BadRequestException('Giao dịch đã được xử lý bởi người khác');
-
-      const postedEntries = await tx.ledger_entries.findMany({
-        where: {
-          source_type: 'CUSTOMER_TRANSACTION',
-          source_id: transactionId,
-          status: 'POSTED',
-          reversed_entry_id: null,
-        },
-        include: { ledger_lines: true },
-      });
 
       for (const entry of postedEntries) {
         await tx.ledger_entries.create({

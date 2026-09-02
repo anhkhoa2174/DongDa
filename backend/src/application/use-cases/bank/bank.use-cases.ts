@@ -58,11 +58,6 @@ export class ManageBankAccountUseCase {
   }
 
   async deactivate(id: string): Promise<BankAccount> {
-    const account = await this.bankRepo.findAccount(id);
-    if (!account) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
-    if (account.currentBalance !== 0) {
-      throw new BadRequestException('Chỉ được ngưng tài khoản khi số dư bằng 0. Hãy chuyển hết số dư trước.');
-    }
     return this.bankRepo.deactivateAccount(id);
   }
 }
@@ -71,7 +66,12 @@ export class ManageBankAccountUseCase {
 export class RecordBankMovementUseCase {
   constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
 
-  async execute(bankAccountId: string, dto: CreateBankMovementDto, actor: BankActor): Promise<BankMovement> {
+  async execute(
+    bankAccountId: string,
+    dto: CreateBankMovementDto,
+    actor: BankActor,
+    idempotencyKey: string,
+  ): Promise<BankMovement> {
     const account = await this.bankRepo.findAccount(bankAccountId);
     if (!account) throw new NotFoundException('Không tìm thấy tài khoản ngân hàng');
     if (account.status !== 'ACTIVE') throw new BadRequestException('Tài khoản ngân hàng đã ngưng hoạt động');
@@ -86,6 +86,7 @@ export class RecordBankMovementUseCase {
       throw new BadRequestException('Chuyển khoản đi phải có người nhận hoặc số tài khoản');
     }
     return this.bankRepo.createMovement({
+      idempotencyKey,
       bankAccountId,
       movementType: dto.movementType,
       amount: dto.amount,
@@ -105,11 +106,13 @@ export class InternalBankTransferUseCase {
   async execute(
     dto: CreateInternalBankTransferDto,
     actor: BankActor,
+    idempotencyKey: string,
   ): Promise<InternalBankTransferResult> {
     if (dto.fromBankAccountId === dto.toBankAccountId) {
       throw new BadRequestException('Tài khoản nguồn và tài khoản đích phải khác nhau');
     }
     return this.bankRepo.transferInternal({
+      idempotencyKey,
       fromBankAccountId: dto.fromBankAccountId,
       toBankAccountId: dto.toBankAccountId,
       amount: dto.amount,

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Request, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post, Query, Request, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   CreateDomesticTransferUseCase,
@@ -11,6 +11,7 @@ import { UserRole } from '../../../domain/entities/user.entity';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { BranchAccessGuard } from '../guards/branch-access.guard';
 import { Roles, RolesGuard } from '../guards/roles.guard';
+import { requireIdempotencyKey } from '../idempotency-key';
 
 @Controller('domestic-transfers')
 @UseGuards(JwtAuthGuard, BranchAccessGuard)
@@ -36,9 +37,13 @@ export class DomesticTransferController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
-  create(@Request() req: any, @Body() dto: CreateDomesticTransferDto) {
+  create(
+    @Request() req: any,
+    @Body() dto: CreateDomesticTransferDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
     if (req.user?.role === UserRole.STAFF) dto.branchId = req.user.branchId;
-    return this.createTransfer.execute(dto, req.user.id);
+    return this.createTransfer.execute(dto, req.user.id, requireIdempotencyKey(idempotencyKey));
   }
 
   @Post('form')

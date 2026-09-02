@@ -117,7 +117,7 @@ export function BankAccountsPage() {
   const user = useAuthStore((state) => state.user);
   const isBranchUser = user?.role === 'branch';
   const canManage = user?.role === 'director' || user?.role === 'accountant';
-  const canRecord = canManage || isBranchUser;
+  const canRecord = canManage;
 
   const [branchFilter, setBranchFilter] = useState<string | undefined>(undefined);
   const { data: branches = [] } = useBranches();
@@ -288,7 +288,7 @@ export function BankAccountsPage() {
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      {settling && <SettleAdvanceModal advance={settling} accounts={accounts} open onClose={() => setSettling(null)} />}
+      {settling && <SettleAdvanceModal advance={settling} accounts={allAccounts} open onClose={() => setSettling(null)} />}
       {internalTransferSource && (
         <InternalBankTransferModal
           accounts={allAccounts}

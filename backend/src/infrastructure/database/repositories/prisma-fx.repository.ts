@@ -7,6 +7,7 @@ import { toVietnamBusinessDate } from '../business-date';
 import { IFxRepository, CreateFxInput, ListFxFilter } from '../../../domain/repositories/fx.repository';
 import { FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
 import { canonicalActiveFundAccount } from '../canonical-fund-account';
+import { claimFinancialRequest, completeFinancialRequest } from '../financial-idempotency';
 
 @Injectable()
 export class PrismaFxRepository implements IFxRepository {
@@ -16,8 +17,14 @@ export class PrismaFxRepository implements IFxRepository {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
     const vndAmount = Math.round(input.fxAmount * input.rate);
+    const idempotencyScope = `FX_CREATE:${input.createdByUserId}`;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<{ transactionId: string }>(
+        tx, idempotencyScope, input.idempotencyKey, input,
+      );
+      if (replay) return replay.transactionId;
+
       const shift = await this.ensureShift(tx, input.branchId);
       const vndAcc = await this.cashAccount(tx, input.branchId, 'VND');
       const fxAcc = await this.currencyAccount(tx, input.branchId, input.fxCurrency);
@@ -91,6 +98,9 @@ export class PrismaFxRepository implements IFxRepository {
         },
       });
 
+      await completeFinancialRequest(
+        tx, idempotencyScope, input.idempotencyKey, { transactionId: txn.id },
+      );
       return txn.id;
     });
 
