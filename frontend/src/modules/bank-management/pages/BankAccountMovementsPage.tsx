@@ -28,7 +28,7 @@ const movementMeta: Record<BankMovementType, { label: string; color: string; inf
   WITHDRAW: { label: 'Rút tiền mặt', color: 'red', inflow: false },
   TRANSFER_OUT: { label: 'Chuyển khoản đi', color: 'orange', inflow: false },
   RECONCILIATION: { label: 'Đối chiếu', color: 'gold', inflow: true },
-  ADVANCE_CK: { label: 'Ứng CK', color: 'volcano', inflow: false },
+  ADVANCE_CK: { label: 'Tạm ứng từ GD', color: 'volcano', inflow: false },
   ADVANCE_SETTLE: { label: 'Hoàn ứng CK', color: 'geekblue', inflow: true },
 };
 

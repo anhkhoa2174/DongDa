@@ -1,6 +1,11 @@
-import { domesticTransferPosting } from './domestic-transfer.entity';
+import { domesticTransferBankMovementType, domesticTransferPosting } from './domestic-transfer.entity';
 
 describe('domesticTransferPosting', () => {
+  it('keeps transfer advances attached to cash-to-bank transactions', () => {
+    expect(domesticTransferBankMovementType('CASH_TO_BANK')).toBe('ADVANCE_CK');
+    expect(domesticTransferBankMovementType('BANK_TO_CASH')).toBe('TRANSFER_IN');
+  });
+
   it('receives amount plus fee in cash and transfers amount out of bank', () => {
     expect(domesticTransferPosting('CASH_TO_BANK', 1_000_000, 10_000, 'CASH')).toEqual({
       cashAmount: 1_010_000,

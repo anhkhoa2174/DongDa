@@ -4,7 +4,7 @@
 import { App, Form, Input, Modal, Segmented, Select, Typography } from 'antd';
 import { useMemo } from 'react';
 import { getApiErrorMessage } from '@/shared/utils/errors';
-import { formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { formatBankAccountLabel, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
 import { useSettleAdvanceCk } from '../hooks/useBank';
 
@@ -28,7 +28,7 @@ export function SettleAdvanceModal({
       .filter((a) => a.id !== advance.bankAccountId && a.currencyCode === advance.currencyCode && a.status === 'ACTIVE')
       .map((a) => ({
         value: a.id,
-        label: `${a.bankCode} · ${a.accountNo} (${a.branchCode ?? '—'}) — dư ${money(a.currentBalance)}`,
+        label: formatBankAccountLabel(a),
       })),
     [accounts, advance, money],
   );
@@ -63,7 +63,7 @@ export function SettleAdvanceModal({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" className="mb-3!">
-        Cộng lại <b>{money(advance.amount)}</b> vào TK {target ? `${target.bankCode} · ${target.accountNo}` : '—'}.
+        Cộng lại <b>{money(advance.amount)}</b> vào TK {target ? formatBankAccountLabel(target) : '—'}.
         Chọn nguồn tiền bị trừ đối ứng:
       </Typography.Paragraph>
       <Form form={form} layout="vertical" initialValues={{ source: 'BRANCH_CASH' }}>

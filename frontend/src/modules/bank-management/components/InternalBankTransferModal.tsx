@@ -5,7 +5,7 @@ import { useEffect, useMemo } from 'react';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import {
-  numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser,
+  formatBankAccountLabel, numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser,
 } from '@/shared/utils/formatters';
 import type { BankAccountDto } from '../api/bank.api';
 import { useInternalBankTransfer } from '../hooks/useBank';
@@ -20,7 +20,7 @@ interface FormValues {
 }
 
 function accountLabel(account: BankAccountDto) {
-  return `${account.bankCode} · ${account.accountNo} · ${account.branchCode ?? account.branchName ?? 'Hội sở'} · ${account.currencyCode}`;
+  return formatBankAccountLabel(account);
 }
 
 export function InternalBankTransferModal({

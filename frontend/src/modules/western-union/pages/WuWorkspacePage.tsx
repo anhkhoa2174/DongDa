@@ -11,6 +11,7 @@ import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
+  formatBankAccountLabel,
   formatExchangeRate,
   formatUsd,
   formatVnd,
@@ -340,7 +341,7 @@ export function WuWorkspacePage() {
                   notFoundContent={`Không có tài khoản ${paidCurrency} đang hoạt động trong công ty`}
                   options={eligibleBankAccounts.map((account) => ({
                     value: account.id,
-                    label: `${account.bankCode} - ${account.accountNo} - ${account.accountName}${account.branchName ? ` (${account.branchName})` : ''}`,
+                    label: formatBankAccountLabel(account),
                   }))}
                 />
               </Form.Item>
@@ -389,7 +390,7 @@ export function WuWorkspacePage() {
                   </Col>
                   <Col xs={24}>
                     <Typography.Text type="secondary">Ngân hàng thanh toán công nợ</Typography.Text>
-                    <div className="font-semibold">{selectedBank ? `${selectedBank.bankCode} - ${selectedBank.accountNo}` : 'Chưa chọn'}</div>
+                    <div className="font-semibold">{selectedBank ? formatBankAccountLabel(selectedBank) : 'Chưa chọn'}</div>
                   </Col>
                 </Row>
               </div>

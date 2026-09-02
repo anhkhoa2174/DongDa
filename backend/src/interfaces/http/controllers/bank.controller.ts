@@ -5,7 +5,7 @@
 //   POST  /bank/accounts                  GĐ/KTTH tạo tài khoản NH cho chi nhánh/Hội sở
 //   PATCH /bank/accounts/:id/deactivate   GĐ/KTTH ngưng tài khoản (số dư phải = 0)
 //   GET   /bank/movements?bankAccountId=  lịch sử biến động
-//   POST  /bank/accounts/:id/movements    nộp/rút tiền thủ công (STAFF: tài khoản chi nhánh mình)
+//   POST  /bank/accounts/:id/movements    nộp/rút tiền thủ công (KTTH/GĐ)
 //   POST  /bank/internal-transfer         chuyển khoản giữa hai tài khoản nội bộ
 //   POST  /bank/receive                   ghi nhận tiền WU/MG về → NH tăng + công nợ giảm
 //   POST  /bank/advance-ck/:id/settle     KTTH/GĐ hoàn lại tạm ứng CK cuối ngày bằng tài khoản chính

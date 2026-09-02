@@ -21,7 +21,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
-import { formatUsd, formatVnd } from '@/shared/utils/formatters';
+import { formatBankAccountLabel, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBranches } from '@/shared/hooks/useBranches';
@@ -149,7 +149,7 @@ export function BankAccountsPage() {
   const advanceCols: ColumnsType<BankMovementDto> = [
     { title: 'Ngày', dataIndex: 'businessDate', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
     { title: 'Số phiếu', dataIndex: 'movementNo', width: 200 },
-    { title: 'Tài khoản', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a ? `${a.bankCode} · ${a.accountNo}` : id.slice(0, 8); } },
+    { title: 'Tài khoản', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a ? formatBankAccountLabel(a) : id.slice(0, 8); } },
     { title: 'Chi nhánh', dataIndex: 'bankAccountId', render: (id: string) => { const a = accountById.get(id); return a?.branchCode ?? '—'; } },
     { title: 'Nội dung', dataIndex: 'description', ellipsis: true },
     { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (v: number, r) => (r.currencyCode === 'VND' ? formatVnd(v) : formatUsd(v)) },
@@ -256,9 +256,9 @@ export function BankAccountsPage() {
         <Card className="bank-advance-card" classNames={{ body: 'p-0!' }}>
           <div className="bank-advance-card__header">
             <div>
-              <Typography.Text className="bank-section-heading__eyebrow">Theo dõi tạm ứng</Typography.Text>
-              <Typography.Title level={4}>Tạm ứng chuyển khoản</Typography.Title>
-              <Typography.Text type="secondary">Các khoản phát sinh từ giao dịch nhận tiền mặt, chuyển khoản.</Typography.Text>
+              <Typography.Text className="bank-section-heading__eyebrow">Theo dõi giao dịch chuyển tiền</Typography.Text>
+              <Typography.Title level={4}>Tạm ứng chuyển khoản từ giao dịch</Typography.Title>
+              <Typography.Text type="secondary">Chỉ sinh tự động khi tạo giao dịch nhận tiền mặt, chuyển khoản.</Typography.Text>
             </div>
             <Segmented
               value={advanceTab}

@@ -30,6 +30,7 @@ import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useFundBalances } from '@/modules/fund-transfer/hooks/useFundTransfers';
 import {
   formatCurrency,
+  formatBankAccountLabel,
   numberInputFormatter,
   numberInputParser,
 } from '@/shared/utils/formatters';
@@ -99,7 +100,7 @@ export function CentralFundMovementPage({ direction, scope = 'central' }: Props)
     .filter((account) => account.currencyCode === watchedItems[index]?.currencyCode)
     .map((account) => ({
       value: account.id,
-      label: `${account.bankCode} - ${account.accountNo} (${formatCurrency(account.currentBalance, account.currencyCode)})`,
+      label: formatBankAccountLabel(account),
       disabled: selectedKeys.includes(account.id) && watchedItems[index]?.bankAccountId !== account.id,
     }));
 

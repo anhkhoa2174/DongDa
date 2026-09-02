@@ -11,7 +11,7 @@ import {
 } from '@/modules/transactions/components/TransactionWorkspacePage';
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
 import { useBranches } from '@/shared/hooks/useBranches';
-import { formatVnd } from '@/shared/utils/formatters';
+import { formatBankAccountLabel, formatVnd } from '@/shared/utils/formatters';
 import { domesticTransferApi } from '../api/domesticTransfer.api';
 import type {
   CreateDomesticTransferPayload,
@@ -78,7 +78,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
   const bankAccountOptions = useMemo(
     () => bankAccounts.map((account) => ({
       value: account.id,
-      label: `${account.bankCode} - ${account.accountNo} · Số dư ${formatVnd(account.currentBalance)}`,
+      label: formatBankAccountLabel(account),
     })),
     [bankAccounts],
   );
@@ -158,7 +158,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
             <Typography.Text type="secondary">Chuyển khoản</Typography.Text>
             <div className="mt-1 font-semibold text-slate-900">{formatVnd(Math.abs(posting.bankDelta))}</div>
             <Typography.Text type="secondary" className="text-xs!">
-              {selectedBank ? `${selectedBank.bankCode} - ${selectedBank.accountNo}` : 'Chưa chọn tài khoản'}
+              {selectedBank ? formatBankAccountLabel(selectedBank) : 'Chưa chọn tài khoản'}
             </Typography.Text>
           </Col>
           <Col xs={12} md={6}>

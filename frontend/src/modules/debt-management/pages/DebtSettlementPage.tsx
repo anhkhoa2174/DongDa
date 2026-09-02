@@ -28,7 +28,7 @@ import { OperationalOverviewCard } from '@/shared/components/OperationalOverview
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { hasPermission } from '@/modules/auth/model/permissions';
 import {
-  formatCurrency, formatExchangeRate, numberInputFormatter, numberInputParser,
+  formatBankAccountLabel, formatCurrency, formatExchangeRate, numberInputFormatter, numberInputParser,
   usdInputFormatter, usdInputParser,
 } from '@/shared/utils/formatters';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
@@ -263,7 +263,7 @@ export function DebtSettlementPage() {
       width: 170,
       render: (value?: string | null) => {
         const account = bankAccounts.find((item) => item.id === value);
-        return account ? `${account.bankCode} - ${account.accountNo}` : '-';
+        return account ? formatBankAccountLabel(account) : '-';
       },
     },
     {
@@ -430,7 +430,7 @@ export function DebtSettlementPage() {
                       placeholder={`Chọn tài khoản ${settleGroup.currencyCode}`}
                       options={matchingBankAccounts.map((account) => ({
                         value: account.id,
-                        label: `${account.bankCode} - ${account.accountNo} (${formatCurrency(account.currentBalance, account.currencyCode)})`,
+                        label: formatBankAccountLabel(account),
                       }))}
                     />
                   </Form.Item>

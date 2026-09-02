@@ -1,7 +1,9 @@
 // Modal nộp/rút tiền thủ công trên 1 tài khoản ngân hàng -> POST /bank/accounts/:id/movements
 import { Alert, App, DatePicker, Form, Input, InputNumber, Modal, Segmented } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
-import { numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser } from '@/shared/utils/formatters';
+import {
+  formatBankAccountLabel, numberInputFormatter, numberInputParser, usdInputFormatter, usdInputParser,
+} from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import type { BankAccountDto, ManualBankMovementType } from '../api/bank.api';
@@ -89,7 +91,7 @@ export function BankMovementModal({
         initialValues={{ movementType: DEFAULT_MOVEMENT_TYPE[direction], businessDate: dayjs() }}
       >
         <Form.Item label="Tài khoản">
-          <Input value={`${account.bankCode} · ${account.accountNo} · ${account.currencyCode}`} disabled />
+          <Input value={formatBankAccountLabel(account)} disabled />
         </Form.Item>
         <Form.Item name="movementType" label="Nghiệp vụ" rules={[{ required: true, message: 'Chọn nghiệp vụ' }]}>
           <Segmented block options={MOVEMENT_OPTIONS[direction]} />

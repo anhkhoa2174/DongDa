@@ -1,6 +1,10 @@
 export type DomesticTransferType = 'CASH_TO_BANK' | 'BANK_TO_CASH';
 export type DomesticTransferFeePaymentMethod = 'CASH' | 'BANK';
 
+export function domesticTransferBankMovementType(type: DomesticTransferType) {
+  return type === 'CASH_TO_BANK' ? 'ADVANCE_CK' as const : 'TRANSFER_IN' as const;
+}
+
 export function domesticTransferPosting(
   type: DomesticTransferType,
   amount: number,

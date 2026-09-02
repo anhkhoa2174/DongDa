@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { domesticTransferPosting } from '../../../domain/entities/domestic-transfer.entity';
+import {
+  domesticTransferBankMovementType,
+  domesticTransferPosting,
+} from '../../../domain/entities/domestic-transfer.entity';
 import type { DomesticTransferTransaction } from '../../../domain/entities/domestic-transfer.entity';
 import type {
   CreateDomesticTransferInput,
@@ -156,7 +159,7 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
           movement_no: `DT-BM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           bank_account_id: bankAccount.id,
           branch_id: input.branchId,
-          movement_type: input.transferType === 'CASH_TO_BANK' ? 'ADVANCE_CK' : 'TRANSFER_IN',
+          movement_type: domesticTransferBankMovementType(input.transferType),
           business_date: businessDate,
           amount: Math.abs(posting.bankDelta),
           currency_code: 'VND',
