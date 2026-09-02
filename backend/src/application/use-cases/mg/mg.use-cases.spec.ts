@@ -30,6 +30,10 @@ describe('MG financial rules', () => {
     expect(() => validateMgAppliedRate(26_005, 25_500, 26_000)).toThrow(BadRequestException);
   });
 
+  it('accepts an applied rate different from the system rate when it is within bounds', () => {
+    expect(validateMgAppliedRate(25_590, 25_590, 25_900)).toBe(25_590);
+  });
+
   it('uses the adjusted rate for a VND payout and the fractional USD payout', () => {
     expect(calculateMgPayout('USD', 'VND', 100.5, 0, 25_975)).toBe(2_610_488);
     expect(() => assertMgPayoutMatches('USD', 100.5, 100, 12_988, 25_975)).not.toThrow();
