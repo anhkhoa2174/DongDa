@@ -375,6 +375,182 @@
   color: #d99a00;
 }
 
+/* Bank management */
+.bank-filter-card,
+.bank-advance-card,
+.bank-account-card,
+.bank-movement-history {
+  border-color: #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: 0 7px 20px rgba(15, 23, 42, 0.055) !important;
+}
+
+.bank-section-heading,
+.bank-account-list__heading,
+.bank-advance-card__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bank-section-heading {
+  margin-bottom: 14px;
+}
+
+.bank-section-heading__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #8a6200 !important;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bank-section-heading__eyebrow .anticon {
+  margin-right: 5px;
+}
+
+.bank-section-heading .ant-typography,
+.bank-account-list__heading .ant-typography,
+.bank-advance-card__header .ant-typography {
+  margin: 0 !important;
+}
+
+.bank-advance-card__header {
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eceef1;
+  background: #fafafa;
+}
+
+.bank-advance-card__header .ant-segmented {
+  flex: 0 0 auto;
+}
+
+.bank-account-list__heading {
+  margin: 4px 0 12px;
+}
+
+.bank-account-card {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.bank-account-card:hover {
+  border-color: #d2a000 !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.11) !important;
+  transform: translateY(-1px);
+}
+
+.bank-account-card .ant-card-head {
+  min-height: 66px;
+  padding-inline: 18px;
+  border-bottom-color: #eceef1;
+  background: #ffffff;
+}
+
+.bank-account-card__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid #f1d16b;
+  border-radius: 7px;
+  background: #fff8d8;
+  color: #111111;
+  font-size: 18px;
+}
+
+.bank-account-card__bank-code,
+.bank-account-branch-tag {
+  border-color: #e5bd35 !important;
+  background: #fff8d8 !important;
+  color: #664a00 !important;
+  font-weight: 700;
+}
+
+.bank-account-card__body {
+  display: grid;
+  gap: 16px;
+  padding: 19px 20px 18px;
+}
+
+.bank-account-card__balance-label {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.bank-account-card__balance {
+  margin: 3px 0 0 !important;
+  color: #111111 !important;
+  font-size: 27px !important;
+  line-height: 1.2 !important;
+}
+
+.bank-account-card__branch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #eceef1;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.bank-account-card__actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  padding: 11px 12px;
+  border-top: 1px solid #eceef1;
+  background: #fafafa;
+}
+
+.bank-action {
+  min-width: 0;
+  font-weight: 600;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.07);
+}
+
+.bank-action--in {
+  border-color: #c7e9d8 !important;
+  background: #f2fbf6 !important;
+  color: #087443 !important;
+}
+
+.bank-action--out {
+  border-color: #f0c9c9 !important;
+  background: #fff6f6 !important;
+  color: #b42318 !important;
+}
+
+.bank-action--transfer {
+  border-color: #111111 !important;
+  background: #111111 !important;
+  color: #f5b301 !important;
+}
+
+.bank-action--muted {
+  color: #6b7280 !important;
+}
+
+.bank-movement-history .ant-table-thead > tr > th,
+.bank-advance-card .ant-table-thead > tr > th {
+  background: #f7f7f7 !important;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.bank-movement-history .ant-pagination,
+.bank-advance-card .ant-pagination {
+  margin-inline: 16px !important;
+}
+
 .reconciliation-panel {
   height: 100%;
 }
@@ -687,6 +863,35 @@
 }
 
 @media (max-width: 767px) {
+  .bank-section-heading,
+  .bank-account-list__heading,
+  .bank-advance-card__header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bank-advance-card__header .ant-segmented {
+    width: 100%;
+  }
+
+  .bank-advance-card__header .ant-segmented-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bank-account-card__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bank-account-card__actions .bank-action--transfer {
+    grid-column: span 2;
+  }
+
+  .bank-account-card__balance {
+    font-size: 24px !important;
+  }
+
   .operational-overview__header {
     align-items: stretch;
     flex-direction: column;

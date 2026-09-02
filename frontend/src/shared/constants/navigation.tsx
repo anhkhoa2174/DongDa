@@ -6,9 +6,7 @@ import {
   DashboardOutlined,
   DollarOutlined,
   FieldTimeOutlined,
-  FileSearchOutlined,
   MoneyCollectOutlined,
-  SafetyCertificateOutlined,
   ShopOutlined,
   TransactionOutlined,
   UserOutlined,
@@ -118,13 +116,10 @@ export const navigationItems: AppMenuItem[] = [
     requiredPermission: 'audit_log.view',
   },
   {
-    key: 'administration',
-    icon: <SafetyCertificateOutlined />,
-    label: 'Quản Trị',
-    children: [
-      { key: '/user-management/users', label: 'Người dùng', path: '/user-management/users', icon: <UserOutlined /> },
-      { key: '/user-management/permissions', label: 'Phân quyền', path: '/user-management/permissions', icon: <FileSearchOutlined /> },
-    ],
+    key: '/user-management/users',
+    icon: <UserOutlined />,
+    label: 'Người dùng',
+    path: '/user-management/users',
     allowedRoles: ['director'],
   },
 ];

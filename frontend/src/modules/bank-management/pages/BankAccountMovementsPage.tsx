@@ -4,14 +4,17 @@ import {
   ArrowLeftOutlined,
   ArrowUpOutlined,
   BankOutlined,
+  CalendarOutlined,
+  DollarOutlined,
   SwapOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, Empty, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Button, Card, Empty, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { formatDateTime, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import { useBankAccounts, useBankMovements } from '../hooks/useBank';
@@ -107,46 +110,34 @@ export function BankAccountMovementsPage() {
       extra={(
         <Space wrap>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/bank-management/accounts')}>Danh sách tài khoản</Button>
-          {canRecord && <Button icon={<ArrowDownOutlined />} onClick={() => setDirection('IN')}>Tiền vào</Button>}
-          {canRecord && <Button danger icon={<ArrowUpOutlined />} onClick={() => setDirection('OUT')}>Tiền ra</Button>}
-          {canManage && <Button icon={<SwapOutlined />} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }} onClick={() => setInternalTransferOpen(true)}>CK nội bộ</Button>}
+          {canRecord && <Button className="bank-action bank-action--in" icon={<ArrowDownOutlined />} onClick={() => setDirection('IN')}>Tiền vào</Button>}
+          {canRecord && <Button className="bank-action bank-action--out" icon={<ArrowUpOutlined />} onClick={() => setDirection('OUT')}>Tiền ra</Button>}
+          {canManage && <Button className="bank-action bank-action--transfer" icon={<SwapOutlined />} onClick={() => setInternalTransferOpen(true)}>CK nội bộ</Button>}
         </Space>
       )}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Card className="polished-card">
-          <div className="mb-5 flex items-start justify-between gap-4 max-lg:flex-col">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-xl text-black">
-                <BankOutlined />
-              </div>
-              <div className="min-w-0">
-                <Typography.Title level={3} className="mb-1! truncate">{account.accountName}</Typography.Title>
-                <Typography.Text type="secondary">
-                  {account.bankName} · STK {account.accountNo} · {account.currencyCode}
-                </Typography.Text>
-              </div>
-            </div>
-            <Tag color="cyan" className="m-0!">
-              {account.branchCode ? `${account.branchCode} - ${account.branchName ?? ''}` : 'Chưa gán chi nhánh'}
-            </Tag>
-          </div>
+        <OperationalOverviewCard
+          eyebrow={`${account.bankCode} · ${account.currencyCode}`}
+          title={account.accountName}
+          icon={<BankOutlined />}
+          meta={`${account.bankName} · STK ${account.accountNo}`}
+          aside={<Tag className="bank-account-branch-tag">{account.branchCode ? `${account.branchCode} - ${account.branchName ?? ''}` : 'Chưa gán chi nhánh'}</Tag>}
+          metrics={[
+            { label: 'Số dư hiện tại', value: formatAccountMoney(account, account.currentBalance), note: account.currencyCode, icon: <DollarOutlined /> },
+            { label: 'Tiền vào hôm nay', value: formatAccountMoney(account, todayIn), note: `${todayMovements.filter((m) => movementMeta[m.movementType]?.inflow).length} biến động`, icon: <ArrowDownOutlined /> },
+            { label: 'Tiền ra hôm nay', value: formatAccountMoney(account, todayOut), note: `${todayMovements.filter((m) => !movementMeta[m.movementType]?.inflow).length} biến động`, icon: <ArrowUpOutlined /> },
+            { label: 'Ngày nghiệp vụ', value: dayjs().format('DD/MM/YYYY'), note: `${todayMovements.length} biến động hôm nay`, icon: <CalendarOutlined /> },
+          ]}
+        />
 
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={8}>
-              <Statistic title="Số dư hiện tại" value={account.currentBalance} formatter={(value) => formatAccountMoney(account, Number(value))} />
-            </Col>
-            <Col xs={24} md={8}>
-              <Statistic title="Tiền vào hôm nay" value={todayIn} valueStyle={{ color: '#047857' }} formatter={(value) => formatAccountMoney(account, Number(value))} />
-            </Col>
-            <Col xs={24} md={8}>
-              <Statistic title="Tiền ra hôm nay" value={todayOut} valueStyle={{ color: '#be123c' }} formatter={(value) => formatAccountMoney(account, Number(value))} />
-            </Col>
-          </Row>
-        </Card>
-
-        <Card title="Lịch sử biến động số dư" className="polished-card">
-          <Table columns={columns} dataSource={movements} rowKey="id" scroll={{ x: 1000 }} pagination={{ pageSize: 20 }} />
+        <Card
+          title={<span className="section-card-title"><BankOutlined /> Lịch sử biến động số dư</span>}
+          extra={<Typography.Text type="secondary">{movements.length} biến động</Typography.Text>}
+          className="polished-card bank-movement-history"
+          classNames={{ body: 'p-0!' }}
+        >
+          <Table columns={columns} dataSource={movements} rowKey="id" scroll={{ x: 920 }} pagination={{ pageSize: 20, showSizeChanger: false }} />
         </Card>
       </Space>
 

@@ -5,18 +5,22 @@ import {
   ArrowUpOutlined,
   BankOutlined,
   CheckOutlined,
+  DollarOutlined,
+  FilterOutlined,
   SwapOutlined,
   EyeOutlined,
   PlusOutlined,
   ShopOutlined,
   StopOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
-import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { formatUsd, formatVnd } from '@/shared/utils/formatters';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
@@ -48,12 +52,12 @@ function BankAccountCard({
 
   return (
     <Card
-      className="h-full cursor-pointer overflow-hidden transition hover:border-brand-700"
+      className="bank-account-card h-full cursor-pointer overflow-hidden"
       classNames={{ body: 'p-0!' }}
       onClick={() => navigate(movementsPath)}
       title={(
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded bg-brand-50 text-lg text-black">
+          <div className="bank-account-card__icon">
             <BankOutlined />
           </div>
           <div className="min-w-0">
@@ -64,13 +68,13 @@ function BankAccountCard({
           </div>
         </div>
       )}
-      extra={<Tag color="cyan" className="m-0!">{account.bankCode}</Tag>}
+      extra={<Tag className="bank-account-card__bank-code m-0!">{account.bankCode}</Tag>}
     >
-      <div className="space-y-4 p-5">
+      <div className="bank-account-card__body">
         <div className="flex items-start justify-between gap-4">
           <Space direction="vertical" size={0}>
-            <Typography.Text type="secondary" className="uppercase tracking-normal!">Số dư hiện tại</Typography.Text>
-            <Typography.Title level={2} className="m-0! text-3xl! leading-tight!">
+            <Typography.Text type="secondary" className="bank-account-card__balance-label">Số dư hiện tại</Typography.Text>
+            <Typography.Title level={2} className="bank-account-card__balance">
               {formatAccountMoney(account, account.currentBalance)}
             </Typography.Title>
           </Space>
@@ -81,7 +85,7 @@ function BankAccountCard({
             )}
           </Space>
         </div>
-        <div className="flex items-center justify-between gap-3 rounded bg-slate-50 p-3">
+        <div className="bank-account-card__branch">
           <Typography.Text type="secondary"><ShopOutlined /> Chi nhánh sở hữu</Typography.Text>
           <Typography.Text strong className="text-right">
             {account.branchCode ? `${account.branchCode} - ${account.branchName ?? ''}` : '—'}
@@ -89,12 +93,12 @@ function BankAccountCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 border-t border-slate-100 bg-slate-50 p-3 sm:grid-cols-5">
-        <Button icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Lịch sử</Button>
-        <Button icon={<ArrowDownOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('IN'); }}>Tiền vào</Button>
-        <Button danger icon={<ArrowUpOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('OUT'); }}>Tiền ra</Button>
-        <Button icon={<SwapOutlined />} disabled={!canManage} style={{ background: '#111', color: '#f5b301', borderColor: '#111' }}
+      <div className="bank-account-card__actions">
+        <Button className="bank-action bank-action--in" icon={<ArrowDownOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('IN'); }}>Tiền vào</Button>
+        <Button className="bank-action bank-action--out" icon={<ArrowUpOutlined />} disabled={!canRecord} onClick={(event) => { event.stopPropagation(); onRecord('OUT'); }}>Tiền ra</Button>
+        <Button className="bank-action bank-action--transfer" icon={<SwapOutlined />} disabled={!canManage}
           onClick={(event) => { event.stopPropagation(); onInternalTransfer(); }}>CK nội bộ</Button>
+        <Button className="bank-action" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); navigate(movementsPath); }}>Lịch sử</Button>
         {canManage ? (
           <Popconfirm
             title="Ngưng tài khoản này?"
@@ -104,7 +108,7 @@ function BankAccountCard({
             onConfirm={onDeactivate}
             onPopupClick={(event) => event.stopPropagation()}
           >
-            <Button icon={<StopOutlined />} onClick={(event) => event.stopPropagation()}>Ngưng</Button>
+            <Button className="bank-action bank-action--muted" icon={<StopOutlined />} onClick={(event) => event.stopPropagation()}>Ngưng</Button>
           </Popconfirm>
         ) : <span />}
       </div>
@@ -200,22 +204,28 @@ export function BankAccountsPage() {
       ) : undefined}
     >
       <Space direction="vertical" size={16} className="w-full">
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Tổng VND ngân hàng" value={totalVnd} formatter={(value) => formatVnd(Number(value))} /></Card>
-          </Col>
-          <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Tổng USD ngân hàng" value={totalUsd} formatter={(value) => formatUsd(Number(value))} /></Card>
-          </Col>
-          <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Số tài khoản" value={accounts.length} suffix="TK" /></Card>
-          </Col>
-          <Col xs={24} sm={12} xl={6}>
-            <Card><Statistic title="Chi nhánh có tài khoản" value={branchCount} suffix="CN" /></Card>
-          </Col>
-        </Row>
+        <OperationalOverviewCard
+          eyebrow="Tổng quan ngân hàng"
+          title="Nguồn tiền trên tài khoản"
+          icon={<BankOutlined />}
+          meta={`${accounts.length} tài khoản đang hoạt động trên ${branchCount} chi nhánh`}
+          metrics={[
+            { label: 'Tổng VND', value: formatVnd(totalVnd), note: 'Số dư thực tế', icon: <WalletOutlined /> },
+            { label: 'Tổng USD', value: formatUsd(totalUsd), note: 'Số dư thực tế', icon: <DollarOutlined /> },
+            { label: 'Tài khoản', value: `${accounts.length} TK`, note: 'Đang theo dõi', icon: <BankOutlined /> },
+            { label: 'Chi nhánh', value: `${branchCount} CN`, note: 'Có tài khoản', icon: <ShopOutlined /> },
+          ]}
+          loading={isLoading}
+        />
 
-        <Card>
+        <Card className="bank-filter-card" classNames={{ body: 'p-4!' }}>
+          <div className="bank-section-heading">
+            <div>
+              <Typography.Text className="bank-section-heading__eyebrow"><FilterOutlined /> Bộ lọc tài khoản</Typography.Text>
+              <Typography.Title level={4}>Tìm nhanh tài khoản cần xử lý</Typography.Title>
+            </div>
+            <Typography.Text type="secondary">{filteredAccounts.length} kết quả</Typography.Text>
+          </div>
           <Row gutter={[12, 12]} align="middle">
             <Col xs={24} lg={isBranchUser ? 16 : 10}>
               <Input.Search
@@ -243,24 +253,25 @@ export function BankAccountsPage() {
           </Row>
         </Card>
 
-        <Card
-          title={`Tạm ứng CK ${advanceTab === 'ADVANCE_CK' ? `chưa hoàn (${pendingAdvances.length})` : 'đã hoàn'}`}
-          size="small"
-          extra={(
-            <Space>
-              <Segmented
-                size="small"
-                value={advanceTab}
-                onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED')}
-                options={[{ value: 'ADVANCE_CK', label: 'Chưa hoàn' }, { value: 'SETTLED', label: 'Đã hoàn' }]}
-              />
-              <Typography.Text type="secondary" className="text-xs!">Sinh từ GD nhận tiền mặt, chuyển khoản · Hoàn = trừ quỹ tiền mặt CN hoặc TK nguồn</Typography.Text>
-            </Space>
-          )}
-        >
+        <Card className="bank-advance-card" classNames={{ body: 'p-0!' }}>
+          <div className="bank-advance-card__header">
+            <div>
+              <Typography.Text className="bank-section-heading__eyebrow">Theo dõi tạm ứng</Typography.Text>
+              <Typography.Title level={4}>Tạm ứng chuyển khoản</Typography.Title>
+              <Typography.Text type="secondary">Các khoản phát sinh từ giao dịch nhận tiền mặt, chuyển khoản.</Typography.Text>
+            </div>
+            <Segmented
+              value={advanceTab}
+              onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED')}
+              options={[
+                { value: 'ADVANCE_CK', label: `Chưa hoàn (${pendingAdvances.length})` },
+                { value: 'SETTLED', label: 'Đã hoàn' },
+              ]}
+            />
+          </div>
           <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols}
             dataSource={advanceTab === 'ADVANCE_CK' ? pendingAdvances : settledAdvances}
-            pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 900 }}
+            pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 820 }}
             locale={{ emptyText: advanceTab === 'ADVANCE_CK' ? 'Không có khoản tạm ứng nào đang chờ hoàn' : 'Chưa có khoản nào được hoàn' }} />
         </Card>
 
@@ -269,7 +280,15 @@ export function BankAccountsPage() {
             <Empty description={canManage ? 'Chưa có tài khoản ngân hàng. Bấm "Thêm tài khoản" để khai báo cho từng chi nhánh.' : 'Chi nhánh chưa được khai báo tài khoản ngân hàng. Liên hệ KTTH/GĐ.'} />
           </Card>
         ) : (
-          <Row gutter={[16, 16]}>
+          <section>
+            <div className="bank-account-list__heading">
+              <div>
+                <Typography.Text className="bank-section-heading__eyebrow">Danh sách tài khoản</Typography.Text>
+                <Typography.Title level={3}>Tài khoản ngân hàng</Typography.Title>
+              </div>
+              <Typography.Text type="secondary">Chọn một tài khoản để xem lịch sử biến động</Typography.Text>
+            </div>
+            <Row gutter={[16, 16]}>
             {filteredAccounts.map((account) => (
               <Col xs={24} xl={12} key={account.id}>
                 <BankAccountCard
@@ -283,7 +302,8 @@ export function BankAccountsPage() {
                 />
               </Col>
             ))}
-          </Row>
+            </Row>
+          </section>
         )}
       </Space>
 
