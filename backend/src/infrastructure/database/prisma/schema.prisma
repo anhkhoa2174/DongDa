@@ -256,7 +256,7 @@ model bank_balance_movements {
   @@index([branch_id, business_date], map: "idx_bank_movements_branch_date")
 }
 
-// CHECK chỉ cho phép số dư âm với ADVANCE_CK và bút toán DOMESTIC_VOID hoàn lại ADVANCE_CK;
+// CHECK chỉ cho phép số dư âm với ADVANCE_CK, ADVANCE_SETTLE và bút toán DOMESTIC_VOID;
 // trigger append-only khi POSTED được quản lý bằng raw SQL migration.
 
 model bank_balance_snapshots {

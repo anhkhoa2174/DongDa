@@ -1,17 +1,17 @@
 import { calculateFxVndAmount } from './fx.entity';
 
 describe('calculateFxVndAmount', () => {
-  it('uses the negotiated rate for the whole amount and the system buy rate for the fraction', () => {
+  it('uses the negotiated transaction rate for both the whole amount and the fraction', () => {
     expect(calculateFxVndAmount({
       fxAmount: 100.9,
       fractionalAmount: 0.9,
       rate: 25_500,
-      fractionalRate: 26_000,
+      fractionalRate: 25_500,
       deductionVnd: 1_000,
     })).toEqual({
-      grossVndAmount: 2_573_400,
+      grossVndAmount: 2_572_950,
       deductionVnd: 1_000,
-      vndAmount: 2_572_400,
+      vndAmount: 2_571_950,
     });
   });
 

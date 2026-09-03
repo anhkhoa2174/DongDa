@@ -131,28 +131,6 @@ export class PrismaDomesticTransferRepository implements IDomesticTransferReposi
       });
 
       const bankBalanceAfter = bankBalance + posting.bankDelta;
-      // An toàn tài chính (feedback a Kiển): nếu TK còn khoản ứng CK của NGÀY TRƯỚC chưa hoàn,
-      // không cho phát sinh giao dịch ứng mới — tránh KTTH quên hoàn mà tiền vẫn tiếp tục bị ghi thêm.
-      if (input.transferType === 'CASH_TO_BANK') {
-        const stale = await tx.bank_balance_movements.findMany({
-          where: { movement_type: 'ADVANCE_CK' as any, bank_account_id: input.bankAccountId, business_date: { lt: businessDate } },
-          select: { id: true, movement_no: true, amount: true },
-        });
-        if (stale.length) {
-          const settled = await tx.bank_balance_movements.findMany({
-            where: { movement_type: 'ADVANCE_SETTLE' as any, bank_reference: { in: stale.map((m) => m.id) } },
-            select: { bank_reference: true },
-          });
-          const done = new Set(settled.map((m) => m.bank_reference));
-          const pending = stale.filter((m) => !done.has(m.id));
-          if (pending.length) {
-            const total = pending.reduce((sum, m) => sum + Number(m.amount), 0);
-            throw new BadRequestException(
-              `Tài khoản còn ${pending.length} khoản ứng CK ngày trước chưa hoàn (tổng ${total.toLocaleString('vi-VN')}). KTTH/GĐ cần hoàn ứng trước khi phát sinh giao dịch mới.`,
-            );
-          }
-        }
-      }
       await tx.bank_balance_movements.create({
         data: {
           movement_no: `DT-BM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

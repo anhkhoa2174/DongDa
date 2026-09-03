@@ -59,9 +59,7 @@ export function FxWorkspacePage() {
   const sliderRate = clampFxRate(Number(rate), rateBounds);
   const effectiveFractionalAmount = side === 'buy' && hasFraction ? Number(fractionalAmount) : 0;
   const totalFxAmount = Number(amount) + effectiveFractionalAmount;
-  const grossVndAmount = Math.round(
-    Number(amount) * Number(rate) + effectiveFractionalAmount * Number(systemRate ?? 0),
-  );
+  const grossVndAmount = Math.round(totalFxAmount * Number(rate));
   const netVndAmount = Math.max(grossVndAmount - Math.round(Number(deductionVnd)), 0);
 
   useEffect(() => {
@@ -266,7 +264,7 @@ export function FxWorkspacePage() {
                   </Row>
                   {hasFraction && (
                     <Typography.Text type="secondary" className="text-xs!">
-                      Phần lẻ áp dụng cố định tỷ giá mua {formatNumber(Number(systemRate ?? 0), 6)} VND/{fxCurrency}.
+                      Tiền chẵn và tiền lẻ cùng áp dụng tỷ giá giao dịch đang chọn.
                     </Typography.Text>
                   )}
                 </div>

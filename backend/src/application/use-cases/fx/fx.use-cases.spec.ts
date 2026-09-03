@@ -24,7 +24,7 @@ describe('FX applied-rate margin', () => {
 describe('CreateFxUseCase purchase adjustments', () => {
   const activeRate = { rate: 26_000, margin: 500 };
 
-  it('adds the fraction to stock and keeps its rate fixed at the system buy rate', async () => {
+  it('adds the fraction to stock and applies the negotiated rate to the full amount', async () => {
     const fxRepo = { create: jest.fn(async (input) => input) };
     const rateRepo = { findActive: jest.fn(async () => [activeRate]) };
     const useCase = new CreateFxUseCase(fxRepo as any, rateRepo as any);
@@ -42,7 +42,7 @@ describe('CreateFxUseCase purchase adjustments', () => {
     expect(fxRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       fxAmount: 100.9,
       fractionalAmount: 0.9,
-      fractionalRate: 26_000,
+      fractionalRate: 25_500,
       deductionVnd: 1_000,
       rate: 25_500,
     }));
@@ -83,7 +83,7 @@ describe('CreateFxUseCase purchase adjustments', () => {
     expect(fxRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       fxAmount: 0.9,
       fractionalAmount: 0.9,
-      fractionalRate: 26_000,
+      fractionalRate: 25_500,
     }));
   });
 });

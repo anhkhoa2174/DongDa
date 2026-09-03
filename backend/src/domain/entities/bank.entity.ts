@@ -68,6 +68,12 @@ export interface BankMovement {
   voided?: boolean;
   voidedAt?: Date | null;
   voidReason?: string | null;
+  settlementSource?: {
+    type: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+    label: string;
+    balanceBefore: number;
+    balanceAfter: number;
+  };
 }
 
 export interface InternalBankTransferResult {

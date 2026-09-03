@@ -30,7 +30,7 @@ export function SettleAdvanceModal({
         value: a.id,
         label: formatBankAccountLabel(a),
       })),
-    [accounts, advance, money],
+    [accounts, advance],
   );
 
   const submit = async () => {
@@ -42,8 +42,11 @@ export function SettleAdvanceModal({
         sourceBankAccountId: values.source === 'BANK_ACCOUNT' ? values.sourceBankAccountId : undefined,
         note: values.note?.trim() || undefined,
       });
-      // Nói rõ tiền bị trừ ở đâu để KTTH nhìn thấy bút toán đối ứng
-      message.success(result?.description ?? `Đã hoàn tạm ứng ${advance.movementNo}`, 6);
+      const source = result.settlementSource;
+      const successMessage = source
+        ? `Đã hoàn ứng. ${source.label}: ${money(source.balanceBefore)} → ${money(source.balanceAfter)}`
+        : result.description ?? `Đã hoàn tạm ứng ${advance.movementNo}`;
+      message.success(successMessage, 8);
       form.resetFields();
       onClose();
     } catch (error: unknown) {

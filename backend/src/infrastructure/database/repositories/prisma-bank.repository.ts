@@ -592,6 +592,8 @@ export class PrismaBankRepository implements IBankRepository {
       if (target.status !== 'ACTIVE') throw new BadRequestException('Tài khoản đã ứng không còn hoạt động');
 
       let sourceLabel: string;
+      let sourceBalanceBefore: number;
+      let sourceBalanceAfter: number;
       if (input.source === 'BANK_ACCOUNT') {
         const source = await tx.bank_accounts.findUnique({ where: { id: sourceBankAccountId! } });
         if (!source || source.status !== 'ACTIVE') throw new NotFoundException('Không tìm thấy tài khoản nguồn đang hoạt động');
@@ -625,6 +627,8 @@ export class PrismaBankRepository implements IBankRepository {
           data: { current_balance: srcBefore - amount, available_balance: srcBefore - amount },
         });
         sourceLabel = `từ TK ${source.account_no}`;
+        sourceBalanceBefore = srcBefore;
+        sourceBalanceAfter = srcBefore - amount;
       } else {
         // BRANCH_CASH: chi quỹ tiền mặt của chi nhánh đã ứng (tiền mặt đã thu của khách)
         const lines = await tx.ledger_lines.findMany({
@@ -679,6 +683,8 @@ export class PrismaBankRepository implements IBankRepository {
           },
         });
         sourceLabel = 'từ quỹ tiền mặt chi nhánh';
+        sourceBalanceBefore = cashBalance;
+        sourceBalanceAfter = cashBalance - amount;
       }
 
       const before = Number(target.current_balance);
@@ -705,7 +711,15 @@ export class PrismaBankRepository implements IBankRepository {
         where: { id: targetId },
         data: { current_balance: after, available_balance: after },
       });
-      return toMovement(movement);
+      return {
+        ...toMovement(movement),
+        settlementSource: {
+          type: input.source,
+          label: sourceLabel.replace(/^từ /, ''),
+          balanceBefore: sourceBalanceBefore,
+          balanceAfter: sourceBalanceAfter,
+        },
+      };
     });
   }
 

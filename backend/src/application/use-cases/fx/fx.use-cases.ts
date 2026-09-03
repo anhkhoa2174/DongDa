@@ -42,7 +42,7 @@ export class CreateFxUseCase {
       fxAmount,
       fractionalAmount,
       rate,
-      fractionalRate: systemRate,
+      fractionalRate: rate,
       deductionVnd,
     });
     if (amounts.vndAmount <= 0) {
@@ -56,7 +56,7 @@ export class CreateFxUseCase {
       fxCurrency: dto.fxCurrency as CurrencyCode,
       fxAmount,
       fractionalAmount,
-      fractionalRate: dto.isBuy ? systemRate : undefined,
+      fractionalRate: dto.isBuy ? rate : undefined,
       deductionVnd,
       rate,
       customerName: dto.customerName,
