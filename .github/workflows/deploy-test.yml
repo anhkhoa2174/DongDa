@@ -22,7 +22,7 @@ jobs:
       - name: Build frontend
         run: |
           set -e
-          docker run --rm -v "$PWD/frontend":/app -w /app node:20-alpine \
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend":/app -w /app node:20-alpine \
             sh -c "npm install --no-audit --no-fund && npm run build"
 
       - name: Đồng bộ code + cấu hình vào /srv/dongda-test
