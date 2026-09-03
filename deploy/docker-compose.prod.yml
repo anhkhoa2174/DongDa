@@ -1,0 +1,61 @@
+# Chạy tại /srv/dongda trên VPS. Code được CI rsync vào /srv/dongda/src.
+# Secrets nằm ở /srv/dongda/.env (không commit).
+name: dongda-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dongda_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/dongda_db?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    # KHÔNG mở port ra ngoài — chỉ Caddy gọi qua network nội bộ
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    networks: [default, test_net]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./www:/srv/www:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+# Caddy chính phục vụ luôn test.dongda.info.vn -> proxy sang stack dongda-test
+networks:
+  default: {}
+  test_net:
+    external: true
+    name: dongda-test_default
