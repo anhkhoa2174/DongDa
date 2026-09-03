@@ -19,7 +19,10 @@ jobs:
 
       - name: Build frontend (node trong docker, không cần cài node trên VPS)
         run: |
-          docker run --rm -v "$PWD/frontend":/app -w /app node:20-alpine \
+          # --user + HOME=/tmp: tránh docker ghi file BẰNG ROOT vào thư mục checkout của Actions.
+          # Lần trước gặp thật: root sở hữu frontend/dist -> lần chạy sau actions/checkout@v4 không
+          # `git clean` xoá được (EACCES) -> cả job fail ngay ở bước checkout, trước khi tới code mình.
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend":/app -w /app node:20-alpine \
             sh -c "npm ci --no-audit --no-fund 2>/dev/null || npm install --no-audit --no-fund; npm run build"
 
       - name: Đồng bộ code + cấu hình vào /srv/dongda
