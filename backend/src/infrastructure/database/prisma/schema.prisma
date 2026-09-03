@@ -256,8 +256,8 @@ model bank_balance_movements {
   @@index([branch_id, business_date], map: "idx_bank_movements_branch_date")
 }
 
-// CHECK balance_before/balance_after >= 0 (NOT VALID cho dữ liệu lịch sử) và trigger
-// append-only khi POSTED được quản lý bằng raw SQL migration.
+// CHECK chỉ cho phép số dư âm với ADVANCE_CK và bút toán DOMESTIC_VOID hoàn lại ADVANCE_CK;
+// trigger append-only khi POSTED được quản lý bằng raw SQL migration.
 
 model bank_balance_snapshots {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -853,6 +853,9 @@ model fx_transaction_details {
   fx_amount             Decimal               @db.Decimal(20, 2)
   rate                  Decimal               @db.Decimal(20, 6)
   is_buy                Boolean
+  fractional_amount     Decimal               @default(0) @db.Decimal(20, 2)
+  fractional_rate       Decimal?              @db.Decimal(20, 6)
+  deduction_vnd         Decimal               @default(0) @db.Decimal(20, 0)
   customer_transactions customer_transactions @relation(fields: [transaction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
@@ -1308,6 +1311,142 @@ enum currency_code {
   PHP
   LAK
   KHR
+  AED
+  AFN
+  ALL
+  AMD
+  AOA
+  ARS
+  AWG
+  AZN
+  BAM
+  BBD
+  BDT
+  BHD
+  BIF
+  BMD
+  BND
+  BOB
+  BRL
+  BSD
+  BTN
+  BWP
+  BYN
+  BZD
+  CDF
+  CLP
+  COP
+  CRC
+  CUP
+  CVE
+  CZK
+  DJF
+  DKK
+  DOP
+  DZD
+  EGP
+  ERN
+  ETB
+  FJD
+  FKP
+  GEL
+  GHS
+  GIP
+  GMD
+  GNF
+  GTQ
+  GYD
+  HNL
+  HTG
+  HUF
+  ILS
+  INR
+  IQD
+  IRR
+  ISK
+  JMD
+  JOD
+  KES
+  KGS
+  KMF
+  KPW
+  KWD
+  KYD
+  KZT
+  LBP
+  LKR
+  LRD
+  LSL
+  LYD
+  MAD
+  MDL
+  MGA
+  MKD
+  MMK
+  MNT
+  MOP
+  MRU
+  MUR
+  MVR
+  MWK
+  MXN
+  MZN
+  NAD
+  NGN
+  NIO
+  NOK
+  NPR
+  OMR
+  PAB
+  PEN
+  PGK
+  PKR
+  PLN
+  PYG
+  QAR
+  RON
+  RSD
+  RUB
+  RWF
+  SAR
+  SBD
+  SCR
+  SDG
+  SEK
+  SHP
+  SLE
+  SOS
+  SRD
+  SSP
+  STN
+  SVC
+  SYP
+  SZL
+  TJS
+  TMT
+  TND
+  TOP
+  TRY
+  TTD
+  TZS
+  UAH
+  UGX
+  UYU
+  UYW
+  UZS
+  VED
+  VES
+  VUV
+  WST
+  XAF
+  XCD
+  XCG
+  XOF
+  XPF
+  YER
+  ZAR
+  ZMW
+  ZWG
 }
 
 enum customer_status {

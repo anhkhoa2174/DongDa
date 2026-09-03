@@ -27,6 +27,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { currencyCodes } from '@/shared/constants/currencies';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
@@ -51,10 +52,7 @@ import type {
   FundTransferStatus,
 } from '../api/fundTransfer.api';
 
-const CURRENCIES = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES = currencyCodes;
 
 const STATUS: Record<FundTransferStatus, { color: string; label: string }> = {
   PENDING_APPROVAL: { color: 'gold', label: 'Chờ xác nhận' },

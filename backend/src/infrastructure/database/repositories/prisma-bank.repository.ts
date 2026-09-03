@@ -737,7 +737,7 @@ export class PrismaBankRepository implements IBankRepository {
   }
 
   // Liệt kê tạm ứng CK theo filter.
-  //   status ADVANCE_CK = phiếu ứng CHƯA hoàn; SETTLED = phiếu ứng ĐÃ hoàn; bỏ trống = tất cả phiếu ứng (kèm cờ settled).
+  //   ADVANCE_CK = chưa hoàn, SETTLED = đã hoàn, VOIDED = giao dịch nguồn đã hủy.
   // Phiếu hoàn (ADVANCE_SETTLE) tham chiếu phiếu ứng qua bank_reference = id phiếu ứng.
   async listAdvances(filter?: import('../../../domain/repositories/bank.repository').ListAdvancesFilter): Promise<BankMovement[]> {
     const scope = {
@@ -745,30 +745,54 @@ export class PrismaBankRepository implements IBankRepository {
       ...(filter?.branchId && { branch_id: filter.branchId }),
       ...(filter?.businessDate && { business_date: filter.businessDate }),
     };
-    const [advances, settles] = await Promise.all([
-      this.prisma.bank_balance_movements.findMany({
-        where: { movement_type: 'ADVANCE_CK', ...scope },
-        orderBy: { occurred_at: 'desc' },
-        take: 200,
-      }),
+    const advances = await this.prisma.bank_balance_movements.findMany({
+      where: { movement_type: 'ADVANCE_CK', ...scope },
+      orderBy: { occurred_at: 'desc' },
+      take: 200,
+    });
+    const transactionIds = advances
+      .map((advance) => advance.bank_reference?.startsWith('DOMESTIC:')
+        ? advance.bank_reference.slice('DOMESTIC:'.length)
+        : null)
+      .filter((id): id is string => Boolean(id));
+    const [settles, voidedTransactions] = await Promise.all([
       this.prisma.bank_balance_movements.findMany({
         where: { movement_type: 'ADVANCE_SETTLE', bank_reference: { not: null } },
         select: { id: true, bank_reference: true, description: true, posted_at: true, created_at: true },
       }),
+      transactionIds.length > 0
+        ? this.prisma.customer_transactions.findMany({
+            where: { id: { in: transactionIds }, status: 'VOIDED' },
+            select: { id: true, voided_at: true, void_reason: true },
+          })
+        : Promise.resolve([]),
     ]);
     const settledBy = new Map(settles.map((s) => [s.bank_reference as string, s]));
+    const voidedByTransaction = new Map(voidedTransactions.map((transaction) => [transaction.id, transaction]));
     return advances
       .map((row) => {
         const st = settledBy.get(row.id);
+        const transactionId = row.bank_reference?.startsWith('DOMESTIC:')
+          ? row.bank_reference.slice('DOMESTIC:'.length)
+          : null;
+        const voided = transactionId ? voidedByTransaction.get(transactionId) : undefined;
         return {
           ...toMovement(row),
           settled: !!st,
           settledMovementId: st?.id ?? null,
           settledAt: st ? (st.posted_at ?? st.created_at) : null,
           settledDescription: st?.description ?? null,
+          voided: !!voided,
+          voidedAt: voided?.voided_at ?? null,
+          voidReason: voided?.void_reason ?? null,
         };
       })
-      .filter((m) => (filter?.status === 'ADVANCE_CK' ? !m.settled : filter?.status === 'SETTLED' ? m.settled : true));
+      .filter((movement) => {
+        if (filter?.status === 'ADVANCE_CK') return !movement.settled && !movement.voided;
+        if (filter?.status === 'SETTLED') return movement.settled;
+        if (filter?.status === 'VOIDED') return movement.voided;
+        return true;
+      });
   }
 
 

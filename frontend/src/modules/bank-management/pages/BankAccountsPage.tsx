@@ -51,11 +51,19 @@ function BankAccountCard({
   const movementsPath = `/bank-management/accounts/${account.id}/movements`;
 
   return (
-    <Card
+    <article
       className="bank-account-card h-full cursor-pointer overflow-hidden"
-      classNames={{ body: 'p-0!' }}
       onClick={() => navigate(movementsPath)}
-      title={(
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          navigate(movementsPath);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="bank-account-card__header">
         <div className="flex min-w-0 items-center gap-3">
           <div className="bank-account-card__icon">
             <BankOutlined />
@@ -67,9 +75,8 @@ function BankAccountCard({
             </Typography.Text>
           </div>
         </div>
-      )}
-      extra={<Tag className="bank-account-card__bank-code m-0!">{account.bankCode}</Tag>}
-    >
+        <Tag className="bank-account-card__bank-code m-0!">{account.bankCode}</Tag>
+      </div>
       <div className="bank-account-card__body">
         <div className="flex items-start justify-between gap-4">
           <Space direction="vertical" size={0}>
@@ -112,7 +119,7 @@ function BankAccountCard({
           </Popconfirm>
         ) : <span />}
       </div>
-    </Card>
+    </article>
   );
 }
 
@@ -134,9 +141,10 @@ export function BankAccountsPage() {
   const [recording, setRecording] = useState<{ account: BankAccountDto; direction: BankMovementDirection } | null>(null);
   const [internalTransferSource, setInternalTransferSource] = useState<BankAccountDto | null>(null);
   // Tạm ứng CK chỉ được sinh từ giao dịch "Nhận tiền mặt, chuyển khoản".
-  const [advanceTab, setAdvanceTab] = useState<'ADVANCE_CK' | 'SETTLED'>('ADVANCE_CK');
+  const [advanceTab, setAdvanceTab] = useState<'ADVANCE_CK' | 'SETTLED' | 'VOIDED'>('ADVANCE_CK');
   const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
   const { data: settledAdvances = [] } = useAdvances({ status: 'SETTLED', branchId: isBranchUser ? undefined : branchFilter }, advanceTab === 'SETTLED');
+  const { data: voidedAdvances = [] } = useAdvances({ status: 'VOIDED', branchId: isBranchUser ? undefined : branchFilter }, advanceTab === 'VOIDED');
   // Tổng đang ứng theo tài khoản -> hiện trên thẻ TK để thấy ngay TK nào còn treo
   const pendingByAccount = useMemo(() => {
     const map = new Map<string, number>();
@@ -157,6 +165,12 @@ export function BankAccountsPage() {
       { title: 'Đã hoàn lúc', dataIndex: 'settledAt', width: 130,
         render: (v: string | null) => (v ? dayjs(v).format('DD/MM HH:mm') : '—') },
       { title: 'Nguồn hoàn (tiền bị trừ ở đâu)', dataIndex: 'settledDescription', ellipsis: true,
+        render: (v: string | null) => v ?? '—' },
+    ] : []),
+    ...(advanceTab === 'VOIDED' ? [
+      { title: 'Đã hủy lúc', dataIndex: 'voidedAt', width: 130,
+        render: (v: string | null) => (v ? dayjs(v).format('DD/MM HH:mm') : '—') },
+      { title: 'Lý do hủy', dataIndex: 'voidReason', ellipsis: true,
         render: (v: string | null) => v ?? '—' },
     ] : []),
     ...(canManage && advanceTab === 'ADVANCE_CK' ? [{
@@ -206,7 +220,7 @@ export function BankAccountsPage() {
       <Space direction="vertical" size={16} className="w-full">
         <OperationalOverviewCard
           eyebrow="Tổng quan ngân hàng"
-          title="Nguồn tiền trên tài khoản"
+          title="Số dư ngân hàng"
           icon={<BankOutlined />}
           meta={`${accounts.length} tài khoản đang hoạt động trên ${branchCount} chi nhánh`}
           metrics={[
@@ -218,93 +232,96 @@ export function BankAccountsPage() {
           loading={isLoading}
         />
 
-        <Card className="bank-filter-card" classNames={{ body: 'p-4!' }}>
-          <div className="bank-section-heading">
-            <div>
-              <Typography.Text className="bank-section-heading__eyebrow"><FilterOutlined /> Bộ lọc tài khoản</Typography.Text>
-              <Typography.Title level={4}>Tìm nhanh tài khoản cần xử lý</Typography.Title>
-            </div>
-            <Typography.Text type="secondary">{filteredAccounts.length} kết quả</Typography.Text>
-          </div>
-          <Row gutter={[12, 12]} align="middle">
-            <Col xs={24} lg={isBranchUser ? 16 : 10}>
-              <Input.Search
-                allowClear
-                placeholder="Tìm ngân hàng, số tài khoản, chi nhánh..."
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-              />
-            </Col>
-            {!isBranchUser && (
-              <Col xs={24} sm={12} lg={7}>
-                <Select
-                  className="w-full"
-                  allowClear
-                  placeholder="Tất cả chi nhánh"
-                  value={branchFilter}
-                  onChange={(value) => setBranchFilter(value || undefined)}
-                  options={branches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))}
-                />
-              </Col>
-            )}
-            <Col xs={24} sm={12} lg={isBranchUser ? 8 : 7}>
-              <Select className="w-full" value={bankFilter} onChange={setBankFilter} options={bankOptions} />
-            </Col>
-          </Row>
-        </Card>
-
         <Card className="bank-advance-card" classNames={{ body: 'p-0!' }}>
           <div className="bank-advance-card__header">
             <div>
-              <Typography.Text className="bank-section-heading__eyebrow">Theo dõi giao dịch chuyển tiền</Typography.Text>
-              <Typography.Title level={4}>Tạm ứng chuyển khoản từ giao dịch</Typography.Title>
-              <Typography.Text type="secondary">Chỉ sinh tự động khi tạo giao dịch nhận tiền mặt, chuyển khoản.</Typography.Text>
+              <Typography.Text className="bank-section-heading__eyebrow">Giao dịch chuyển tiền</Typography.Text>
+              <Typography.Title level={4}>Tạm ứng chuyển khoản</Typography.Title>
+              <Typography.Text type="secondary">Các khoản phát sinh khi nhận tiền mặt và chuyển khoản.</Typography.Text>
             </div>
             <Segmented
               value={advanceTab}
-              onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED')}
+              onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED' | 'VOIDED')}
               options={[
                 { value: 'ADVANCE_CK', label: `Chưa hoàn (${pendingAdvances.length})` },
                 { value: 'SETTLED', label: 'Đã hoàn' },
+                { value: 'VOIDED', label: 'Đã hủy' },
               ]}
             />
           </div>
           <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols}
-            dataSource={advanceTab === 'ADVANCE_CK' ? pendingAdvances : settledAdvances}
+            dataSource={advanceTab === 'ADVANCE_CK'
+              ? pendingAdvances
+              : advanceTab === 'SETTLED'
+                ? settledAdvances
+                : voidedAdvances}
             pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 820 }}
-            locale={{ emptyText: advanceTab === 'ADVANCE_CK' ? 'Không có khoản tạm ứng nào đang chờ hoàn' : 'Chưa có khoản nào được hoàn' }} />
+            locale={{
+              emptyText: advanceTab === 'ADVANCE_CK'
+                ? 'Không có khoản tạm ứng nào đang chờ hoàn'
+                : advanceTab === 'SETTLED'
+                  ? 'Chưa có khoản nào được hoàn'
+                  : 'Chưa có phiếu tạm ứng nào đã hủy',
+            }} />
         </Card>
 
-        {!isLoading && filteredAccounts.length === 0 ? (
-          <Card>
-            <Empty description={canManage ? 'Chưa có tài khoản ngân hàng. Bấm "Thêm tài khoản" để khai báo cho từng chi nhánh.' : 'Chi nhánh chưa được khai báo tài khoản ngân hàng. Liên hệ KTTH/GĐ.'} />
-          </Card>
-        ) : (
-          <section>
-            <div className="bank-account-list__heading">
+        <Card className="bank-account-directory" classNames={{ body: 'p-0!' }}>
+          <div className="bank-account-directory__header">
+            <div className="bank-section-heading">
               <div>
-                <Typography.Text className="bank-section-heading__eyebrow">Danh sách tài khoản</Typography.Text>
+                <Typography.Text className="bank-section-heading__eyebrow"><FilterOutlined /> Danh sách và bộ lọc</Typography.Text>
                 <Typography.Title level={3}>Tài khoản ngân hàng</Typography.Title>
               </div>
-              <Typography.Text type="secondary">Chọn một tài khoản để xem lịch sử biến động</Typography.Text>
+              <Tag className="m-0!">{filteredAccounts.length} tài khoản</Tag>
             </div>
-            <Row gutter={[16, 16]}>
-            {filteredAccounts.map((account) => (
-              <Col xs={24} xl={12} key={account.id}>
-                <BankAccountCard
-                  account={account}
-                  pendingAdvance={pendingByAccount.get(account.id) ?? 0}
-                  canManage={canManage}
-                  canRecord={canRecord}
-                  onRecord={(direction) => setRecording({ account, direction })}
-                  onInternalTransfer={() => setInternalTransferSource(account)}
-                  onDeactivate={() => onDeactivate(account)}
+            <Row gutter={[12, 12]} align="middle">
+              <Col xs={24} lg={isBranchUser ? 16 : 10}>
+                <Input.Search
+                  allowClear
+                  placeholder="Tìm ngân hàng, số tài khoản, chi nhánh..."
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
                 />
               </Col>
-            ))}
+              {!isBranchUser && (
+                <Col xs={24} sm={12} lg={7}>
+                  <Select
+                    className="w-full"
+                    allowClear
+                    placeholder="Tất cả chi nhánh"
+                    value={branchFilter}
+                    onChange={(value) => setBranchFilter(value || undefined)}
+                    options={branches.map((b) => ({ value: b.id, label: `${b.code} - ${b.name}` }))}
+                  />
+                </Col>
+              )}
+              <Col xs={24} sm={12} lg={isBranchUser ? 8 : 7}>
+                <Select className="w-full" value={bankFilter} onChange={setBankFilter} options={bankOptions} />
+              </Col>
             </Row>
-          </section>
-        )}
+          </div>
+          <div className="bank-account-directory__body">
+            {!isLoading && filteredAccounts.length === 0 ? (
+              <Empty description={canManage ? 'Chưa có tài khoản ngân hàng. Bấm "Thêm tài khoản" để khai báo cho từng chi nhánh.' : 'Chi nhánh chưa được khai báo tài khoản ngân hàng. Liên hệ KTTH/GĐ.'} />
+            ) : (
+              <Row gutter={[16, 16]}>
+                {filteredAccounts.map((account) => (
+                  <Col xs={24} xl={12} key={account.id}>
+                    <BankAccountCard
+                      account={account}
+                      pendingAdvance={pendingByAccount.get(account.id) ?? 0}
+                      canManage={canManage}
+                      canRecord={canRecord}
+                      onRecord={(direction) => setRecording({ account, direction })}
+                      onInternalTransfer={() => setInternalTransferSource(account)}
+                      onDeactivate={() => onDeactivate(account)}
+                    />
+                  </Col>
+                ))}
+              </Row>
+            )}
+          </div>
+        </Card>
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />

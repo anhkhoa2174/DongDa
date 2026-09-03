@@ -12,6 +12,9 @@ export interface FxTransactionDto {
   isBuy: boolean;
   fxCurrency: string;
   fxAmount: number;
+  fractionalAmount: number;
+  fractionalRate?: number | null;
+  deductionVnd: number;
   rate: number;
   vndAmount: number;
   createdAt: string;
@@ -24,6 +27,8 @@ export interface CreateFxPayload {
   isBuy: boolean;
   fxCurrency: string;
   fxAmount: number;
+  fractionalAmount?: number;
+  deductionVnd?: number;
   rate: number;
   customerName?: string;
 }

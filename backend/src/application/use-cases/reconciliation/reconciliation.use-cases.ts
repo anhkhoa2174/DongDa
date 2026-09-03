@@ -270,7 +270,7 @@ export class UploadJournalUseCase {
       body: `Chi nhánh đã upload ${rows.length} dòng Journal ${provider} ngày ${businessDateStr}. Vui lòng vào Đối chiếu để duyệt.`,
       sourceType: 'JOURNAL_PENDING_REVIEW',
       sourceId: pending.id,
-    }, { roles: ['ADMIN', 'MANAGER'], branchIds: [branchId] });
+    }, { roles: ['ADMIN', 'MANAGER'] });
 
     return pending;
   }

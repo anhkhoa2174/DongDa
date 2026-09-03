@@ -21,15 +21,34 @@ export class AdvanceReminderService {
     try {
       const advances = await this.prisma.bank_balance_movements.findMany({
         where: { movement_type: 'ADVANCE_CK' as never },
-        select: { id: true, amount: true, currency_code: true, branch_id: true },
+        select: { id: true, amount: true, currency_code: true, branch_id: true, bank_reference: true },
       });
       if (!advances.length) return;
-      const settles = await this.prisma.bank_balance_movements.findMany({
-        where: { movement_type: 'ADVANCE_SETTLE' as never, bank_reference: { in: advances.map((a) => a.id) } },
-        select: { bank_reference: true },
-      });
+      const transactionIds = advances
+        .map((advance) => advance.bank_reference?.startsWith('DOMESTIC:')
+          ? advance.bank_reference.slice('DOMESTIC:'.length)
+          : null)
+        .filter((id): id is string => Boolean(id));
+      const [settles, voidedTransactions] = await Promise.all([
+        this.prisma.bank_balance_movements.findMany({
+          where: { movement_type: 'ADVANCE_SETTLE' as never, bank_reference: { in: advances.map((a) => a.id) } },
+          select: { bank_reference: true },
+        }),
+        transactionIds.length > 0
+          ? this.prisma.customer_transactions.findMany({
+              where: { id: { in: transactionIds }, status: 'VOIDED' },
+              select: { id: true },
+            })
+          : Promise.resolve([]),
+      ]);
       const done = new Set(settles.map((s) => s.bank_reference));
-      const pending = advances.filter((a) => !done.has(a.id));
+      const voided = new Set(voidedTransactions.map((transaction) => transaction.id));
+      const pending = advances.filter((advance) => {
+        const transactionId = advance.bank_reference?.startsWith('DOMESTIC:')
+          ? advance.bank_reference.slice('DOMESTIC:'.length)
+          : null;
+        return !done.has(advance.id) && (!transactionId || !voided.has(transactionId));
+      });
       if (!pending.length) return;
 
       const byCurrency = new Map<string, number>();
@@ -47,7 +66,6 @@ export class AdvanceReminderService {
         sourceId: pending[0].id,
       }, {
         roles: ['ADMIN', 'MANAGER'],
-        branchIds: [...new Set(pending.map((a) => a.branch_id))],
       });
     } catch (error) {
       this.logger.warn(`Nhắc tạm ứng CK thất bại: ${(error as Error).message}`);

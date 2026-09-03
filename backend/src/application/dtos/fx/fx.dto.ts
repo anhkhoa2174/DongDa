@@ -1,7 +1,7 @@
 // DTOs: FX (Mua/Bán ngoại tệ)
 // Layer: Application
 
-import { IsUUID, IsBoolean, IsEnum, IsNumber, IsPositive, IsOptional, IsString } from 'class-validator';
+import { IsUUID, IsBoolean, IsEnum, IsNumber, IsPositive, IsOptional, IsString, Max, Min } from 'class-validator';
 import { FOREIGN_CURRENCIES } from '../../../domain/entities/currency';
 
 const CURRENCIES = [...FOREIGN_CURRENCIES];
@@ -17,8 +17,19 @@ export class CreateFxDto {
   fxCurrency: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  @Min(0)
   fxAmount: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(0.99)
+  fractionalAmount?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @Min(0)
+  deductionVnd?: number;
 
   @IsNumber()
   @IsPositive()

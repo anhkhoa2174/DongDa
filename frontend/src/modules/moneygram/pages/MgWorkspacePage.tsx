@@ -210,7 +210,7 @@ export function MgWorkspacePage() {
                 <InputNumber
                   min={rateBounds.min}
                   max={rateBounds.max}
-                  precision={2}
+                  precision={6}
                   step={PAID_RATE_STEP}
                   keyboard={false}
                   addonAfter="VND/USD"

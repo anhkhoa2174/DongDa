@@ -65,6 +65,9 @@ export interface BankMovement {
   settledMovementId?: string | null;
   settledAt?: Date | null;
   settledDescription?: string | null; // "Hoàn tạm ứng ... từ quỹ tiền mặt chi nhánh / từ TK ..."
+  voided?: boolean;
+  voidedAt?: Date | null;
+  voidReason?: string | null;
 }
 
 export interface InternalBankTransferResult {

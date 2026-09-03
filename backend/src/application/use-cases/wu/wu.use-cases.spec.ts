@@ -21,6 +21,21 @@ describe('WU financial rules', () => {
       .toThrow(BadRequestException);
   });
 
+  it('pays the WU VND amount directly when both paid and payout currencies are VND', () => {
+    expect(() => assertWuPayoutMatches({
+      ...base,
+      paidCurrency: 'VND',
+      payoutCurrency: 'VND',
+      receivedVnd: base.wuVndAmount,
+    }, 25_500)).not.toThrow();
+    expect(() => assertWuPayoutMatches({
+      ...base,
+      paidCurrency: 'VND',
+      payoutCurrency: 'VND',
+      receivedVnd: base.wuVndAmount - 1_000,
+    }, 25_500)).toThrow(BadRequestException);
+  });
+
   it('splits USD integer and fractional payout', () => {
     expect(() => assertWuPayoutMatches({
       ...base, payoutCurrency: 'USD', receivedUsd: 100, receivedVnd: 6_500,
@@ -45,6 +60,15 @@ describe('WU financial rules', () => {
   it('requires the WU transaction rate to use a 5 VND step', () => {
     expect(() => validateAppliedRate(25_975, 25_500, 26_000)).not.toThrow();
     expect(() => validateAppliedRate(25_973, 25_500, 26_000)).toThrow(BadRequestException);
+  });
+
+  it('keeps the exact WU rate as an allowed boundary while intermediate rates use a 5 VND step', () => {
+    const impliedRate = 10_091_000 / 387.05;
+
+    expect(() => validateAppliedRate(25_590, impliedRate, 25_590, 25_800)).not.toThrow();
+    expect(() => validateAppliedRate(26_070, impliedRate, 25_590, 25_800)).not.toThrow();
+    expect(() => validateAppliedRate(impliedRate, impliedRate, 25_590, 25_800)).not.toThrow();
+    expect(() => validateAppliedRate(26_075, impliedRate, 25_590, 25_800)).toThrow(BadRequestException);
   });
 
   it('rejects an MTCN that was already processed before touching rates or funds', async () => {

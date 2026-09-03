@@ -3,7 +3,7 @@
 
 import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { IFxRepository, ListFxFilter } from '../../../domain/repositories/fx.repository';
-import { FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
+import { calculateFxVndAmount, FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
 import { IExchangeRateRepository } from '../../../domain/repositories/exchange-rate.repository';
 import { ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateFxDto } from '../../dtos/fx/fx.dto';
@@ -26,13 +26,38 @@ export class CreateFxUseCase {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${dto.isBuy ? 'mua' : 'bán'} cho ${dto.fxCurrency}`);
     }
     const rate = validateFxAppliedRate(dto.rate, systemRate, active[0]?.margin ?? 0, dto.isBuy);
+    const fractionalAmount = Number(dto.fractionalAmount ?? 0);
+    const deductionVnd = Math.round(Number(dto.deductionVnd ?? 0));
+    if (dto.isBuy && !Number.isInteger(dto.fxAmount)) {
+      throw new BadRequestException('Số lượng mua phần nguyên phải là số nguyên; phần lẻ nhập ở ô riêng');
+    }
+    if (!dto.isBuy && (fractionalAmount > 0 || deductionVnd > 0)) {
+      throw new BadRequestException('Phần lẻ và khấu trừ chỉ áp dụng khi mua ngoại tệ');
+    }
+    const fxAmount = dto.fxAmount + fractionalAmount;
+    if (!Number.isFinite(fxAmount) || fxAmount <= 0) {
+      throw new BadRequestException('Tổng số lượng ngoại tệ phải lớn hơn 0');
+    }
+    const amounts = calculateFxVndAmount({
+      fxAmount,
+      fractionalAmount,
+      rate,
+      fractionalRate: systemRate,
+      deductionVnd,
+    });
+    if (amounts.vndAmount <= 0) {
+      throw new BadRequestException('Khấu trừ phải nhỏ hơn thành tiền mua ngoại tệ');
+    }
 
     return this.fxRepo.create({
       idempotencyKey,
       branchId: dto.branchId,
       isBuy: dto.isBuy,
       fxCurrency: dto.fxCurrency as CurrencyCode,
-      fxAmount: dto.fxAmount,
+      fxAmount,
+      fractionalAmount,
+      fractionalRate: dto.isBuy ? systemRate : undefined,
+      deductionVnd,
       rate,
       customerName: dto.customerName,
       createdByUserId,

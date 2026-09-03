@@ -33,10 +33,14 @@ import type { CreateWuPayload } from '../api/wu.api';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 import {
   countryOptions,
+  employmentStatusSuggestions,
   filterReferenceOption,
+  mergeSuggestionOptions,
   normalizeCountryName,
   normalizeUpperText,
   normalizeUsStateName,
+  receivePurposeSuggestions,
+  senderRelationshipSuggestions,
   usStateOptions,
 } from '../model/wuReferenceData';
 
@@ -50,12 +54,51 @@ export function WuWorkspacePage() {
   const previousPayoutCurrency = useRef<string | undefined>(undefined);
   const previousRateSelectionKey = useRef<string | undefined>(undefined);
   const previousWuUsd = useRef<number | undefined>(undefined);
+  const manuallyEditedCountryFields = useRef(new Set<LinkedCountryField>());
   const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
 
   const resetTransactionForm = () => {
+    manuallyEditedCountryFields.current.clear();
     form.resetFields();
     form.setFieldValue('receivedDate', dayjs());
     resetBranchField();
+  };
+
+  const syncLinkedCountryFields = (source: LinkedCountryField, value: string) => {
+    manuallyEditedCountryFields.current.add(source);
+    if (!value.trim()) return;
+
+    for (const field of LINKED_COUNTRY_FIELDS) {
+      if (field !== source && !manuallyEditedCountryFields.current.has(field)) {
+        form.setFieldValue(field, value);
+      }
+    }
+  };
+
+  const normalizeLinkedCountryField = (source: LinkedCountryField) => {
+    const normalized = normalizeCountryName(form.getFieldValue(source));
+    form.setFieldValue(source, normalized);
+    if (!normalized) return;
+
+    for (const field of LINKED_COUNTRY_FIELDS) {
+      if (field !== source && !manuallyEditedCountryFields.current.has(field)) {
+        form.setFieldValue(field, normalized);
+      }
+    }
+  };
+
+  const handleIdentityDocumentTypeChange = (documentType: string) => {
+    const currentPlaceOfIssue = form.getFieldValue('identityPlaceOfIssue');
+    if (documentType === 'CCCD') {
+      form.setFieldsValue({
+        identityPlaceOfIssue: CCCD_PLACE_OF_ISSUE,
+        identityIssuingCountry: 'VIETNAM',
+      });
+      return;
+    }
+    if (currentPlaceOfIssue === CCCD_PLACE_OF_ISSUE) {
+      form.setFieldValue('identityPlaceOfIssue', undefined);
+    }
   };
 
   // Theo dõi để tính WU implied rate, tỷ giá giao dịch và số tiền khách nhận.
@@ -81,6 +124,7 @@ export function WuWorkspacePage() {
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
   const hasVisa = Form.useWatch('hasVisa', form) ?? false;
+  const isDirectVndPayout = payoutCurrency === 'VND' && paidCurrency === 'VND';
   const payoutEquivalent = payoutCurrency === 'USD'
     ? receivedUsd * transactionRate + receivedVnd
     : receivedVnd;
@@ -105,7 +149,9 @@ export function WuWorkspacePage() {
     const wuUsdChanged = previousWuUsd.current !== wuUsd;
     const nextPayout = getWuPayout(
       payoutCurrency,
+      paidCurrency,
       wuUsd,
+      wuVnd,
       nextRate,
       receivedUsd,
       payoutCurrencyChanged || wuUsdChanged,
@@ -117,7 +163,7 @@ export function WuWorkspacePage() {
     previousPayoutCurrency.current = payoutCurrency;
     previousRateSelectionKey.current = rateSelectionKey;
     previousWuUsd.current = wuUsd;
-  }, [form, fxUsdRate, implied, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
+  }, [form, fxUsdRate, implied, paidCurrency, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
 
   useEffect(() => {
     if (!hasVisa) form.setFieldsValue({ visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
@@ -222,7 +268,9 @@ export function WuWorkspacePage() {
                 receivedVnd: 0,
                 appliedRate: 0,
                 receivedDate: dayjs(),
+                countryOfBirth: 'VIETNAM',
                 nationality: 'VIETNAM',
+                identityIssuingCountry: 'VIETNAM',
               }}>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
                 <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
@@ -248,8 +296,8 @@ export function WuWorkspacePage() {
                 <Col xs={24} md={12}><Form.Item name="receivedDate" label="Ngày nhận tiền" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(date) => date.isAfter(dayjs(), 'day')} style={{ width: '100%' }} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Nhập quan hệ" options={toRecentOptions(recentOptions?.senderRelationships)} filterOption={filterRecentOption} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><AutoComplete allowClear maxLength={150} placeholder="Nhập mục đích nhận tiền" options={toRecentOptions(recentOptions?.receivePurposes)} filterOption={filterRecentOption} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập quan hệ" options={mergeSuggestionOptions(recentOptions?.senderRelationships, senderRelationshipSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><AutoComplete allowClear maxLength={150} placeholder="Chọn hoặc nhập mục đích" options={mergeSuggestionOptions(recentOptions?.receivePurposes, receivePurposeSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
               </Row>
 
               <Typography.Title level={5}>Thông tin người nhận</Typography.Title>
@@ -260,19 +308,19 @@ export function WuWorkspacePage() {
               <Form.Item name="currentAddress" label="Địa chỉ hiện tại" rules={[requiredRule]}><Input /></Form.Item>
               <Form.Item name="identityAddress" label="Địa chỉ CCCD" extra="Không bắt buộc"><Input /></Form.Item>
               <Row gutter={8}>
-                <Col xs={24} md={8}><Form.Item name="employmentStatus" label="Nghề nghiệp" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Nhập nghề nghiệp" options={toRecentOptions(recentOptions?.employmentStatuses)} filterOption={filterRecentOption} /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'countryOfBirth')} /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="nationality" label="Quốc tịch" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="VIETNAM" onBlur={() => normalizeCountryField(form, 'nationality')} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="employmentStatus" label="Tình trạng việc làm" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập nghề nghiệp" options={mergeSuggestionOptions(recentOptions?.employmentStatuses, employmentStatusSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onChange={(value) => syncLinkedCountryFields('countryOfBirth', value)} onBlur={() => normalizeLinkedCountryField('countryOfBirth')} /></Form.Item></Col>
+                <Col xs={24} md={8}><Form.Item name="nationality" label="Quốc tịch" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="VIETNAM" onChange={(value) => syncLinkedCountryFields('nationality', value)} onBlur={() => normalizeLinkedCountryField('nationality')} /></Form.Item></Col>
               </Row>
 
               <Typography.Title level={5}>Giấy tờ tùy thân</Typography.Title>
               <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="identityDocumentType" label="Loại giấy tờ tùy thân" rules={[requiredRule]}><Select options={[{ value: 'PASSPORT', label: 'Passport' }, { value: 'CCCD', label: 'CCCD' }]} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityDocumentType" label="Loại giấy tờ tùy thân" rules={[requiredRule]}><Select options={[{ value: 'PASSPORT', label: 'Passport' }, { value: 'CCCD', label: 'CCCD' }]} onChange={handleIdentityDocumentTypeChange} /></Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item name="identityDocumentNumber" label="Số giấy tờ / Passport" rules={[requiredRule]}><Input /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="identityPlaceOfIssue" label="Nơi cấp" rules={[requiredRule]}><Input maxLength={150} placeholder="Ví dụ: CỤC CẢNH SÁT QLHC VỀ TTXH" onBlur={(event) => form.setFieldValue('identityPlaceOfIssue', normalizeUpperText(event.currentTarget.value))} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'identityIssuingCountry')} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onChange={(value) => syncLinkedCountryFields('identityIssuingCountry', value)} onBlur={() => normalizeLinkedCountryField('identityIssuingCountry')} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
@@ -346,14 +394,14 @@ export function WuWorkspacePage() {
                 />
               </Form.Item>
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
-                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={2} step={PAID_RATE_STEP} keyboard={false} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
+                <InputNumber min={rateBounds.min} max={rateBounds.max} precision={6} step={PAID_RATE_STEP} keyboard={false} disabled={isDirectVndPayout} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
               <Slider
                 min={rateBounds.min}
                 max={rateBounds.max}
                 step={PAID_RATE_STEP}
                 value={clampPaidRate(transactionRate, implied, systemRate, fxUsdRate)}
-                disabled={!systemRate || !fxUsdRate || !implied}
+                disabled={!systemRate || !fxUsdRate || !implied || isDirectVndPayout}
                 tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
                 marks={{
                   [rateBounds.min]: formatExchangeRate(rateBounds.min),
@@ -378,7 +426,9 @@ export function WuWorkspacePage() {
                     <Typography.Text type="secondary">
                       {payoutCurrency === 'USD'
                         ? `Phần còn lại ${(Math.max(Number(wuUsd) - receivedUsd, 0)).toFixed(2)} USD được quy đổi · Tổng ${formatVnd(payoutEquivalent)}`
-                        : `${formatUsd(Number(wuUsd))} × ${formatExchangeRate(transactionRate)}`}
+                        : isDirectVndPayout
+                          ? 'Trả trực tiếp theo Amount VND (WU), không quy đổi tỷ giá'
+                          : `${formatUsd(Number(wuUsd))} × ${formatExchangeRate(transactionRate)}`}
                     </Typography.Text>
                   </Col>
                   <Col xs={24} md={8}>
@@ -462,13 +512,13 @@ interface WuFormValues {
   paidCurrency: 'USD' | 'VND';
 }
 
+type LinkedCountryField = 'countryOfBirth' | 'nationality' | 'identityIssuingCountry';
+const LINKED_COUNTRY_FIELDS: LinkedCountryField[] = ['countryOfBirth', 'nationality', 'identityIssuingCountry'];
+const CCCD_PLACE_OF_ISSUE = 'CỤC CẢNH SÁT QLHC VỀ TTXH';
+
 const requiredRule = { required: true, message: 'Vui lòng nhập thông tin' };
 function normalizeCountryField(form: ReturnType<typeof Form.useForm>[0], field: string) {
   form.setFieldValue(field, normalizeCountryName(form.getFieldValue(field)));
-}
-
-function toRecentOptions(values?: string[]) {
-  return (values ?? []).map((value) => ({ value }));
 }
 
 function filterRecentOption(inputValue: string, option?: { value?: string }) {
@@ -502,7 +552,9 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function getWuPayout(
   payoutCurrency: string,
+  paidCurrency: string,
   wuUsd: number,
+  wuVnd: number,
   transactionRate: number,
   currentReceivedUsd: number,
   resetReceivedUsd: boolean,
@@ -515,11 +567,14 @@ function getWuPayout(
       ? maxReceivedUsd
       : Math.min(Math.max(Math.trunc(currentReceivedUsd), 0), maxReceivedUsd);
   const convertedUsd = Math.max(safeWuUsd - receivedUsd, 0);
+  const directVndPayout = payoutCurrency === 'VND' && paidCurrency === 'VND';
 
   return {
     receivedUsd,
-    receivedVnd: Number.isFinite(transactionRate) && transactionRate > 0
-      ? Math.round(convertedUsd * transactionRate)
-      : 0,
+    receivedVnd: directVndPayout
+      ? Math.round(Math.max(wuVnd, 0))
+      : Number.isFinite(transactionRate) && transactionRate > 0
+        ? Math.round(convertedUsd * transactionRate)
+        : 0,
   };
 }

@@ -40,6 +40,7 @@ import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   formatDateTime,
+  formatCurrency,
   formatExchangeRate,
   formatUsd,
   formatVnd,
@@ -80,6 +81,14 @@ const statusMeta: Record<TransactionStatus, { label: string; color: string }> = 
 function normalizeTransactionStatus(status?: string): TransactionStatus {
   if (status && status in statusMeta) return status as TransactionStatus;
   return 'COMPLETED';
+}
+
+function formatProviderPaidAmount(
+  paidCurrency: 'USD' | 'VND',
+  usdAmount: number,
+  vndAmount: number,
+) {
+  return paidCurrency === 'USD' ? formatUsd(usdAmount) : formatVnd(vndAmount);
 }
 
 const createActions = [
@@ -159,6 +168,7 @@ export function TransactionsMainPage() {
       queryClient.invalidateQueries({ queryKey: ['fx-trading'] }),
       queryClient.invalidateQueries({ queryKey: ['domestic-transfers'] }),
       queryClient.invalidateQueries({ queryKey: ['fund'] }),
+      queryClient.invalidateQueries({ queryKey: ['bank'] }),
       queryClient.invalidateQueries({ queryKey: ['debts'] }),
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] }),
     ]);
@@ -246,9 +256,11 @@ export function TransactionsMainPage() {
         type: `WU trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.payoutCurrency === 'USD'
-          ? `${formatUsd(transaction.receivedUsd)} + ${formatVnd(transaction.receivedVnd)}`
-          : formatVnd(transaction.receivedVnd),
+        amountLabel: formatProviderPaidAmount(
+          transaction.paidCurrency,
+          transaction.wuUsdAmount,
+          transaction.wuVndAmount,
+        ),
         vndAmount: transaction.transactionValueVnd,
         debtLabel: transaction.paidCurrency === 'USD'
           ? formatUsd(transaction.wuUsdAmount)
@@ -276,9 +288,11 @@ export function TransactionsMainPage() {
         type: `MG trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.receivedUsd > 0
-          ? `${formatUsd(transaction.receivedUsd)}${transaction.receivedVnd > 0 ? ` + ${formatVnd(transaction.receivedVnd)}` : ''}`
-          : formatVnd(transaction.receivedVnd),
+        amountLabel: formatProviderPaidAmount(
+          transaction.paidCurrency,
+          transaction.mgUsdAmount,
+          transaction.mgVndAmount,
+        ),
         vndAmount: transaction.transactionValueVnd,
         debtLabel: transaction.paidCurrency === 'USD'
           ? formatUsd(transaction.mgUsdAmount)
@@ -306,7 +320,7 @@ export function TransactionsMainPage() {
         type: transaction.isBuy ? 'Mua ngoại tệ' : 'Bán ngoại tệ',
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: `${formatExchangeRate(transaction.fxAmount)} ${transaction.fxCurrency}`,
+        amountLabel: formatCurrency(transaction.fxAmount, transaction.fxCurrency),
         vndAmount: transaction.vndAmount,
         debtLabel: undefined,
         branchId,
@@ -458,24 +472,11 @@ export function TransactionsMainPage() {
       title: 'Giá trị giao dịch',
       key: 'transactionValue',
       align: 'right',
-      width: 210,
-      // FX: góc trái hiện tỷ giá giao dịch, góc phải giữ ngoại tệ gốc (feedback a Kiển)
-      render: (_, record) => (
-        <div className="flex items-end justify-between gap-2">
-          {record.source === 'FX' && record.financialData?.appliedRate ? (
-            <Typography.Text type="secondary" className="text-xs! whitespace-nowrap">
-              TG {formatExchangeRate(record.financialData.appliedRate)}
-            </Typography.Text>
-          ) : <span />}
-          <Space direction="vertical" size={0} align="end">
-            <Typography.Text strong>{formatVnd(record.vndAmount)}</Typography.Text>
-            <Typography.Text type="secondary" className="text-xs!">{record.amountLabel}</Typography.Text>
-          </Space>
-        </div>
-      ),
+      width: 170,
+      render: (_, record) => <Typography.Text strong>{record.amountLabel}</Typography.Text>,
     },
     {
-      title: 'Công nợ phát sinh',
+      title: 'Công nợ',
       dataIndex: 'debtLabel',
       align: 'right',
       width: 160,

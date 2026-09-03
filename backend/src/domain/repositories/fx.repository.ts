@@ -9,6 +9,9 @@ export interface CreateFxInput {
   isBuy: boolean;
   fxCurrency: CurrencyCode;
   fxAmount: number;
+  fractionalAmount: number;
+  fractionalRate?: number;
+  deductionVnd: number;
   rate: number;
   customerName?: string;
   createdByUserId: string;

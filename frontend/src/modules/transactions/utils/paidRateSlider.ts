@@ -1,4 +1,5 @@
 export const PAID_RATE_STEP = 5;
+const RATE_BOUNDARY_TOLERANCE = 0.000001;
 
 export function getPaidRateBounds(...values: Array<number | null | undefined>) {
   const rates = values.filter((rate): rate is number => (
@@ -6,16 +7,14 @@ export function getPaidRateBounds(...values: Array<number | null | undefined>) {
   ));
   if (rates.length === 0) return { min: 0, max: 100_000 };
 
-  const rawMin = Math.min(...rates);
-  const rawMax = Math.max(...rates);
-  const min = Math.ceil(rawMin / PAID_RATE_STEP) * PAID_RATE_STEP;
-  const max = Math.floor(rawMax / PAID_RATE_STEP) * PAID_RATE_STEP;
-  return min <= max ? { min, max } : { min: rawMin, max: rawMax };
+  return { min: Math.min(...rates), max: Math.max(...rates) };
 }
 
 export function clampPaidRate(value: number, ...bounds: Array<number | null | undefined>) {
   const { min, max } = getPaidRateBounds(...bounds);
   if (!Number.isFinite(value) || value <= 0) return min;
+  if (Math.abs(value - min) <= RATE_BOUNDARY_TOLERANCE) return min;
+  if (Math.abs(value - max) <= RATE_BOUNDARY_TOLERANCE) return max;
   const steppedValue = Math.round(value / PAID_RATE_STEP) * PAID_RATE_STEP;
   return Math.min(Math.max(steppedValue, min), max);
 }

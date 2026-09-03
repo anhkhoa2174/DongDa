@@ -13,6 +13,7 @@ import {
   VoidTransactionDto,
 } from '../../../application/dtos/transactions/transaction-admin.dto';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
+import { calculateFxVndAmount } from '../../../domain/entities/fx.entity';
 
 const TRANSACTION_ADJUSTMENT = 'CUSTOMER_TRANSACTION_ADJUSTMENT';
 
@@ -769,7 +770,22 @@ export class TransactionAdminController {
       const detail = original.fx_transaction_details;
       const fxAmount = Number(correctedData.fxAmount);
       const rate = Number(detail.rate);
-      const vndAmount = Math.round(fxAmount * rate);
+      const fractionalAmount = Number(detail.fractional_amount ?? 0);
+      if (fxAmount <= fractionalAmount) {
+        throw new BadRequestException('Tổng số lượng ngoại tệ phải lớn hơn phần lẻ đã ghi nhận');
+      }
+      const fractionalRate = detail.fractional_rate == null ? rate : Number(detail.fractional_rate);
+      const deductionVnd = Number(detail.deduction_vnd ?? 0);
+      const { vndAmount } = calculateFxVndAmount({
+        fxAmount,
+        fractionalAmount,
+        rate,
+        fractionalRate,
+        deductionVnd,
+      });
+      if (vndAmount <= 0) {
+        throw new BadRequestException('Khấu trừ phải nhỏ hơn thành tiền mua ngoại tệ');
+      }
       const vndAccountId = await fundAccount('VND');
       const fxAccountId = await fundAccount(detail.fx_currency);
       const lines: any[] = [
@@ -790,6 +806,9 @@ export class TransactionAdminController {
         fx_amount: fxAmount,
         rate: detail.rate,
         is_buy: detail.is_buy,
+        fractional_amount: fractionalAmount,
+        fractional_rate: detail.fractional_rate,
+        deduction_vnd: deductionVnd,
       } });
       await tx.ledger_entries.create({ data: {
         entry_no: `FX-${replacement.transaction_no}`, business_date: postingBusinessDate,

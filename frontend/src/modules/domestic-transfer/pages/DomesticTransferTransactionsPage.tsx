@@ -95,13 +95,22 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       name: 'bankAccountId', label: 'Tài khoản ngân hàng công ty', kind: 'select', required: true,
       placeholder: 'Chọn tài khoản nhận/chuyển tiền', options: bankAccountOptions, span: 12,
     },
-    { name: 'customerName', label: 'Họ tên chủ tài khoản', kind: 'text', required: true, span: 12, maxLength: 150 },
+    {
+      name: 'customerName', label: 'Họ tên chủ tài khoản', kind: 'text', span: 12, maxLength: 150,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
     {
       name: 'customerPhone', label: 'Số điện thoại người gửi (không bắt buộc)', kind: 'text', span: 12,
       maxLength: 11, pattern: /^0\d{9,10}$/, patternMessage: 'Số điện thoại phải gồm 10-11 chữ số và bắt đầu bằng 0',
     },
-    { name: 'counterpartyBank', label: 'Ngân hàng', kind: 'text', required: true, span: 12, maxLength: 150 },
-    { name: 'counterpartyAccount', label: 'Số tài khoản', kind: 'text', required: true, span: 12, maxLength: 100 },
+    {
+      name: 'counterpartyBank', label: 'Ngân hàng của khách', kind: 'text', span: 12, maxLength: 150,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
+    {
+      name: 'counterpartyAccount', label: 'Số tài khoản của khách', kind: 'text', span: 12, maxLength: 100,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
     {
       name: 'amount', label: 'Số tiền giao dịch', kind: 'number', required: true,
       min: 0, positive: true, precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
@@ -132,15 +141,6 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
     return (
       <div className="mb-4 border-y border-slate-200 bg-slate-50 px-4 py-3">
         <Typography.Text strong>Tóm tắt giao dịch</Typography.Text>
-        {type === 'CASH_TO_BANK' && (
-          <Alert
-            className="mt-3"
-            type="info"
-            showIcon
-            message="Hệ thống sẽ tự động ghi nhận ứng chuyển khoản"
-            description="Khoản chuyển ra được theo dõi tại Ngân hàng cho đến khi KTTH/GĐ hoàn ứng."
-          />
-        )}
         <Row gutter={[16, 12]} className="mt-3">
           <Col xs={12} md={6}>
             <Typography.Text type="secondary">Nghiệp vụ</Typography.Text>
@@ -203,6 +203,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       initialFormValues={{
         branchId: isBranchUser ? user?.branchId : undefined,
         transactionType: 'CASH_TO_BANK',
+        feePaymentMethod: 'CASH',
         amount: 0,
         fee: 0,
       }}
@@ -275,10 +276,10 @@ function toDomesticTransferPayload(values: TransactionFormValues, branchId?: str
     branchId: branchId ?? String(values.branchId),
     transferType: values.transactionType as DomesticTransferType,
     bankAccountId: String(values.bankAccountId),
-    customerName: String(values.customerName),
+    customerName: values.customerName ? String(values.customerName) : undefined,
     customerPhone: values.customerPhone ? String(values.customerPhone) : undefined,
-    counterpartyBank: String(values.counterpartyBank),
-    counterpartyAccount: String(values.counterpartyAccount),
+    counterpartyBank: values.counterpartyBank ? String(values.counterpartyBank) : undefined,
+    counterpartyAccount: values.counterpartyAccount ? String(values.counterpartyAccount) : undefined,
     transferReference: String(values.transferReference),
     amount: Number(values.amount),
     fee: Number(values.fee ?? 0),

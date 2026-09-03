@@ -117,7 +117,7 @@ export class BankController {
     @Request() req: any,
     @Query('bankAccountId') bankAccountId?: string,
     @Query('branchId') branchId?: string,
-    @Query('status') status?: 'ADVANCE_CK' | 'SETTLED',
+    @Query('status') status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED',
   ) {
     return this.listAdvances.list(actorOf(req), { bankAccountId, branchId: branchId || undefined, status });
   }

@@ -24,8 +24,9 @@ describe('MG financial rules', () => {
     expect(calculateMgPayout('VND', 'USD', 0, 31_366, 25_501)).toBe(1.23);
   });
 
-  it('accepts only step-5 rates inside the matching Paid and USD FX range', () => {
+  it('accepts step-5 rates and exact boundaries inside the Paid and USD FX range', () => {
     expect(validateMgAppliedRate(25_975, 25_500, 26_000)).toBe(25_975);
+    expect(validateMgAppliedRate(26_001.25, 25_500, 26_001.25)).toBe(26_001.25);
     expect(() => validateMgAppliedRate(25_973, 25_500, 26_000)).toThrow(BadRequestException);
     expect(() => validateMgAppliedRate(26_005, 25_500, 26_000)).toThrow(BadRequestException);
   });

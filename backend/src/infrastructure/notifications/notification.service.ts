@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { UserRole } from '../../domain/entities/user.entity';
 import { PrismaService } from '../database/prisma.service';
 
 type NotificationDb = Pick<PrismaService, 'user' | 'notifications'>;
@@ -14,6 +15,7 @@ type RecipientFilter = {
   userIds?: string[];
   roles?: string[];
   branchIds?: string[];
+  branchRoles?: string[];
   excludeUserIds?: string[];
 };
 
@@ -33,7 +35,18 @@ export class NotificationService {
         ? [{ user_roles: { some: { roles: { code: { in: filter.roles } } } } }]
         : []),
       ...(filter.branchIds?.length
-        ? [{ employees: { branch_id: { in: filter.branchIds }, status: 'ACTIVE' as const } }]
+        ? [{
+            AND: [
+              { employees: { branch_id: { in: filter.branchIds }, status: 'ACTIVE' as const } },
+              {
+                user_roles: {
+                  some: {
+                    roles: { code: { in: filter.branchRoles?.length ? filter.branchRoles : [UserRole.STAFF] } },
+                  },
+                },
+              },
+            ],
+          }]
         : []),
     ];
     const matchedUsers = shouldResolveUsers

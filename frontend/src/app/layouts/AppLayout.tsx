@@ -327,6 +327,7 @@ function notificationPresentation(category: NotificationCategory) {
     REPORT: { label: 'Báo cáo', color: 'blue', icon: <FileTextOutlined /> },
     FUND_TRANSFER: { label: 'Tiếp quỹ', color: 'cyan', icon: <SwapOutlined /> },
     FUND_MOVEMENT: { label: 'Thu / chi', color: 'green', icon: <BankOutlined /> },
+    BANK: { label: 'Ngân hàng', color: 'blue', icon: <BankOutlined /> },
     SHIFT: { label: 'Sai lệch', color: 'red', icon: <SafetyCertificateOutlined /> },
     DEBT: { label: 'Công nợ', color: 'gold', icon: <MoneyCollectOutlined /> },
     RECONCILIATION: { label: 'Đối chiếu', color: 'red', icon: <WarningOutlined /> },

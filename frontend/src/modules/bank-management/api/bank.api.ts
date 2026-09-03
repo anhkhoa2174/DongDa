@@ -43,6 +43,9 @@ export interface BankMovementDto {
   settledMovementId?: string | null;
   settledAt?: string | null;
   settledDescription?: string | null;
+  voided?: boolean;
+  voidedAt?: string | null;
+  voidReason?: string | null;
 }
 
 export interface InternalBankTransferInput {
@@ -104,7 +107,7 @@ export const bankApi = {
   internalTransfer: (payload: InternalBankTransferInput) =>
     runIdempotent('BANK_INTERNAL_TRANSFER', payload, (headers) =>
       httpClient.post<InternalBankTransferResult>('/bank/internal-transfer', payload, { headers }).then((r) => r.data)),
-  advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }) =>
+  advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED' }) =>
     httpClient.get<BankMovementDto[]>('/bank/advances', { params }).then((r) => r.data),
   settleAdvanceCk: (advanceId: string, payload: { source: 'BRANCH_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
     httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload).then((r) => r.data),

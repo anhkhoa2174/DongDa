@@ -21,8 +21,30 @@ export interface FxTransaction {
   isBuy: boolean;
   fxCurrency: CurrencyCode;
   fxAmount: number;
+  fractionalAmount: number;
+  fractionalRate?: number | null;
+  deductionVnd: number;
   rate: number;
-  vndAmount: number; // = fxAmount × rate
+  vndAmount: number;
   createdByUserId: string;
   createdAt: Date;
+}
+
+export function calculateFxVndAmount(input: {
+  fxAmount: number;
+  fractionalAmount?: number;
+  rate: number;
+  fractionalRate?: number;
+  deductionVnd?: number;
+}) {
+  const fractionalAmount = Number(input.fractionalAmount ?? 0);
+  const wholeAmount = input.fxAmount - fractionalAmount;
+  const fractionalRate = Number(input.fractionalRate ?? input.rate);
+  const deductionVnd = Math.round(Number(input.deductionVnd ?? 0));
+  const grossVndAmount = Math.round(wholeAmount * input.rate + fractionalAmount * fractionalRate);
+  return {
+    grossVndAmount,
+    deductionVnd,
+    vndAmount: grossVndAmount - deductionVnd,
+  };
 }

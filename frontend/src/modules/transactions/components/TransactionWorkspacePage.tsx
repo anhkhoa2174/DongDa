@@ -58,6 +58,7 @@ export type TransactionField = {
   label: string;
   kind: 'text' | 'number' | 'select' | 'segmented' | 'slider';
   required?: boolean;
+  requiredWhen?: (values: TransactionFormValues) => boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
   span?: 8 | 12 | 16 | 24;
@@ -520,7 +521,10 @@ function TransactionFormSummary({
   form: FormInstance<TransactionFormValues>;
   renderer: (values: TransactionFormValues) => ReactNode;
 }) {
-  const watchedValues = Form.useWatch([], form) ?? form.getFieldsValue(true);
+  const watchedValues = Form.useWatch(
+    (values: TransactionFormValues) => values,
+    form,
+  ) ?? form.getFieldsValue(true);
 
   return <>{renderer(watchedValues)}</>;
 }
@@ -532,7 +536,10 @@ function TransactionFields({
   fields: TransactionField[];
   form: FormInstance<TransactionFormValues>;
 }) {
-  const watchedValues = Form.useWatch([], form) ?? form.getFieldsValue(true);
+  const watchedValues = Form.useWatch(
+    (values: TransactionFormValues) => values,
+    form,
+  ) ?? form.getFieldsValue(true);
 
   return (
     <Row gutter={12}>
@@ -562,8 +569,10 @@ function buildFieldRules(
   isDisabled: boolean,
   values: TransactionFormValues,
 ) {
+  const isRequired = !isDisabled && (field.required || field.requiredWhen?.(values));
+
   return [
-    { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
+    { required: isRequired, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
     ...(field.pattern
       ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
       : []),

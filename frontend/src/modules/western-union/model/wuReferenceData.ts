@@ -39,6 +39,54 @@ const usStateByName = new Map(US_STATES.map(([, name]) => [name.toLocaleLowerCas
 
 export const usStateOptions = US_STATES.map(([, name]) => ({ value: name }));
 
+export const employmentStatusSuggestions = [
+  'Buôn bán nhỏ / Small business',
+  'Công nghệ thông tin / Information technology',
+  'Dịch vụ du lịch / Tourism',
+  'Dịch vụ làm đẹp / Beauty',
+  'Giáo dục / Education',
+  'Kinh doanh / Business',
+  'Kỹ sư / Engineer',
+  'Lao động phổ thông / General labor',
+  'Nghề tự do / Freelancer',
+  'Nghỉ hưu / Retired',
+  'Nhân viên văn phòng / Office staff',
+  'Nhân viên y tế / Healthcare',
+];
+
+export const senderRelationshipSuggestions = [
+  'Anh em (BROTHER)',
+  'Bạn bè (FRIENDS)',
+  'Cha/mẹ (FATHER/MOTHER)',
+  'Chị em (SISTER)',
+  'Chồng (HUSBAND)',
+  'Con/cháu (CHILD)',
+  'Gia đình (FAMILY)',
+  'Người thân (RELATIVE)',
+  'Ông bà (GRAND PARENTS)',
+  'Vợ (WIFE)',
+];
+
+export const receivePurposeSuggestions = [
+  'Chi phí hỗ trợ nhà ở / gia đình (FAMILY SUPPORT)',
+  'Chi phí đi lại (TRAVEL EXPENSE)',
+  'Quà tặng (GIFT)',
+];
+
+export function mergeSuggestionOptions(recentValues: string[] | undefined, defaults: string[]) {
+  const seen = new Set<string>();
+  return [...(recentValues ?? []), ...defaults]
+    .map((value) => value.trim())
+    .filter((value) => {
+      if (!value) return false;
+      const key = value.toLocaleLowerCase('vi-VN');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((value) => ({ value }));
+}
+
 export function normalizeUsStateName(value?: string): string | undefined {
   const normalized = value?.trim();
   if (!normalized) return undefined;

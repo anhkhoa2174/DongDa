@@ -1,4 +1,15 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, IsPositive } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateDomesticTransferDto {
   @IsUUID()
@@ -12,7 +23,9 @@ export class CreateDomesticTransferDto {
   @IsUUID()
   bankAccountId: string;
 
+  @ValidateIf((dto: CreateDomesticTransferDto) => dto.transferType === 'CASH_TO_BANK' || dto.customerName !== undefined)
   @IsString()
+  @IsNotEmpty()
   @MaxLength(150)
   customerName?: string;
 
@@ -21,11 +34,15 @@ export class CreateDomesticTransferDto {
   @MaxLength(30)
   customerPhone?: string;
 
+  @ValidateIf((dto: CreateDomesticTransferDto) => dto.transferType === 'CASH_TO_BANK' || dto.counterpartyBank !== undefined)
   @IsString()
+  @IsNotEmpty()
   @MaxLength(150)
   counterpartyBank?: string;
 
+  @ValidateIf((dto: CreateDomesticTransferDto) => dto.transferType === 'CASH_TO_BANK' || dto.counterpartyAccount !== undefined)
   @IsString()
+  @IsNotEmpty()
   @MaxLength(100)
   counterpartyAccount?: string;
 

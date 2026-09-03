@@ -157,7 +157,7 @@ export class SettleAdvanceCkUseCase {
 @Injectable()
 export class ListAdvancesUseCase {
   constructor(@Inject('IBankRepository') private readonly bankRepo: IBankRepository) {}
-  list(actor: BankActor, filter: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }): Promise<BankMovement[]> {
+  list(actor: BankActor, filter: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED' }): Promise<BankMovement[]> {
     return this.bankRepo.listAdvances({ ...filter, branchId: scopeBranch(actor, filter.branchId) });
   }
 }

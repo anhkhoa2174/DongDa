@@ -149,9 +149,14 @@ export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
     if (receivedVnd <= 0) {
       throw new BadRequestException('WU: khách nhận VND thì phải nhập số VND thực trả');
     }
-    const expectedVnd = Math.round(wuUsd * appliedRate);
+    const expectedVnd = dto.paidCurrency === 'VND'
+      ? Math.round(Number(dto.wuVndAmount))
+      : Math.round(wuUsd * appliedRate);
     if (Math.abs(receivedVnd - expectedVnd) > 1) {
-      throw new BadRequestException(`WU: VND thực trả phải bằng Amount USD nhân tỷ giá áp dụng (${expectedVnd} VND)`);
+      const calculation = dto.paidCurrency === 'VND'
+        ? 'Amount VND của WU'
+        : 'Amount USD nhân tỷ giá áp dụng';
+      throw new BadRequestException(`WU: VND thực trả phải bằng ${calculation} (${expectedVnd} VND)`);
     }
     return;
   }

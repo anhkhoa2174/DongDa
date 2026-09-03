@@ -24,6 +24,7 @@ import {
 } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { currencyCodes } from '@/shared/constants/currencies';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
@@ -39,10 +40,7 @@ import {
   useCentralFundSummary, useCreateBranchFundMovement, useCreateCentralFundMovement,
 } from '../hooks/useCentralFund';
 
-const CURRENCIES = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES = currencyCodes;
 
 const EMPTY_ITEM = { currencyCode: 'VND', amount: undefined, bankAccountId: undefined };
 

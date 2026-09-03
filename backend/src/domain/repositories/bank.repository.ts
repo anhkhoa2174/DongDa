@@ -61,7 +61,7 @@ export interface ListAdvancesFilter {
   bankAccountId?: string;
   branchId?: string;
   businessDate?: Date;
-  status?: 'ADVANCE_CK' | 'SETTLED';
+  status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED';
 }
 
 export interface IBankRepository {

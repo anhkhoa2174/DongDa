@@ -50,7 +50,7 @@ export function useInternalBankTransfer() {
   const invalidate = useInvalidateBank();
   return useMutation({ mutationFn: (input: InternalBankTransferInput) => bankApi.internalTransfer(input), onSuccess: invalidate });
 }
-export function useAdvances(params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' }, enabled = true) {
+export function useAdvances(params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED' }, enabled = true) {
   return useQuery({
     queryKey: [...KEY, 'advances', params.bankAccountId ?? 'all', params.branchId ?? 'all', params.status ?? 'all'],
     queryFn: () => bankApi.advances(params),
