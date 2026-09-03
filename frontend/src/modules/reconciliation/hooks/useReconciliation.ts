@@ -3,8 +3,8 @@ import { reconApi, type RunReconInput } from '../api/reconciliation.api';
 
 const KEY = ['reconciliation'] as const;
 
-export function useReconRuns() {
-  return useQuery({ queryKey: [...KEY, 'runs'], queryFn: () => reconApi.runs() });
+export function useReconRuns(branchId?: string, provider?: 'WU' | 'MG') {
+  return useQuery({ queryKey: [...KEY, 'runs', branchId ?? 'all', provider ?? 'all'], queryFn: () => reconApi.runs(branchId, provider) });
 }
 export function useFundReconciliation(branchId?: string) {
   return useQuery({
@@ -23,6 +23,22 @@ export function useRunReconciliation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: RunReconInput) => reconApi.run(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
+export function useSubmittedBranchRuns(provider: 'WU' | 'MG', branchId?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...KEY, provider, 'submitted', branchId ?? 'all'],
+    queryFn: () => reconApi.submittedBranchRuns(provider, branchId),
+    enabled,
+  });
+}
+
+export function useCreateFinalRun(provider: 'WU' | 'MG') {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (branchRunIds: string[]) => reconApi.createFinalRun(provider, branchRunIds),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }

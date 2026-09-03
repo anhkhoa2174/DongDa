@@ -27,8 +27,11 @@ import type { ColumnsType } from 'antd/es/table';
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { currencyCodes } from '@/shared/constants/currencies';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { useBranches } from '@/shared/hooks/useBranches';
 import {
   formatCurrency,
   formatDateTime,
@@ -36,7 +39,7 @@ import {
   numberInputParser,
 } from '@/shared/utils/formatters';
 import {
-  useBranches,
+  useCancelTransfer,
   useConfirmTransfer,
   useCreateTransfer,
   useFundBalances,
@@ -49,10 +52,7 @@ import type {
   FundTransferStatus,
 } from '../api/fundTransfer.api';
 
-const CURRENCIES = [
-  'VND', 'USD', 'EUR', 'AUD', 'JPY', 'GBP', 'SGD', 'THB', 'CNY', 'HKD', 'KRW',
-  'CAD', 'CHF', 'NZD', 'TWD', 'MYR', 'IDR', 'PHP', 'LAK', 'KHR',
-];
+const CURRENCIES = currencyCodes;
 
 const STATUS: Record<FundTransferStatus, { color: string; label: string }> = {
   PENDING_APPROVAL: { color: 'gold', label: 'Chờ xác nhận' },
@@ -88,6 +88,7 @@ export function FundTransferWorkspacePage() {
   const create = useCreateTransfer();
   const confirm = useConfirmTransfer();
   const reject = useRejectTransfer();
+  const cancel = useCancelTransfer();
   const [form] = Form.useForm<CreateFundTransferPayload>();
   const watchedItems = Form.useWatch('items', form) ?? [];
   const selectedCurrencies = watchedItems
@@ -139,8 +140,8 @@ export function FundTransferWorkspacePage() {
       await create.mutateAsync(values);
       message.success('Đã tạo phiếu tiếp quỹ, chờ bên nhận xác nhận');
       form.resetFields();
-    } catch (error: any) {
-      message.error(error?.response?.data?.message ?? 'Tạo phiếu tiếp quỹ thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Tạo phiếu tiếp quỹ thất bại'));
     }
   };
 
@@ -148,8 +149,8 @@ export function FundTransferWorkspacePage() {
     try {
       await action;
       message.success(successMessage);
-    } catch (error: any) {
-      message.error(error?.response?.data?.message ?? 'Thao tác thất bại');
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Thao tác thất bại'));
     }
   };
 
@@ -199,22 +200,36 @@ export function FundTransferWorkspacePage() {
       key: 'actions',
       fixed: 'right',
       width: 180,
-      render: (_, transfer) => transfer.status === 'PENDING_APPROVAL' && canConfirm(transfer) ? (
-        <Space>
-          <Popconfirm
-            title="Xác nhận đã nhận đủ tất cả loại tiền?"
-            onConfirm={() => act(confirm.mutateAsync(transfer.id), 'Đã xác nhận tiếp quỹ')}
-          >
-            <Button type="primary" size="small">Xác nhận</Button>
-          </Popconfirm>
-          <Popconfirm
-            title="Từ chối toàn bộ phiếu tiếp quỹ?"
-            onConfirm={() => act(reject.mutateAsync(transfer.id), 'Đã từ chối phiếu')}
-          >
-            <Button danger size="small">Từ chối</Button>
-          </Popconfirm>
-        </Space>
-      ) : <Typography.Text type="secondary">-</Typography.Text>,
+      render: (_, transfer) => {
+        if (transfer.status !== 'PENDING_APPROVAL') return <Typography.Text type="secondary">-</Typography.Text>;
+        if (transfer.createdByUserId === user?.id) {
+          return (
+            <Popconfirm
+              title="Hủy phiếu tiếp quỹ chưa xác nhận?"
+              description="Phiếu hủy sẽ không làm thay đổi số dư quỹ."
+              onConfirm={() => act(cancel.mutateAsync(transfer.id), 'Đã hủy phiếu tiếp quỹ')}
+            >
+              <Button danger size="small" loading={cancel.isPending}>Hủy phiếu</Button>
+            </Popconfirm>
+          );
+        }
+        return canConfirm(transfer) ? (
+          <Space>
+            <Popconfirm
+              title="Xác nhận đã nhận đủ tất cả loại tiền?"
+              onConfirm={() => act(confirm.mutateAsync(transfer.id), 'Đã xác nhận tiếp quỹ và cập nhật số dư quỹ')}
+            >
+              <Button type="primary" size="small">Xác nhận</Button>
+            </Popconfirm>
+            <Popconfirm
+              title="Từ chối toàn bộ phiếu tiếp quỹ?"
+              onConfirm={() => act(reject.mutateAsync(transfer.id), 'Đã từ chối phiếu')}
+            >
+              <Button danger size="small">Từ chối</Button>
+            </Popconfirm>
+          </Space>
+        ) : <Typography.Text type="secondary">-</Typography.Text>;
+      },
     },
   ];
 

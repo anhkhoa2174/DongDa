@@ -6,9 +6,7 @@ import {
   DashboardOutlined,
   DollarOutlined,
   FieldTimeOutlined,
-  FileSearchOutlined,
   MoneyCollectOutlined,
-  SafetyCertificateOutlined,
   ShopOutlined,
   TransactionOutlined,
   UserOutlined,
@@ -81,7 +79,8 @@ export const navigationItems: AppMenuItem[] = [
     icon: <BankOutlined />,
     label: 'Ngân Hàng',
     path: '/bank-management/accounts',
-    allowedRoles: ['director', 'accountant', 'auditor'],
+    // Mỗi chi nhánh có tài khoản ngân hàng riêng -> chi nhánh cũng xem/ghi biến động tài khoản của mình.
+    allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
     requiredPermission: 'bank.view',
   },
   {
@@ -89,10 +88,11 @@ export const navigationItems: AppMenuItem[] = [
     icon: <CheckSquareOutlined />,
     label: 'Đối Chiếu',
     children: [
-      { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation' },
-      { key: '/reconciliation/journal', label: 'Đối chiếu Journal', path: '/reconciliation/journal' },
+      { key: '/reconciliation', label: 'Đối chiếu quỹ', path: '/reconciliation', allowedRoles: ['director', 'accountant', 'auditor'] },
+      { key: '/reconciliation/journal/wu', label: 'Journal WU', path: '/reconciliation/journal/wu' },
+      { key: '/reconciliation/journal/mg', label: 'Journal MG', path: '/reconciliation/journal/mg' },
     ],
-    allowedRoles: ['director', 'accountant', 'auditor'],
+    allowedRoles: ['director', 'accountant', 'auditor', 'branch'],
   },
   {
     key: 'reports',
@@ -110,20 +110,16 @@ export const navigationItems: AppMenuItem[] = [
     icon: <AuditOutlined />,
     label: 'Audit Log',
     children: [
-      { key: '/audit-log', label: 'Tổng quan', path: '/audit-log', requiredPermission: 'audit_log.view' },
-      { key: '/audit-log/live', label: 'Nhật ký hệ thống', path: '/audit-log/live', requiredPermission: 'audit_log.view' },
+      { key: '/audit-log', label: 'Nhật ký hệ thống', path: '/audit-log', requiredPermission: 'audit_log.view' },
     ],
     allowedRoles: ['director', 'accountant', 'auditor'],
     requiredPermission: 'audit_log.view',
   },
   {
-    key: 'administration',
-    icon: <SafetyCertificateOutlined />,
-    label: 'Quản Trị',
-    children: [
-      { key: '/user-management/users', label: 'Người dùng', path: '/user-management/users', icon: <UserOutlined /> },
-      { key: '/user-management/permissions', label: 'Phân quyền', path: '/user-management/permissions', icon: <FileSearchOutlined /> },
-    ],
+    key: '/user-management/users',
+    icon: <UserOutlined />,
+    label: 'Người dùng',
+    path: '/user-management/users',
     allowedRoles: ['director'],
   },
 ];

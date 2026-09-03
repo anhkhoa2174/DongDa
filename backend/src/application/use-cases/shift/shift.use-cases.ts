@@ -18,7 +18,11 @@ export class OpenShiftUseCase {
     return this.repo.openShift({
       branchId: dto.branchId,
       openedByUserId: userId,
-      openingCounts: dto.openingCounts.map((c) => ({ currency: c.currency as CurrencyCode, actualAmount: c.actualAmount })),
+      openingCounts: dto.openingCounts.map((c) => ({
+        currency: c.currency as CurrencyCode,
+        actualAmount: c.actualAmount,
+        denominations: c.denominations,
+      })),
       note: dto.note,
     });
   }
@@ -32,7 +36,11 @@ export class CloseShiftUseCase {
       shiftId,
       branchId: dto.branchId,
       closedByUserId: userId,
-      closingCounts: dto.closingCounts.map((c) => ({ currency: c.currency as CurrencyCode, actualAmount: c.actualAmount })),
+      closingCounts: dto.closingCounts.map((c) => ({
+        currency: c.currency as CurrencyCode,
+        actualAmount: c.actualAmount,
+        denominations: c.denominations,
+      })),
       note: dto.note,
     });
   }

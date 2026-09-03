@@ -23,6 +23,7 @@ export interface ListTransfersFilter {
 }
 
 export interface CreateFundMovementInput {
+  idempotencyKey: string;
   direction: CentralCashMovementDirection;
   sourceType: CentralFundSourceType;
   items: Array<{
@@ -42,7 +43,7 @@ export interface ListFundMovementHistoryFilter {
 }
 
 export interface ConvertCentralFundInput {
-  items: Array<{ currencyCode: CurrencyCode; amount: number }>;
+  items: Array<{ currencyCode: CurrencyCode; amount: number; rate: number; deduction: number }>;
   note?: string;
   createdByUserId: string;
 }
@@ -68,4 +69,5 @@ export interface IFundRepository {
   // Xác nhận: post ledger (CREDIT nguồn + DEBIT đích) trong 1 transaction
   confirmTransfer(id: string, confirmedByUserId: string): Promise<FundTransfer>;
   rejectTransfer(id: string, userId: string): Promise<FundTransfer>;
+  cancelTransfer(id: string, createdByUserId: string): Promise<FundTransfer>;
 }

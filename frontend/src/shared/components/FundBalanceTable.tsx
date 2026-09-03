@@ -100,7 +100,10 @@ export function FundBalanceTable({
     });
     return result;
   }, new Map()).values()];
-  const sortedItems = unifiedItems.sort((a, b) => {
+  const visibleItems = unifiedItems.filter((item) => (
+    item.accountType !== 'FUND_A' || Math.abs(item.balance) > 0.000001
+  ));
+  const sortedItems = visibleItems.sort((a, b) => {
     const groupOrder = (type: string) => type === 'CASH' ? 0 : type === 'FUND_A' ? 1 : 2;
     return groupOrder(a.accountType) - groupOrder(b.accountType)
       || a.accountType.localeCompare(b.accountType)

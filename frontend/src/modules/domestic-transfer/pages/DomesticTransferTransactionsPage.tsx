@@ -1,7 +1,8 @@
-import { BankOutlined } from '@ant-design/icons';
-import { Col, Row, Tag, Typography } from 'antd';
+import { BankOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Col, Row, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import {
   TransactionWorkspacePage,
@@ -9,26 +10,45 @@ import {
   type TransactionFormValues,
 } from '@/modules/transactions/components/TransactionWorkspacePage';
 import type { TransactionRecord } from '@/modules/transactions/model/transaction.types';
-import { useBranches } from '@/modules/western-union/hooks/useWu';
-import { formatVnd } from '@/shared/utils/formatters';
-import { domesticTransferTransactionsMock } from '../data/transactions.mock';
+import { useBranches } from '@/shared/hooks/useBranches';
+import { formatBankAccountLabel, formatVnd } from '@/shared/utils/formatters';
+import { domesticTransferApi } from '../api/domesticTransfer.api';
+import type {
+  CreateDomesticTransferPayload,
+  DomesticTransferFeePaymentMethod,
+  DomesticTransferType,
+} from '../api/domesticTransfer.api';
 
 const TRANSACTION_TYPES = [
-  { value: 'OUTGOING', label: 'Chuyển tiền đi' },
-  { value: 'INCOMING', label: 'Nhận tiền' },
+  { value: 'CASH_TO_BANK', label: 'Nhận tiền mặt, chuyển khoản' },
+  { value: 'BANK_TO_CASH', label: 'Nhận chuyển khoản, trả tiền mặt' },
+];
+
+const FEE_PAYMENT_METHODS = [
+  { value: 'CASH', label: 'Tiền mặt' },
+  { value: 'BANK', label: 'Ngân hàng' },
 ];
 
 const columns: ColumnsType<TransactionRecord> = [
   {
     title: 'Loại GD',
     dataIndex: 'transactionType',
-    render: (value: string) => <Tag color={value === 'OUTGOING' ? 'blue' : 'purple'}>{value === 'OUTGOING' ? 'Chuyển đi' : 'Nhận tiền'}</Tag>,
+    render: (value: string) => (
+      <Tag color={value === 'CASH_TO_BANK' ? 'gold' : 'blue'}>
+        {value === 'CASH_TO_BANK' ? 'Tiền mặt → Chuyển khoản' : 'Chuyển khoản → Tiền mặt'}
+      </Tag>
+    ),
   },
   { title: 'Khách hàng', dataIndex: 'customerName', render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
   { title: 'Ngân hàng', dataIndex: 'bank' },
   { title: 'Số tài khoản', dataIndex: 'accountNumber' },
   { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (value: number) => formatVnd(Number(value)) },
   { title: 'Phí', dataIndex: 'fee', align: 'right', render: (value: number) => formatVnd(Number(value)) },
+  {
+    title: 'Thu phí qua',
+    dataIndex: 'feePaymentMethod',
+    render: (value: DomesticTransferFeePaymentMethod) => value === 'BANK' ? 'Ngân hàng' : 'Tiền mặt',
+  },
 ];
 
 type DomesticTransferTransactionsPageProps = {
@@ -37,8 +57,15 @@ type DomesticTransferTransactionsPageProps = {
 };
 
 export function DomesticTransferTransactionsPage({ createOnly, onCreated }: DomesticTransferTransactionsPageProps = {}) {
+  const { message } = App.useApp();
+  const [isExporting, setIsExporting] = useState(false);
   const user = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
   const { data: branches = [] } = useBranches();
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['domestic-transfers', 'bank-accounts'],
+    queryFn: domesticTransferApi.bankAccounts,
+  });
   const isBranchUser = user?.role === 'branch';
   const isControlUser = user?.role === 'director' || user?.role === 'accountant';
   const branchOptions = useMemo(
@@ -48,38 +75,68 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
       .map((branch) => ({ value: branch.id, label: `${branch.code} — ${branch.name}` })),
     [branches, isBranchUser, user?.branchId],
   );
+  const bankAccountOptions = useMemo(
+    () => bankAccounts.map((account) => ({
+      value: account.id,
+      label: formatBankAccountLabel(account),
+    })),
+    [bankAccounts],
+  );
   const fields = useMemo<TransactionField[]>(() => [
     {
       name: 'transactionType', label: 'Loại giao dịch', kind: 'segmented', required: true,
-      options: TRANSACTION_TYPES, span: 12,
+      options: TRANSACTION_TYPES, span: 24,
     },
     {
       name: 'branchId', label: 'Chi nhánh', kind: 'select', required: true,
       placeholder: 'Chọn chi nhánh thực hiện', options: branchOptions, readOnly: isBranchUser, span: 12,
     },
-    { name: 'customerName', label: 'Tên khách hàng', kind: 'text', required: true, span: 12, maxLength: 150 },
     {
-      name: 'phone', label: 'Số điện thoại (không bắt buộc)', kind: 'text', span: 12,
+      name: 'bankAccountId', label: 'Tài khoản ngân hàng công ty', kind: 'select', required: true,
+      placeholder: 'Chọn tài khoản nhận/chuyển tiền', options: bankAccountOptions, span: 12,
+    },
+    {
+      name: 'customerName', label: 'Họ tên chủ tài khoản', kind: 'text', span: 12, maxLength: 150,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
+    {
+      name: 'customerPhone', label: 'Số điện thoại người gửi (không bắt buộc)', kind: 'text', span: 12,
       maxLength: 11, pattern: /^0\d{9,10}$/, patternMessage: 'Số điện thoại phải gồm 10-11 chữ số và bắt đầu bằng 0',
     },
-    { name: 'bank', label: 'Ngân hàng (không bắt buộc)', kind: 'text', span: 12, maxLength: 100 },
-    { name: 'accountNumber', label: 'Số tài khoản (không bắt buộc)', kind: 'text', span: 12, maxLength: 30 },
+    {
+      name: 'counterpartyBank', label: 'Ngân hàng của khách', kind: 'text', span: 12, maxLength: 150,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
+    {
+      name: 'counterpartyAccount', label: 'Số tài khoản của khách', kind: 'text', span: 12, maxLength: 100,
+      requiredWhen: (values) => values.transactionType === 'CASH_TO_BANK',
+    },
     {
       name: 'amount', label: 'Số tiền giao dịch', kind: 'number', required: true,
       min: 0, positive: true, precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
+      placeholder: 'Ví dụ: 1,000,000',
     },
     {
       name: 'fee', label: 'Phí giao dịch', kind: 'number', min: 0,
       precision: 0, inputFormat: 'vnd', suffix: 'VND', span: 12,
+      placeholder: 'Ví dụ: 10,000',
     },
-  ], [branchOptions, isBranchUser]);
+    {
+      name: 'feePaymentMethod', label: 'Thu phí bằng', kind: 'segmented', required: true,
+      options: FEE_PAYMENT_METHODS, span: 12,
+    },
+    { name: 'transferNote', label: 'Nội dung chuyển tiền', kind: 'text', required: true, span: 16, maxLength: 500 },
+    { name: 'transferReference', label: 'Giao dịch số', kind: 'text', required: true, span: 8, maxLength: 100 },
+  ], [bankAccountOptions, branchOptions, isBranchUser]);
 
   const summaryRenderer = (values: TransactionFormValues) => {
-    const type = values.transactionType ?? 'OUTGOING';
+    const type = (values.transactionType ?? 'CASH_TO_BANK') as DomesticTransferType;
     const amount = Number(values.amount ?? 0);
     const fee = Number(values.fee ?? 0);
-    const settlement = type === 'OUTGOING' ? amount + fee : Math.max(amount - fee, 0);
+    const feePaymentMethod = values.feePaymentMethod as DomesticTransferFeePaymentMethod | undefined;
+    const posting = getDomesticTransferPosting(type, amount, fee, feePaymentMethod);
     const selectedBranch = branches.find((branch) => branch.id === values.branchId);
+    const selectedBank = bankAccounts.find((account) => account.id === values.bankAccountId);
 
     return (
       <div className="mb-4 border-y border-slate-200 bg-slate-50 px-4 py-3">
@@ -88,7 +145,7 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
           <Col xs={12} md={6}>
             <Typography.Text type="secondary">Nghiệp vụ</Typography.Text>
             <div className="mt-1 font-semibold text-slate-900">
-              {type === 'OUTGOING' ? 'Chuyển tiền đi' : 'Nhận tiền'}
+              {type === 'CASH_TO_BANK' ? 'Nhận tiền mặt, chuyển khoản' : 'Nhận chuyển khoản, trả tiền mặt'}
             </div>
           </Col>
           <Col xs={12} md={6}>
@@ -98,15 +155,20 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
             </div>
           </Col>
           <Col xs={12} md={6}>
-            <Typography.Text type="secondary">Số tiền / Phí</Typography.Text>
-            <div className="mt-1 font-semibold text-slate-900">{formatVnd(amount)}</div>
-            <Typography.Text type="secondary" className="text-xs!">Phí {formatVnd(fee)}</Typography.Text>
+            <Typography.Text type="secondary">Chuyển khoản</Typography.Text>
+            <div className="mt-1 font-semibold text-slate-900">{formatVnd(Math.abs(posting.bankDelta))}</div>
+            <Typography.Text type="secondary" className="text-xs!">
+              {selectedBank ? formatBankAccountLabel(selectedBank) : 'Chưa chọn tài khoản'}
+            </Typography.Text>
           </Col>
           <Col xs={12} md={6}>
             <Typography.Text type="secondary">
-              {type === 'OUTGOING' ? 'Khách thanh toán' : 'Khách nhận'}
+              {type === 'CASH_TO_BANK' ? 'Tiền mặt nhận vào' : 'Tiền mặt trả ra'}
             </Typography.Text>
-            <div className="mt-1 text-lg font-semibold text-brand-700">{formatVnd(settlement)}</div>
+            <div className="mt-1 text-lg font-semibold text-brand-700">{formatVnd(posting.cashAmount)}</div>
+            <Typography.Text type="secondary" className="text-xs!">
+              Phí {formatVnd(fee)} thu qua {feePaymentMethod === 'BANK' ? 'ngân hàng' : feePaymentMethod === 'CASH' ? 'tiền mặt' : 'chưa chọn'}
+            </Typography.Text>
           </Col>
         </Row>
       </div>
@@ -115,28 +177,37 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
 
   return (
     <TransactionWorkspacePage
-      title="Chuyển Tiền Nội Địa"
-      description="Quản lý chuyển tiền đi, nhận tiền và phí giao dịch theo ca làm việc."
+      title="Giao Dịch Chuyển Tiền"
+      description="Nhận tiền mặt để chuyển khoản hoặc nhận chuyển khoản để trả tiền mặt tại chi nhánh."
       moduleName="domestic-transfer"
       codePrefix="DT"
       createLabel="Tạo giao dịch chuyển tiền"
       fields={fields}
       columns={columns}
-      initialRecords={domesticTransferTransactionsMock}
+      initialRecords={[]}
+      formNotice={bankAccounts.length === 0 ? (
+        <Alert
+          className="mb-4"
+          type="warning"
+          showIcon
+          message="Chưa có tài khoản ngân hàng VND"
+          description="Cần khởi tạo ít nhất một tài khoản ngân hàng công ty trước khi tạo giao dịch chuyển tiền."
+        />
+      ) : undefined}
       createOnly={createOnly}
       showHistory={false}
       showBackButton
       showShiftHeader={false}
       formIcon={<BankOutlined />}
-      formSteps={['Chọn chi nhánh', 'Nhập giao dịch', 'Xác nhận']}
+      formSteps={['Chọn nghiệp vụ', 'Chọn nguồn tiền', 'Nhập số tiền', 'Xác nhận']}
       initialFormValues={{
         branchId: isBranchUser ? user?.branchId : undefined,
-        transactionType: 'OUTGOING',
+        transactionType: 'CASH_TO_BANK',
+        feePaymentMethod: 'CASH',
         amount: 0,
         fee: 0,
       }}
       transformFormValues={(values) => {
-        const transactionType = values.transactionType ?? 'OUTGOING';
         const amount = Number(values.amount ?? 0);
         const fee = Number(values.fee ?? 0);
         return {
@@ -144,12 +215,102 @@ export function DomesticTransferTransactionsPage({ createOnly, onCreated }: Dome
           branchId: isBranchUser && user?.branchId ? user.branchId : values.branchId,
           amount,
           fee,
-          vndAmount: transactionType === 'OUTGOING' ? amount + fee : Math.max(amount - fee, 0),
+          vndAmount: amount,
         };
       }}
+      createTransaction={async (values) => {
+        const payload: CreateDomesticTransferPayload = {
+          branchId: String(values.branchId),
+          transferType: values.transactionType as DomesticTransferType,
+          bankAccountId: String(values.bankAccountId),
+          customerName: values.customerName ? String(values.customerName) : undefined,
+          customerPhone: values.customerPhone ? String(values.customerPhone) : undefined,
+          counterpartyBank: values.counterpartyBank ? String(values.counterpartyBank) : undefined,
+          counterpartyAccount: values.counterpartyAccount ? String(values.counterpartyAccount) : undefined,
+          transferReference: String(values.transferReference),
+          amount: Number(values.amount),
+          fee: Number(values.fee ?? 0),
+          feePaymentMethod: values.feePaymentMethod as DomesticTransferFeePaymentMethod,
+          transferNote: values.transferNote ? String(values.transferNote) : undefined,
+        };
+        await domesticTransferApi.create(payload);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['domestic-transfers'] }),
+          queryClient.invalidateQueries({ queryKey: ['fund'] }),
+          queryClient.invalidateQueries({ queryKey: ['bank'] }),
+          queryClient.invalidateQueries({ queryKey: ['summary'] }),
+        ]);
+      }}
       summaryRenderer={summaryRenderer}
-      canCreateOverride={isControlUser ? true : undefined}
+      createFormActions={(form) => (
+        <Button
+          icon={<DownloadOutlined />}
+          loading={isExporting}
+          onClick={async () => {
+            try {
+              const values = await form.validateFields();
+              setIsExporting(true);
+              const payload = toDomesticTransferPayload(values, isBranchUser && user?.branchId ? user.branchId : undefined);
+              const blob = await domesticTransferApi.exportForm(payload);
+              downloadBlob(blob, `GIAY-CHUYEN-KHOAN-${payload.transferReference}.xlsx`);
+              message.success('Đã xuất giấy chuyển khoản');
+            } catch (error: unknown) {
+              if (error && typeof error === 'object' && 'errorFields' in error) return;
+              message.error('Không thể xuất giấy chuyển khoản');
+            } finally {
+              setIsExporting(false);
+            }
+          }}
+        >
+          Xuất giấy chuyển khoản
+        </Button>
+      )}
+      canCreateOverride={bankAccounts.length === 0 ? false : isControlUser ? true : undefined}
       onCreated={onCreated}
     />
   );
+}
+
+function toDomesticTransferPayload(values: TransactionFormValues, branchId?: string): CreateDomesticTransferPayload {
+  return {
+    branchId: branchId ?? String(values.branchId),
+    transferType: values.transactionType as DomesticTransferType,
+    bankAccountId: String(values.bankAccountId),
+    customerName: values.customerName ? String(values.customerName) : undefined,
+    customerPhone: values.customerPhone ? String(values.customerPhone) : undefined,
+    counterpartyBank: values.counterpartyBank ? String(values.counterpartyBank) : undefined,
+    counterpartyAccount: values.counterpartyAccount ? String(values.counterpartyAccount) : undefined,
+    transferReference: String(values.transferReference),
+    amount: Number(values.amount),
+    fee: Number(values.fee ?? 0),
+    feePaymentMethod: values.feePaymentMethod as DomesticTransferFeePaymentMethod,
+    transferNote: String(values.transferNote),
+  };
+}
+
+function getDomesticTransferPosting(
+  type: DomesticTransferType,
+  amount: number,
+  fee: number,
+  feePaymentMethod?: DomesticTransferFeePaymentMethod,
+) {
+  if (type === 'CASH_TO_BANK') {
+    return feePaymentMethod === 'BANK'
+      ? { cashAmount: amount, bankDelta: -(amount - fee) }
+      : { cashAmount: amount + fee, bankDelta: -amount };
+  }
+  return feePaymentMethod === 'BANK'
+    ? { cashAmount: amount, bankDelta: amount + fee }
+    : { cashAmount: Math.max(amount - fee, 0), bankDelta: amount };
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }

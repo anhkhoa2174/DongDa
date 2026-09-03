@@ -26,11 +26,13 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { FormInstance } from 'antd';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -56,6 +58,7 @@ export type TransactionField = {
   label: string;
   kind: 'text' | 'number' | 'select' | 'segmented' | 'slider';
   required?: boolean;
+  requiredWhen?: (values: TransactionFormValues) => boolean;
   placeholder?: string;
   options?: Array<{ value: string; label: string }>;
   span?: 8 | 12 | 16 | 24;
@@ -97,12 +100,14 @@ type TransactionWorkspacePageProps = {
     form: FormInstance<TransactionFormValues>,
   ) => void;
   transformFormValues?: (values: TransactionFormValues) => TransactionFormValues;
+  createTransaction?: (values: TransactionFormValues) => Promise<unknown>;
   createOnly?: boolean;
   showHistory?: boolean;
   showBackButton?: boolean;
   showShiftHeader?: boolean;
   canCreateOverride?: boolean;
   onCreated?: () => void;
+  createFormActions?: (form: FormInstance<TransactionFormValues>) => ReactNode;
 };
 
 const statusMeta: Record<TransactionStatus, { color: string; label: string }> = {
@@ -130,12 +135,14 @@ export function TransactionWorkspacePage({
   initialFormValues,
   onFormValuesChange,
   transformFormValues,
+  createTransaction,
   createOnly = false,
   showHistory = true,
   showBackButton = false,
   showShiftHeader = true,
   canCreateOverride,
   onCreated,
+  createFormActions,
 }: TransactionWorkspacePageProps) {
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
@@ -149,6 +156,7 @@ export function TransactionWorkspacePage({
   const canVoid = access.canVoid || isUiTestMode;
   const canAdjustClosed = access.canAdjustClosed || isUiTestMode;
   const [records, setRecords] = useState(initialRecords);
+  const [isCreating, setIsCreating] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
   const [editor, setEditor] = useState<{
@@ -181,6 +189,20 @@ export function TransactionWorkspacePage({
     }
 
     const normalizedValues = transformFormValues?.(values) ?? values;
+    if (createTransaction) {
+      setIsCreating(true);
+      try {
+        await createTransaction(normalizedValues);
+        createForm.resetFields();
+        await message.success('Đã tạo giao dịch và ghi nhận biến động quỹ/ngân hàng');
+        onCreated?.();
+      } catch (error: unknown) {
+        await message.error(getApiErrorMessage(error, 'Không thể tạo giao dịch'));
+      } finally {
+        setIsCreating(false);
+      }
+      return;
+    }
     const now = new Date();
     const newRecord: TransactionRecord = {
       key: `${codePrefix}-${Date.now()}`,
@@ -328,14 +350,14 @@ export function TransactionWorkspacePage({
             </div>
           }
     >
-          {!createOnly && formNotice}
+          {formNotice}
           {showShiftHeader && <ShiftReadOnlyHeader currentShift={currentShift} fallbackUserName={user?.name} />}
           <Form<TransactionFormValues>
             form={createForm}
             layout="vertical"
             onFinish={submitCreateTransaction}
             onKeyDownCapture={preventNumberInputEnter}
-            disabled={!canCreate}
+            disabled={!canCreate || isCreating}
             initialValues={initialFormValues}
             onValuesChange={(changedValues, allValues) =>
               onFormValuesChange?.(changedValues, allValues, createForm)
@@ -344,8 +366,9 @@ export function TransactionWorkspacePage({
             <TransactionFields fields={fields} form={createForm} />
             {summaryRenderer && <TransactionFormSummary form={createForm} renderer={summaryRenderer} />}
             <div className="flex justify-end gap-2">
+              {createFormActions?.(createForm)}
               <Button onClick={() => createForm.resetFields()}>Nhập lại</Button>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={isCreating}>
                 {createLabel}
               </Button>
             </div>
@@ -406,7 +429,7 @@ export function TransactionWorkspacePage({
                 ]}
               />
             </Col>
-            <Col xs={24} sm={12} md={8}><DatePicker.RangePicker className="w-full" format="DD/MM/YYYY" /></Col>
+            <Col xs={24} sm={12} md={8}><DatePicker.RangePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_RANGE_PLACEHOLDERS} /></Col>
           </Row>
           <Table columns={tableColumns} dataSource={filteredRecords} scroll={{ x: 1500 }} pagination={{ pageSize: 10 }} />
         </Card>
@@ -498,7 +521,10 @@ function TransactionFormSummary({
   form: FormInstance<TransactionFormValues>;
   renderer: (values: TransactionFormValues) => ReactNode;
 }) {
-  const watchedValues = Form.useWatch([], form) ?? form.getFieldsValue(true);
+  const watchedValues = Form.useWatch(
+    (values: TransactionFormValues) => values,
+    form,
+  ) ?? form.getFieldsValue(true);
 
   return <>{renderer(watchedValues)}</>;
 }
@@ -510,7 +536,10 @@ function TransactionFields({
   fields: TransactionField[];
   form: FormInstance<TransactionFormValues>;
 }) {
-  const watchedValues = Form.useWatch([], form) ?? form.getFieldsValue(true);
+  const watchedValues = Form.useWatch(
+    (values: TransactionFormValues) => values,
+    form,
+  ) ?? form.getFieldsValue(true);
 
   return (
     <Row gutter={12}>
@@ -540,8 +569,10 @@ function buildFieldRules(
   isDisabled: boolean,
   values: TransactionFormValues,
 ) {
+  const isRequired = !isDisabled && (field.required || field.requiredWhen?.(values));
+
   return [
-    { required: field.required && !isDisabled, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
+    { required: isRequired, message: `Vui lòng nhập ${field.label.toLowerCase()}` },
     ...(field.pattern
       ? [{ pattern: field.pattern, message: field.patternMessage ?? `${field.label} không hợp lệ` }]
       : []),
@@ -612,7 +643,7 @@ function renderField(
   disabled = false,
   values: TransactionFormValues = {},
 ) {
-  const controlClassName = "h-10! w-full";
+  const controlClassName = 'h-10! w-full';
 
   if (field.kind === 'segmented') {
     return <Segmented className={controlClassName} block disabled={disabled || field.readOnly} options={field.options ?? []} />;

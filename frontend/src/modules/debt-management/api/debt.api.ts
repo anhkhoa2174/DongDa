@@ -1,9 +1,12 @@
 import { httpClient } from '@/shared/api/httpClient';
 
-export type DebtStatus = 'PENDING' | 'PARTIALLY_SETTLED' | 'SETTLED';
+export type DebtStatus = 'PENDING' | 'RECONCILED' | 'SETTLED' | 'CANCELLED';
 
 export interface DebtAccountSummaryDto {
   id: string;
+  transactionId?: string | null;
+  reconciliationRunId?: string | null;
+  settlementBankAccountId?: string | null;
   branchId: string;
   providerCode: string;
   currencyCode: string;
@@ -23,13 +26,6 @@ export interface DebtMovementDto {
   description?: string | null;
   businessDate: string;
   effectiveAt: string;
-}
-
-export interface BranchRef {
-  id: string;
-  code: string;
-  name: string;
-  type: string;
 }
 
 export interface ListDebtsParams {
@@ -66,8 +62,4 @@ export const debtApi = {
   settleBatch: (payload: SettleDebtBatchPayload) =>
     httpClient.post('/debts/settle-batch', payload).then((r) => r.data),
 
-  record: (payload: { branchId: string; providerCode: string; currencyCode: string; amount: number; description?: string }) =>
-    httpClient.post('/debts/record', payload).then((r) => r.data),
-
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
 };

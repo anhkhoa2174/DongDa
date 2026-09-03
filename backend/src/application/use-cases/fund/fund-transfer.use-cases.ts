@@ -64,6 +64,20 @@ export class RejectTransferUseCase {
   }
 }
 
+@Injectable()
+export class CancelTransferUseCase {
+  constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
+
+  async execute(id: string, actor: { id: string }): Promise<FundTransfer> {
+    const transfer = await this.fundRepo.findTransferById(id);
+    if (!transfer) throw new NotFoundException('Không tìm thấy phiếu tiếp quỹ');
+    if (transfer.createdByUserId !== actor.id) {
+      throw new ForbiddenException('Chỉ người lập phiếu mới được hủy phiếu tiếp quỹ');
+    }
+    return this.fundRepo.cancelTransfer(id, actor.id);
+  }
+}
+
 function assertReceiverCanAct(
   transfer: FundTransfer,
   actor: { id: string; role: UserRole; branchId?: string },
@@ -97,11 +111,17 @@ export class ListFundUseCase {
 export class CreateFundMovementUseCase {
   constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
 
-  execute(dto: CreateCentralFundMovementDto, userId: string, targetBranchId?: string): Promise<CentralFundMovement> {
+  execute(
+    dto: CreateCentralFundMovementDto,
+    userId: string,
+    idempotencyKey: string,
+    targetBranchId?: string,
+  ): Promise<CentralFundMovement> {
     if (targetBranchId && dto.sourceType !== 'CASH') {
       throw new BadRequestException('Quỹ Chi Nhánh chỉ cho phép thu/chi từ nguồn tiền mặt');
     }
     return this.fundRepo.createFundMovement({
+      idempotencyKey,
       direction: dto.direction,
       sourceType: dto.sourceType,
       items: dto.items.map((item) => ({
@@ -125,6 +145,8 @@ export class ConvertCentralFundUseCase {
       items: dto.items.map((item) => ({
         currencyCode: item.currencyCode as CurrencyCode,
         amount: item.amount,
+        rate: item.rate,
+        deduction: item.deduction,
       })),
       note: dto.note?.trim() || undefined,
       createdByUserId: userId,

@@ -9,6 +9,9 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { ocrPdfToText } from '../../../infrastructure/ocr/journal-ocr';
 import { parseOcrJournalText } from './ocr-journal-parse';
+import {
+  isValidReconciliationCode, normalizeReconciliationCode,
+} from '../../../domain/entities/reconciliation.entity';
 
 export interface ParsedJournalRow {
   rowNo: number; // số dòng trong file (1-based, tính cả header)
@@ -92,7 +95,8 @@ export class ParseJournalUseCase {
     let sheet: XLSX.WorkSheet;
     try {
       // codepage 65001 = UTF-8 để đọc đúng tiêu đề/tên tiếng Việt trong file CSV.
-      const wb = XLSX.read(fileBuffer, { type: 'buffer', codepage: 65001 });
+      // raw: true -> ô CSV giữ nguyên chuỗi, MTCN '0273631579' không bị parse thành số mất số 0 đầu.
+      const wb = XLSX.read(fileBuffer, { type: 'buffer', codepage: 65001, raw: true });
       const sheetName = wb.SheetNames[0];
       if (!sheetName) throw new Error('empty');
       sheet = wb.Sheets[sheetName];
@@ -138,9 +142,18 @@ export class ParseJournalUseCase {
       const isEmpty = raw.every((c) => String(c ?? '').trim() === '');
       if (isEmpty) continue;
 
-      const code = String(codeCell ?? '').trim().toUpperCase();
+      const code = normalizeReconciliationCode(String(codeCell ?? ''));
       if (!code) {
         errors.push({ rowNo, message: 'Thiếu mã MSKH/Reference' });
+        continue;
+      }
+      if (!isValidReconciliationCode(code, provider)) {
+        errors.push({
+          rowNo,
+          message: provider === 'WU'
+            ? `MTCN không hợp lệ: "${String(codeCell ?? '')}" (cần đúng 10 chữ số)`
+            : `Reference Number không hợp lệ: "${String(codeCell ?? '')}" (cần đúng 8 chữ hoặc số)`,
+        });
         continue;
       }
       const amount = parseAmount(amountCell);

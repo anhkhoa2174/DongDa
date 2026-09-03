@@ -4,10 +4,14 @@
 import type { FxTransaction, CurrencyCode } from '../entities/fx.entity';
 
 export interface CreateFxInput {
+  idempotencyKey: string;
   branchId: string;
   isBuy: boolean;
   fxCurrency: CurrencyCode;
   fxAmount: number;
+  fractionalAmount: number;
+  fractionalRate?: number;
+  deductionVnd: number;
   rate: number;
   customerName?: string;
   createdByUserId: string;

@@ -147,6 +147,13 @@
   padding: 22px;
 }
 
+.transaction-form-card .ant-input-number,
+.transaction-form-card .ant-input-number-affix-wrapper,
+.transaction-form-card .ant-input-number-group-wrapper,
+.transaction-form-card .ant-input-number-group-wrapper .ant-input-number {
+  width: 100%;
+}
+
 .transaction-step {
   border: 1px solid #e5e7eb;
   border-radius: 999px;
@@ -368,6 +375,318 @@
   color: #d99a00;
 }
 
+/* Bank management */
+.bank-advance-card,
+.bank-account-directory,
+.bank-account-card,
+.bank-movement-history {
+  border-color: #e5e7eb !important;
+  border-radius: 8px !important;
+  box-shadow: 0 7px 20px rgba(15, 23, 42, 0.055) !important;
+}
+
+.bank-section-heading,
+.bank-advance-card__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.bank-section-heading {
+  margin-bottom: 14px;
+}
+
+.bank-section-heading__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #8a6200 !important;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.bank-section-heading__eyebrow .anticon {
+  margin-right: 5px;
+}
+
+.bank-section-heading .ant-typography,
+.bank-advance-card__header .ant-typography {
+  margin: 0 !important;
+}
+
+.bank-advance-card__header {
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eceef1;
+  background: #fafafa;
+}
+
+.bank-advance-card__header .ant-segmented {
+  flex: 0 0 auto;
+}
+
+.bank-account-directory__header {
+  padding: 16px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fafafa;
+}
+
+.bank-account-directory__body {
+  padding: 18px;
+}
+
+.bank-account-directory__body .ant-empty {
+  margin-block: 32px;
+}
+
+.bank-account-card {
+  display: block;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.bank-account-card:hover {
+  border-color: #d2a000 !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.11) !important;
+  transform: translateY(-1px);
+}
+
+.bank-account-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 66px;
+  padding: 11px 18px;
+  border-bottom: 1px solid #eceef1;
+  background: #ffffff;
+}
+
+.bank-account-card__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid #f1d16b;
+  border-radius: 7px;
+  background: #fff8d8;
+  color: #111111;
+  font-size: 18px;
+}
+
+.bank-account-card__bank-code,
+.bank-account-branch-tag {
+  border-color: #e5bd35 !important;
+  background: #fff8d8 !important;
+  color: #664a00 !important;
+  font-weight: 700;
+}
+
+.bank-account-card__body {
+  display: grid;
+  gap: 16px;
+  padding: 19px 20px 18px;
+}
+
+.bank-account-card__balance-label {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.bank-account-card__balance {
+  margin: 3px 0 0 !important;
+  color: #111111 !important;
+  font-size: 27px !important;
+  line-height: 1.2 !important;
+}
+
+.bank-account-card__branch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #eceef1;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.bank-account-card__actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+  padding: 11px 12px;
+  border-top: 1px solid #eceef1;
+  background: #fafafa;
+}
+
+.bank-action {
+  min-width: 0;
+  font-weight: 600;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.07);
+}
+
+.bank-action--in {
+  border-color: #c7e9d8 !important;
+  background: #f2fbf6 !important;
+  color: #087443 !important;
+}
+
+.bank-action--out {
+  border-color: #f0c9c9 !important;
+  background: #fff6f6 !important;
+  color: #b42318 !important;
+}
+
+.bank-action--transfer {
+  border-color: #111111 !important;
+  background: #111111 !important;
+  color: #f5b301 !important;
+}
+
+.bank-action--muted {
+  color: #6b7280 !important;
+}
+
+.bank-movement-history .ant-table-thead > tr > th,
+.bank-advance-card .ant-table-thead > tr > th {
+  background: #f7f7f7 !important;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.bank-movement-history .ant-pagination,
+.bank-advance-card .ant-pagination {
+  margin-inline: 16px !important;
+}
+
+.reconciliation-panel {
+  height: 100%;
+}
+
+.reconciliation-panel > .ant-card-head {
+  min-height: 48px;
+  padding-inline: 16px;
+}
+
+.reconciliation-panel > .ant-card-body {
+  padding: 14px 16px 16px;
+}
+
+.reconciliation-upload-bar {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.reconciliation-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reconciliation-entry-card {
+  overflow: hidden;
+  border: 1px solid #eef0f3;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.reconciliation-entry-card__header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #eef0f3;
+  background: #fafafa;
+}
+
+.reconciliation-entry-fields {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.15fr) minmax(220px, 1.5fr) minmax(150px, 1fr) minmax(100px, 0.55fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.reconciliation-entry-fields .ant-form-item {
+  margin-bottom: 0;
+}
+
+.reconciliation-entry-fields .ant-form-item-label {
+  padding-bottom: 4px;
+}
+
+.reconciliation-selection-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eef0f3;
+}
+
+.reconciliation-empty-detail {
+  display: grid;
+  min-height: 330px;
+  place-items: center;
+}
+
+.reconciliation-row--active > td {
+  background: #fff9e6 !important;
+}
+
+.reconciliation-panel .ant-table-cell {
+  vertical-align: middle;
+}
+
+@media (max-width: 767px) {
+  .reconciliation-panel > .ant-card-head {
+    align-items: flex-start;
+    padding-block: 10px;
+  }
+
+  .reconciliation-panel > .ant-card-head .ant-card-extra {
+    margin-inline-start: 8px;
+  }
+
+  .reconciliation-upload-bar,
+  .reconciliation-selection-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reconciliation-upload-bar .ant-upload-wrapper,
+  .reconciliation-upload-bar .ant-upload,
+  .reconciliation-upload-bar .ant-btn {
+    width: 100%;
+  }
+
+  .reconciliation-entry-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .reconciliation-entry-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .shift-fund-panel .ant-card-body,
 .shift-process-panel .ant-card-body {
   padding: 18px;
@@ -449,32 +768,6 @@
   margin-bottom: 10px;
 }
 
-.shift-count-header,
-.shift-count-row {
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(150px, 0.7fr) minmax(210px, 0.9fr);
-  align-items: center;
-  gap: 16px;
-}
-
-.shift-count-header {
-  padding: 0 12px 8px;
-  color: #6b7280;
-  font-size: 11px;
-  font-weight: 750;
-  text-transform: uppercase;
-}
-
-.shift-count-row {
-  min-height: 70px;
-  border-top: 1px solid #eceef1;
-  padding: 10px 12px;
-}
-
-.shift-count-row:last-child {
-  border-bottom: 1px solid #eceef1;
-}
-
 .shift-count-row__currency strong,
 .shift-count-row__currency .ant-typography {
   display: block;
@@ -491,11 +784,128 @@
   font-weight: 650;
 }
 
-.shift-count-row .ant-input-number-group-wrapper {
+.shift-count-modal .ant-modal-body {
+  max-height: min(76vh, 760px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.shift-count-list {
+  display: grid;
+  gap: 14px;
+}
+
+.shift-count-card {
+  overflow: hidden;
+  border: 1px solid #dedfe3;
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.shift-count-card__header {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eceef1;
+  background: #fafafa;
+}
+
+.shift-count-card__system {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.shift-denomination-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  padding: 8px 16px;
+}
+
+.shift-denomination-row {
+  display: grid;
+  grid-template-columns: minmax(108px, 0.8fr) minmax(130px, 1fr) minmax(125px, 0.9fr);
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #f0f1f3;
+}
+
+.shift-denomination-row:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.shift-denomination-row .ant-input-number-group-wrapper {
   width: 100%;
 }
 
+.shift-denomination-row__amount {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.shift-count-card__total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  padding: 11px 16px;
+  border-top: 1px solid #e5c24b;
+  background: #fff9df;
+}
+
+.shift-count-card__total strong {
+  min-width: 170px;
+  color: #111111;
+  font-size: 17px;
+  text-align: right;
+}
+
+.shift-count-card__foreign-input {
+  max-width: 420px;
+  padding: 14px 16px 16px;
+}
+
+.shift-count-history__denominations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 @media (max-width: 767px) {
+  .bank-section-heading,
+  .bank-advance-card__header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .bank-advance-card__header .ant-segmented {
+    width: 100%;
+  }
+
+  .bank-advance-card__header .ant-segmented-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .bank-account-card__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bank-account-card__actions .bank-action--transfer {
+    grid-column: span 2;
+  }
+
+  .bank-account-card__balance {
+    font-size: 24px !important;
+  }
+
   .operational-overview__header {
     align-items: stretch;
     flex-direction: column;
@@ -534,23 +944,44 @@
     border-bottom: 0;
   }
 
-  .shift-count-header {
-    display: none;
-  }
-
-  .shift-count-row {
-    grid-template-columns: 1fr;
+  .shift-count-card__header {
+    align-items: flex-start;
+    flex-direction: column;
     gap: 8px;
-    padding: 14px 4px;
   }
 
-  .shift-count-row__system::before {
-    margin-right: 6px;
-    color: #6b7280;
-    content: "Số lượng:";
-    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-    font-size: 12px;
-    font-weight: 500;
+  .shift-count-card__system {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .shift-denomination-grid {
+    grid-template-columns: 1fr;
+    padding: 8px 12px;
+  }
+
+  .shift-denomination-row {
+    grid-template-columns: minmax(92px, 0.8fr) minmax(125px, 1fr);
+  }
+
+  .shift-denomination-row:nth-last-child(2) {
+    border-bottom: 1px solid #f0f1f3;
+  }
+
+  .shift-denomination-row__amount {
+    grid-column: 1 / -1;
+    margin-top: -7px;
+    padding-bottom: 7px;
+    text-align: left;
+  }
+
+  .shift-count-card__total {
+    justify-content: space-between;
+  }
+
+  .shift-count-card__total strong {
+    min-width: 0;
+    font-size: 15px;
   }
 
   .shift-count-history__heading {
@@ -1479,7 +1910,9 @@
 }
 
 .balance-card__sparkline {
-  min-width: 160px;
+  align-self: flex-end;
+  min-width: 190px;
+  margin-bottom: 2px;
   text-align: right;
 }
 
@@ -1487,16 +1920,16 @@
   display: flex;
   align-items: end;
   justify-content: flex-end;
-  gap: 6px;
-  height: 56px;
-  margin-top: 10px;
+  gap: 7px;
+  height: 32px;
+  margin-top: 5px;
 }
 
 .sparkline span {
   display: block;
-  width: 12px;
-  min-height: 12px;
-  border-radius: 4px 4px 0 0;
+  width: 14px;
+  min-height: 5px;
+  border-radius: 3px 3px 0 0;
   background: rgba(255, 255, 255, 0.88);
 }
 

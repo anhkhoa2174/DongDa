@@ -4,9 +4,13 @@ export interface ReconRunDto {
   id: string;
   runNo: string;
   provider: string;
+  scope: 'COMPANY' | 'BRANCH';
+  branchId: string | null;
+  branchCode: string | null;
   currencyCode: string;
   businessDate: string;
   status: string;
+  stage: 'BRANCH' | 'FINAL';
   systemTotal: number;
   journalTotal: number;
   varianceTotal: number;
@@ -14,6 +18,8 @@ export interface ReconRunDto {
   matchedCount: number;
   totalCount: number;
   createdAt: string;
+  submittedAt?: string | null;
+  branchName?: string | null;
 }
 
 export interface ReconItemDto {
@@ -24,6 +30,7 @@ export interface ReconItemDto {
   systemAmount: number;
   journalAmount: number;
   varianceAmount: number;
+  customerName?: string | null;
   note?: string;
 }
 
@@ -32,6 +39,7 @@ export interface JournalRowInput {
   amount: number;
   currencyCode: 'USD' | 'VND';
   branchId?: string;
+  customerName?: string;
 }
 
 export interface RunReconInput {
@@ -70,13 +78,18 @@ export interface FundReconItemDto {
 }
 
 export const reconApi = {
-  runs: () => httpClient.get<ReconRunDto[]>('/reconciliation/runs').then((r) => r.data),
+  runs: (branchId?: string, provider?: 'WU' | 'MG') =>
+    httpClient.get<ReconRunDto[]>('/reconciliation/runs', { params: { branchId, provider } }).then((r) => r.data),
   fundReconciliation: (branchId?: string) =>
     httpClient.get<FundReconItemDto[]>('/reconciliation/fund', { params: branchId ? { branchId } : {} }).then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
   run: (input: RunReconInput) =>
     httpClient.post<ReconRunDto>('/reconciliation/run', input).then((r) => r.data),
+  submittedBranchRuns: (provider: 'WU' | 'MG', branchId?: string) =>
+    httpClient.get<ReconRunDto[]>(`/reconciliation/${provider.toLowerCase()}/submitted-branch-runs`, { params: { branchId } }).then((r) => r.data),
+  createFinalRun: (provider: 'WU' | 'MG', branchRunIds: string[]) =>
+    httpClient.post<ReconRunDto>(`/reconciliation/${provider.toLowerCase()}/final-runs`, { branchRunIds }).then((r) => r.data),
   parseJournal: (provider: 'WU' | 'MG', file: File) => {
     const form = new FormData();
     form.append('file', file);

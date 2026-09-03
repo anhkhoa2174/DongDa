@@ -13,6 +13,7 @@ import {
   VoidTransactionDto,
 } from '../../../application/dtos/transactions/transaction-admin.dto';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
+import { calculateFxVndAmount } from '../../../domain/entities/fx.entity';
 
 const TRANSACTION_ADJUSTMENT = 'CUSTOMER_TRANSACTION_ADJUSTMENT';
 
@@ -78,6 +79,7 @@ export class TransactionAdminController {
       if (transaction.status !== 'COMPLETED') {
         throw new BadRequestException(`Chỉ lập phiếu cho giao dịch COMPLETED, hiện tại: ${transaction.status}`);
       }
+      await this.assertTransactionNotReconciled(tx, transaction.id);
       const existing = await tx.approval_requests.findFirst({
         where: { entity_type: TRANSACTION_ADJUSTMENT, entity_id: id, status: 'PENDING' },
       });
@@ -191,6 +193,108 @@ export class TransactionAdminController {
       }, tx);
 
       return voidedTransaction;
+    });
+  }
+
+  @Post(':id/replace')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async replaceDirectly(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateTransactionAdjustmentDto,
+  ) {
+    if (dto.action !== 'REPLACE') {
+      throw new BadRequestException('API thay thế trực tiếp chỉ chấp nhận action REPLACE');
+    }
+    if (!dto.reason?.trim()) throw new BadRequestException('Vui lòng nhập lý do thay thế giao dịch');
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM customer_transactions WHERE id = ${id}::uuid FOR UPDATE`;
+      const transaction = await tx.customer_transactions.findUnique({
+        where: { id },
+        include: {
+          shifts: { select: { id: true, status: true } },
+          wu_transaction_details: true,
+          mg_transaction_details: true,
+          fx_transaction_details: true,
+        },
+      });
+      if (!transaction) throw new BadRequestException('Không tìm thấy giao dịch');
+      if (transaction.status !== 'COMPLETED') {
+        throw new BadRequestException(`Chỉ thay thế giao dịch COMPLETED, hiện tại: ${transaction.status}`);
+      }
+      await this.assertTransactionNotReconciled(tx, transaction.id);
+
+      const postingShift = transaction.shifts?.status === 'OPEN'
+        ? transaction.shifts
+        : await tx.shifts.findFirst({
+            where: { branch_id: transaction.branch_id, status: 'OPEN' },
+            orderBy: { opened_at: 'desc' },
+            select: { id: true, status: true },
+          });
+      if (!postingShift) {
+        throw new BadRequestException('Chi nhánh phải mở ca và kiểm quỹ đầu ca trước khi thay thế giao dịch');
+      }
+
+      const payload = this.buildAdjustmentPayload(transaction, dto);
+      const voidedTransaction = await this.voidPostedTransactionInTx(
+        tx,
+        id,
+        req.user.id,
+        dto.reason.trim(),
+        'DIRECT_REPLACE_TRANSACTION',
+        { postingShiftId: postingShift.id },
+      );
+      const replacementTransaction = await this.createReplacementTransactionInTx(
+        tx,
+        id,
+        postingShift.id,
+        req.user.id,
+        (payload as { correctedData: Record<string, unknown> }).correctedData,
+        'DIRECT_REPLACEMENT',
+      );
+
+      const pendingRequests = await tx.approval_requests.findMany({
+        where: { entity_type: TRANSACTION_ADJUSTMENT, entity_id: id, status: 'PENDING' },
+        select: { id: true, requested_by_user_id: true },
+      });
+      const pendingRequestIds = pendingRequests.map((request) => request.id);
+      if (pendingRequestIds.length > 0) {
+        const completedAt = new Date();
+        await tx.approval_requests.updateMany({
+          where: { id: { in: pendingRequestIds }, status: 'PENDING' },
+          data: { status: 'CANCELLED', completed_at: completedAt },
+        });
+        await tx.approval_steps.updateMany({
+          where: { approval_request_id: { in: pendingRequestIds }, status: 'PENDING' },
+          data: {
+            status: 'CANCELLED',
+            acted_by_user_id: req.user.id,
+            acted_at: completedAt,
+            note: `Giao dịch đã được thay thế trực tiếp: ${dto.reason.trim()}`,
+          },
+        });
+        await tx.approval_actions.createMany({
+          data: pendingRequestIds.map((requestId) => ({
+            approval_request_id: requestId,
+            action: 'CANCEL' as const,
+            acted_by_user_id: req.user.id,
+            note: `Giao dịch đã được thay thế trực tiếp: ${dto.reason.trim()}`,
+          })),
+        });
+      }
+
+      await this.notifications.notifyUsers({
+        title: 'Giao dịch đã được thay thế',
+        body: `${transaction.transaction_no} đã được đảo và thay thế bằng ${replacementTransaction.transaction_no}.`,
+        sourceType: 'TRANSACTION_REPLACED',
+        sourceId: replacementTransaction.id,
+      }, {
+        userIds: [transaction.created_by_user_id, ...pendingRequests.map((request) => request.requested_by_user_id)],
+        excludeUserIds: [req.user.id],
+      }, tx);
+
+      return { transaction: voidedTransaction, replacementTransaction };
     });
   }
 
@@ -351,11 +455,13 @@ export class TransactionAdminController {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM customer_transactions WHERE id = ${id}::uuid FOR UPDATE`;
       const transaction = await tx.customer_transactions.findUnique({ where: { id } });
       if (!transaction) throw new BadRequestException('Không tìm thấy giao dịch');
       if (transaction.status !== 'COMPLETED') {
         throw new BadRequestException(`Chỉ sửa metadata giao dịch COMPLETED, hiện tại: ${transaction.status}`);
       }
+      await this.assertTransactionNotReconciled(tx, transaction.id);
 
       const before = {
         customerName: transaction.customer_name,
@@ -428,6 +534,28 @@ export class TransactionAdminController {
     throw new BadRequestException(`Chưa hỗ trợ thay thế giao dịch ${transaction.operation_code}`);
   }
 
+  private async assertTransactionNotReconciled(tx: Prisma.TransactionClient, transactionId: string) {
+    const debt = await tx.debt_accounts.findUnique({
+      where: { transaction_id: transactionId },
+      select: { id: true },
+    });
+    if (!debt) return;
+
+    await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${debt.id}::uuid FOR UPDATE`;
+    const lockedDebt = await tx.debt_accounts.findUnique({
+      where: { id: debt.id },
+      select: { lifecycle_status: true },
+    });
+    if (lockedDebt && lockedDebt.lifecycle_status !== 'PENDING') {
+      const settledMessage = lockedDebt.lifecycle_status === 'SETTLED'
+        ? 'Công nợ của giao dịch đã được thanh toán'
+        : 'Giao dịch đã được đối chiếu hoặc công nợ không còn PENDING';
+      throw new BadRequestException(
+        `${settledMessage} (${lockedDebt.lifecycle_status}); không được sửa, thay thế hoặc hủy`,
+      );
+    }
+  }
+
   private async createReplacementTransactionInTx(
     tx: Prisma.TransactionClient,
     originalTransactionId: string,
@@ -491,18 +619,19 @@ export class TransactionAdminController {
         }
       }
     };
-    const createDebt = async (transactionId: string, provider: 'WU' | 'MG', currency: 'USD' | 'VND', amount: number) => {
-      const account = await tx.debt_accounts.upsert({
-        where: { branch_id_provider_code_currency_code_business_date: {
-          branch_id: original.branch_id, provider_code: provider, currency_code: currency, business_date: original.business_date,
-        } },
-        update: {},
-        create: {
+    const createDebt = async (
+      transactionId: string, transactionNo: string, provider: 'WU' | 'MG',
+      currency: 'USD' | 'VND', amount: number,
+    ) => {
+      const account = await tx.debt_accounts.create({
+        data: {
+          transaction_id: transactionId,
           branch_id: original.branch_id,
           provider_code: provider,
           currency_code: currency,
           business_date: original.business_date,
-          name: `Công nợ ${provider} ${currency} ngày ${original.business_date.toISOString().slice(0, 10)}`,
+          name: `Công nợ ${provider} - ${transactionNo}`,
+          lifecycle_status: 'PENDING',
         },
       });
       await tx.debt_movements.create({ data: {
@@ -551,6 +680,7 @@ export class TransactionAdminController {
       } });
       await tx.wu_transaction_details.create({ data: {
         transaction_id: replacement.id,
+        bank_account_id: detail.bank_account_id,
         mtcn: detail.mtcn,
         paid_currency: detail.paid_currency,
         payout_currency: detail.payout_currency,
@@ -583,7 +713,7 @@ export class TransactionAdminController {
         created_by_user_id: userId, ledger_lines: { create: lines },
       } });
       const debtAmount = detail.paid_currency === 'USD' ? wuUsdAmount : wuVndAmount;
-      await createDebt(replacement.id, 'WU', detail.paid_currency as 'USD' | 'VND', debtAmount);
+      await createDebt(replacement.id, replacement.transaction_no, 'WU', detail.paid_currency as 'USD' | 'VND', debtAmount);
     } else if (original.operation_code === 'MG' && original.mg_transaction_details) {
       const detail = original.mg_transaction_details;
       const paidAmount = Number(correctedData.paidAmount);
@@ -635,12 +765,27 @@ export class TransactionAdminController {
         description: `MG thay thế ${original.transaction_no}`,
         created_by_user_id: userId, ledger_lines: { create: lines },
       } });
-      await createDebt(replacement.id, 'MG', paidCurrency, paidAmount);
+      await createDebt(replacement.id, replacement.transaction_no, 'MG', paidCurrency, paidAmount);
     } else if (original.operation_code === 'FX' && original.fx_transaction_details) {
       const detail = original.fx_transaction_details;
       const fxAmount = Number(correctedData.fxAmount);
       const rate = Number(detail.rate);
-      const vndAmount = Math.round(fxAmount * rate);
+      const fractionalAmount = Number(detail.fractional_amount ?? 0);
+      if (fxAmount <= fractionalAmount) {
+        throw new BadRequestException('Tổng số lượng ngoại tệ phải lớn hơn phần lẻ đã ghi nhận');
+      }
+      const fractionalRate = detail.fractional_rate == null ? rate : Number(detail.fractional_rate);
+      const deductionVnd = Number(detail.deduction_vnd ?? 0);
+      const { vndAmount } = calculateFxVndAmount({
+        fxAmount,
+        fractionalAmount,
+        rate,
+        fractionalRate,
+        deductionVnd,
+      });
+      if (vndAmount <= 0) {
+        throw new BadRequestException('Khấu trừ phải nhỏ hơn thành tiền mua ngoại tệ');
+      }
       const vndAccountId = await fundAccount('VND');
       const fxAccountId = await fundAccount(detail.fx_currency);
       const lines: any[] = [
@@ -661,6 +806,9 @@ export class TransactionAdminController {
         fx_amount: fxAmount,
         rate: detail.rate,
         is_buy: detail.is_buy,
+        fractional_amount: fractionalAmount,
+        fractional_rate: detail.fractional_rate,
+        deduction_vnd: deductionVnd,
       } });
       await tx.ledger_entries.create({ data: {
         entry_no: `FX-${replacement.transaction_no}`, business_date: postingBusinessDate,
@@ -710,6 +858,7 @@ export class TransactionAdminController {
       if (txn.status !== 'COMPLETED') {
         throw new BadRequestException(`Chỉ void giao dịch COMPLETED, hiện tại: ${txn.status}`);
       }
+      await this.assertTransactionNotReconciled(tx, txn.id);
 
       let postingShiftId = txn.shift_id;
       if (options?.postingShiftId) {
@@ -747,30 +896,6 @@ export class TransactionAdminController {
         await tx.$queryRaw`SELECT id FROM debt_accounts WHERE id = ${debtAccountId}::uuid FOR UPDATE`;
       }
 
-      if (debtAccountIds.length > 0) {
-        const journalizedDebt = await tx.debt_movements.findFirst({
-          where: {
-            debt_account_id: { in: debtAccountIds },
-            status: 'POSTED',
-            OR: [
-              { movement_type: 'ACTUAL_DEBT', source_type: 'JOURNAL_RECONCILIATION' },
-              { movement_type: 'REVERSAL', source_type: 'JOURNAL_RECONCILIATION' },
-              {
-                movement_type: 'REVERSAL',
-                source_type: 'DEBT_MOVEMENT',
-                source_id: { in: debtMovements.map((debt) => debt.id) },
-              },
-            ],
-          },
-          select: { id: true },
-        });
-        if (journalizedDebt) {
-          throw new BadRequestException(
-            'Không thể void giao dịch sau khi công nợ ngày đã được chốt Journal. Hãy lập điều chỉnh đối chiếu.',
-          );
-        }
-      }
-
       for (const debt of debtMovements) {
         const allocated = await tx.debt_settlement_allocations.aggregate({
           where: { debt_movement_id: debt.id },
@@ -784,16 +909,18 @@ export class TransactionAdminController {
         }
       }
 
-      const claimed = await tx.customer_transactions.updateMany({
-        where: { id: transactionId, status: 'COMPLETED' },
-        data: {
-          status: 'VOIDED',
-          voided_by_user_id: userId,
-          void_reason: reason.trim(),
-          voided_at: now,
-        },
-      });
-      if (claimed.count !== 1) throw new BadRequestException('Giao dịch đã được xử lý bởi người khác');
+      if (debtAccountIds.length > 0) {
+        await tx.debt_accounts.updateMany({
+          where: { id: { in: debtAccountIds }, lifecycle_status: 'PENDING' },
+          data: {
+            lifecycle_status: 'CANCELLED',
+            cancelled_at: now,
+            reconciliation_run_id: null,
+            reconciled_at: null,
+            updated_at: now,
+          },
+        });
+      }
 
       const postedEntries = await tx.ledger_entries.findMany({
         where: {
@@ -804,6 +931,81 @@ export class TransactionAdminController {
         },
         include: { ledger_lines: true },
       });
+      const fundAccountIds = [...new Set(postedEntries.flatMap((entry) =>
+        entry.ledger_lines.map((line) => line.fund_account_id),
+      ))].sort();
+      for (const fundAccountId of fundAccountIds) {
+        await tx.$queryRaw`SELECT id FROM fund_accounts WHERE id = ${fundAccountId}::uuid FOR UPDATE`;
+      }
+      for (const fundAccountId of fundAccountIds) {
+        const reduction = postedEntries.reduce((total, entry) => total + entry.ledger_lines
+          .filter((line) => line.fund_account_id === fundAccountId && line.direction === 'DEBIT')
+          .reduce((sum, line) => sum + Number(line.amount), 0), 0);
+        if (reduction <= 0) continue;
+        const balanceLines = await tx.ledger_lines.findMany({
+          where: { fund_account_id: fundAccountId, ledger_entries: { status: 'POSTED' } },
+          select: { direction: true, amount: true, currency_code: true },
+        });
+        const currentBalance = balanceLines.reduce(
+          (sum, line) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)),
+          0,
+        );
+        if (reduction > currentBalance) {
+          const currency = balanceLines[0]?.currency_code ?? '';
+          throw new BadRequestException(
+            `Không đủ tồn quỹ để đảo giao dịch: còn ${currentBalance} ${currency}, cần ${reduction}`,
+          );
+        }
+      }
+
+      const domesticBankMovement = txn.operation_code === 'DOMESTIC_TRANSFER'
+        ? await tx.bank_balance_movements.findFirst({
+            where: {
+              bank_reference: `DOMESTIC:${transactionId}`,
+              status: 'POSTED',
+            },
+          })
+        : null;
+      let domesticBankBalance: number | null = null;
+      if (txn.operation_code === 'DOMESTIC_TRANSFER') {
+        if (!domesticBankMovement) {
+          throw new BadRequestException('Không tìm thấy biến động ngân hàng của giao dịch chuyển tiền');
+        }
+        await tx.$queryRaw`SELECT id FROM bank_accounts WHERE id = ${domesticBankMovement.bank_account_id}::uuid FOR UPDATE`;
+        if (domesticBankMovement.movement_type === 'ADVANCE_CK') {
+          const advanceSettlement = await tx.bank_balance_movements.findFirst({
+            where: {
+              movement_type: 'ADVANCE_SETTLE',
+              bank_reference: domesticBankMovement.id,
+              status: 'POSTED',
+            },
+            select: { movement_no: true },
+          });
+          if (advanceSettlement) {
+            throw new BadRequestException(
+              `Không thể hủy hoặc thay thế vì khoản ứng chuyển khoản đã được hoàn (${advanceSettlement.movement_no})`,
+            );
+          }
+        }
+        const account = await tx.bank_accounts.findUnique({ where: { id: domesticBankMovement.bank_account_id } });
+        if (!account) throw new BadRequestException('Không tìm thấy tài khoản ngân hàng của giao dịch');
+        domesticBankBalance = Number(account.current_balance);
+        if (domesticBankMovement.movement_type === 'TRANSFER_IN'
+          && Number(domesticBankMovement.amount) > domesticBankBalance) {
+          throw new BadRequestException('Không đủ số dư ngân hàng để đảo giao dịch chuyển tiền');
+        }
+      }
+
+      const claimed = await tx.customer_transactions.updateMany({
+        where: { id: transactionId, status: 'COMPLETED' },
+        data: {
+          status: 'VOIDED',
+          voided_by_user_id: userId,
+          void_reason: reason.trim(),
+          voided_at: now,
+        },
+      });
+      if (claimed.count !== 1) throw new BadRequestException('Giao dịch đã được xử lý bởi người khác');
 
       for (const entry of postedEntries) {
         await tx.ledger_entries.create({
@@ -830,6 +1032,36 @@ export class TransactionAdminController {
               })),
             },
           },
+        });
+      }
+
+      if (domesticBankMovement && domesticBankBalance !== null) {
+        const amount = Number(domesticBankMovement.amount);
+        const reversesTransferOut = ['TRANSFER_OUT', 'ADVANCE_CK'].includes(domesticBankMovement.movement_type);
+        const balanceAfter = reversesTransferOut
+          ? domesticBankBalance + amount
+          : domesticBankBalance - amount;
+        await tx.bank_balance_movements.create({
+          data: {
+            movement_no: `REV-DT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            bank_account_id: domesticBankMovement.bank_account_id,
+            branch_id: txn.branch_id,
+            movement_type: reversesTransferOut ? 'TRANSFER_IN' : 'TRANSFER_OUT',
+            business_date: businessDate,
+            amount,
+            currency_code: domesticBankMovement.currency_code,
+            balance_before: domesticBankBalance,
+            balance_after: balanceAfter,
+            bank_reference: `DOMESTIC_VOID:${transactionId}`,
+            description: `Đảo giao dịch ${txn.transaction_no}: ${reason}`,
+            status: 'POSTED',
+            posted_at: now,
+            created_by_user_id: userId,
+          },
+        });
+        await tx.bank_accounts.update({
+          where: { id: domesticBankMovement.bank_account_id },
+          data: { current_balance: balanceAfter, available_balance: balanceAfter },
         });
       }
 

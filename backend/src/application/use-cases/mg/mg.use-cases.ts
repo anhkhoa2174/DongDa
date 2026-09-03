@@ -7,6 +7,7 @@ import { IExchangeRateRepository } from '../../../domain/repositories/exchange-r
 import { MgTransaction, Currency2 } from '../../../domain/entities/mg.entity';
 import { ExchangeRateType, ServiceProvider } from '../../../domain/entities/exchange-rate.entity';
 import type { CreateMgDto } from '../../dtos/mg/mg.dto';
+import { validatePaidAppliedRate } from '../exchange-rate/validate-paid-rate';
 
 @Injectable()
 export class CreateMgUseCase {
@@ -29,10 +30,21 @@ export class CreateMgUseCase {
       provider: ServiceProvider.WU_MG,
       fromCurrency: 'USD',
     });
-    const appliedRate = active[0]?.rate;
-    if (!appliedRate) {
+    const systemRate = active[0]?.rate;
+    if (!systemRate) {
       throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${rateType} cho MG/WU USD`);
     }
+    const boundaryRateType = rateType === ExchangeRateType.PAID_BUY
+      ? ExchangeRateType.FX_BUY
+      : ExchangeRateType.FX_SELL;
+    const boundary = await this.rateRepo.findActive({
+      rateType: boundaryRateType,
+      provider: ServiceProvider.INTERNAL,
+      fromCurrency: 'USD',
+    });
+    const appliedRate = dto.appliedRate == null
+      ? systemRate
+      : validateMgAppliedRate(dto.appliedRate, systemRate, boundary[0]?.rate ?? systemRate);
     const mgUsdAmount = dto.paidCurrency === 'USD' ? Number(dto.mgUsdAmount) : 0;
     const mgVndAmount = dto.paidCurrency === 'VND' ? Number(dto.mgVndAmount) : 0;
     const expectedPayout = calculateMgPayout(dto.paidCurrency, dto.payoutCurrency, mgUsdAmount, mgVndAmount, appliedRate);
@@ -52,11 +64,15 @@ export class CreateMgUseCase {
       receivedUsd: dto.receivedUsd,
       receivedVnd: dto.receivedVnd,
       appliedRate,
-      systemRate: appliedRate,
+      systemRate,
       paidCurrency: dto.paidCurrency as Currency2,
       createdByUserId,
     });
   }
+}
+
+export function validateMgAppliedRate(value: number, firstRate: number, secondRate: number) {
+  return validatePaidAppliedRate(value, firstRate, secondRate, 'MG');
 }
 
 export function calculateMgPayout(
@@ -86,15 +102,16 @@ export function assertMgPayoutMatches(
     return;
   }
 
-  const expectedUsd = Math.trunc(Math.max(payoutAmount, 0));
-  const fractionalUsd = Math.max(payoutAmount - expectedUsd, 0);
-  const expectedVnd = Math.round(fractionalUsd * appliedRate);
-  if (Number(receivedUsd ?? 0) !== expectedUsd) {
-    throw new BadRequestException(`MG USD: USD thực trả phải là phần nguyên của số phải trả (${expectedUsd} USD)`);
+  const maxReceivedUsd = Math.trunc(Math.max(payoutAmount, 0));
+  const actualReceivedUsd = Number(receivedUsd ?? 0);
+  if (!Number.isInteger(actualReceivedUsd) || actualReceivedUsd < 0 || actualReceivedUsd > maxReceivedUsd) {
+    throw new BadRequestException(`MG USD: USD thực trả phải là số nguyên từ 0 đến ${maxReceivedUsd} USD`);
   }
+  const convertedUsd = Math.max(payoutAmount - actualReceivedUsd, 0);
+  const expectedVnd = Math.round(convertedUsd * appliedRate);
   if (Math.abs(Number(receivedVnd ?? 0) - expectedVnd) > 1) {
     throw new BadRequestException(
-      `MG USD: VND thực trả chỉ được là phần lẻ USD quy đổi theo tỷ giá (${expectedVnd} VND)`,
+      `MG USD: VND thực trả phải bằng phần USD còn lại quy đổi theo tỷ giá (${expectedVnd} VND)`,
     );
   }
 }

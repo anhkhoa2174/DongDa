@@ -33,6 +33,138 @@ describe('TransactionAdminController adjustment vouchers', () => {
     )).toEqual({ action: 'VOID' });
   });
 
+  it.each(['RECONCILED', 'SETTLED'])('blocks every edit or void path when debt is %s', async (status) => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      debt_accounts: {
+        findUnique: jest.fn()
+          .mockResolvedValueOnce({ id: 'debt-1' })
+          .mockResolvedValueOnce({ lifecycle_status: status }),
+      },
+    };
+    const controller = new TransactionAdminController({} as any, {} as any);
+
+    await expect((controller as any).assertTransactionNotReconciled(tx, transactionId))
+      .rejects.toThrow('không được sửa, thay thế hoặc hủy');
+  });
+
+  it('blocks voiding a domestic transfer after its advance has been settled', async () => {
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customer_transactions: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: transactionId,
+          transaction_no: 'DT-001',
+          operation_code: 'DOMESTIC_TRANSFER',
+          branch_id: 'branch-1',
+          shift_id: originalShiftId,
+          status: 'COMPLETED',
+        }),
+      },
+      debt_accounts: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
+      debt_movements: { findMany: jest.fn().mockResolvedValue([]) },
+      shifts: { findUnique: jest.fn().mockResolvedValue({ id: postingShiftId, branch_id: 'branch-1', status: 'OPEN' }) },
+      ledger_entries: { findMany: jest.fn().mockResolvedValue([]) },
+      bank_balance_movements: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({
+            id: 'advance-1', bank_account_id: 'bank-1', movement_type: 'ADVANCE_CK', amount: 100,
+          })
+          .mockResolvedValueOnce({ movement_no: 'ADV-SETTLE-001' }),
+      },
+    };
+    const controller = new TransactionAdminController({} as any, {} as any);
+
+    await expect((controller as any).voidPostedTransactionInTx(
+      tx,
+      transactionId,
+      userId,
+      'Sai số tiền',
+      'VOID_TRANSACTION',
+      { postingShiftId },
+    )).rejects.toThrow('khoản ứng chuyển khoản đã được hoàn');
+  });
+
+  it('voids an unsettled domestic advance while the bank account remains negative', async () => {
+    const bankMovementCreate = jest.fn().mockResolvedValue({ id: 'reversal-bank-1' });
+    const bankAccountUpdate = jest.fn().mockResolvedValue({ id: 'bank-1' });
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customer_transactions: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: transactionId,
+          transaction_no: 'DT-001',
+          operation_code: 'DOMESTIC_TRANSFER',
+          branch_id: 'branch-1',
+          shift_id: originalShiftId,
+          status: 'COMPLETED',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: transactionId, status: 'VOIDED' }),
+      },
+      shifts: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: postingShiftId, branch_id: 'branch-1', status: 'OPEN', shift_code: 'SHIFT-NEW',
+        }),
+      },
+      debt_accounts: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
+      debt_movements: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn() },
+      debt_settlement_allocations: { aggregate: jest.fn() },
+      ledger_entries: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'ledger-1',
+          branch_id: 'branch-1',
+          ledger_lines: [{
+            fund_account_id: 'fund-vnd', direction: 'DEBIT', amount: 1_000_000,
+            currency_code: 'VND', exchange_rate: 1, base_amount_vnd: 1_000_000,
+          }],
+        }]),
+        create: jest.fn().mockResolvedValue({ id: 'reversal-ledger-1' }),
+      },
+      ledger_lines: {
+        findMany: jest.fn().mockResolvedValue([{
+          direction: 'DEBIT', amount: 2_000_000, currency_code: 'VND',
+        }]),
+      },
+      bank_balance_movements: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({
+            id: 'advance-1', bank_account_id: 'bank-1', movement_type: 'ADVANCE_CK',
+            amount: 1_000_000, currency_code: 'VND',
+          })
+          .mockResolvedValueOnce(null),
+        create: bankMovementCreate,
+      },
+      bank_accounts: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'bank-1', current_balance: -2_000_000 }),
+        update: bankAccountUpdate,
+      },
+      audit_logs: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+    };
+    const controller = new TransactionAdminController({} as any, {} as any);
+
+    await (controller as any).voidPostedTransactionInTx(
+      tx,
+      transactionId,
+      userId,
+      'Sai số tiền',
+      'DIRECT_VOID_TRANSACTION',
+      { postingShiftId },
+    );
+
+    expect(bankMovementCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        movement_type: 'TRANSFER_IN',
+        balance_before: -2_000_000,
+        balance_after: -1_000_000,
+        bank_reference: `DOMESTIC_VOID:${transactionId}`,
+      }),
+    }));
+    expect(bankAccountUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: { current_balance: -1_000_000, available_balance: -1_000_000 },
+    }));
+  });
+
   it('rejects corrected monetary amounts with more than two decimal places', () => {
     const controller = new TransactionAdminController({} as any, {} as any);
     expect(() => (controller as any).buildAdjustmentPayload(
@@ -81,7 +213,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
       },
       wu_transaction_details: { create: wuDetailCreate },
       ledger_entries: { create: jest.fn().mockResolvedValue({ id: 'ledger-new' }) },
-      debt_accounts: { upsert: jest.fn().mockResolvedValue({ id: 'debt-1' }) },
+      debt_accounts: { create: jest.fn().mockResolvedValue({ id: 'debt-1' }) },
       debt_movements: { create: jest.fn().mockResolvedValue({ id: 'movement-new' }) },
       audit_logs: { create: jest.fn().mockResolvedValue({ id: 'audit-new' }) },
     };
@@ -115,11 +247,11 @@ describe('TransactionAdminController adjustment vouchers', () => {
         received_vnd: 12_725,
       }),
     }));
-    expect(tx.debt_accounts.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        branch_id_provider_code_currency_code_business_date: expect.objectContaining({
-          business_date: originalBusinessDate,
-        }),
+    expect(tx.debt_accounts.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        transaction_id: 'replacement-1',
+        business_date: originalBusinessDate,
+        lifecycle_status: 'PENDING',
       }),
     }));
   });
@@ -153,6 +285,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
         create: jest.fn(),
       },
       debt_settlement_allocations: { aggregate: jest.fn() },
+      debt_accounts: { findUnique: jest.fn().mockResolvedValue(null), updateMany: jest.fn() },
       ledger_entries: {
         findMany: jest.fn().mockResolvedValue([{
           id: 'entry-1',

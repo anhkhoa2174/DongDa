@@ -4,8 +4,8 @@
 import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
-import { IWuRepository, CreateWuInput, ListWuFilter } from '../../../domain/repositories/wu.repository';
-import { WuTransaction, Currency2, wuImpliedRate, wuProfit } from '../../../domain/entities/wu.entity';
+import { IWuRepository, CreateWuInput, ListWuFilter, WuRecentOptions } from '../../../domain/repositories/wu.repository';
+import { WuTransaction, Currency2, wuImpliedRate } from '../../../domain/entities/wu.entity';
 import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
@@ -17,6 +17,29 @@ export class PrismaWuRepository implements IWuRepository {
       where: { mtcn, customer_transactions: { status: 'COMPLETED' } },
     });
     return count > 0;
+  }
+
+  async recentOptions(branchId?: string): Promise<WuRecentOptions> {
+    const rows = await this.prisma.wu_transaction_details.findMany({
+      where: {
+        customer_transactions: {
+          status: 'COMPLETED',
+          ...(branchId && { branch_id: branchId }),
+        },
+      },
+      select: {
+        employment_status: true,
+        sender_relationship: true,
+        receive_purpose: true,
+      },
+      orderBy: { customer_transactions: { created_at: 'desc' } },
+      take: 100,
+    });
+    return {
+      employmentStatuses: recentDistinct(rows.map((row) => row.employment_status)),
+      senderRelationships: recentDistinct(rows.map((row) => row.sender_relationship)),
+      receivePurposes: recentDistinct(rows.map((row) => row.receive_purpose)),
+    };
   }
 
   async create(input: CreateWuInput): Promise<WuTransaction> {
@@ -34,6 +57,19 @@ export class PrismaWuRepository implements IWuRepository {
           where: { mtcn: input.mtcn, customer_transactions: { status: 'COMPLETED' } },
         });
         if (duplicate > 0) throw new ConflictException(`MSKH (MTCN) ${input.mtcn} đã được xử lý`);
+        const settlementBank = await tx.bank_accounts.findFirst({
+          where: {
+            id: input.bankAccountId,
+            currency_code: input.paidCurrency,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        if (!settlementBank) {
+          throw new BadRequestException(
+            `Tài khoản ngân hàng thanh toán phải đang hoạt động và dùng ${input.paidCurrency}`,
+          );
+        }
 
         // 2. customer_transaction (WU, COMPLETED)
         const txn = await tx.customer_transactions.create({
@@ -45,6 +81,7 @@ export class PrismaWuRepository implements IWuRepository {
             business_date: businessDate,
             status: 'COMPLETED',
             customer_name: input.customerName ?? null,
+            customer_phone: input.customerPhone,
             amount: input.wuUsdAmount,
             currency_code: 'USD',
             vnd_amount: input.wuVndAmount,
@@ -56,7 +93,31 @@ export class PrismaWuRepository implements IWuRepository {
         await tx.wu_transaction_details.create({
           data: {
             transaction_id: txn.id,
+            bank_account_id: settlementBank.id,
             mtcn: input.mtcn,
+            sending_country: input.sendingCountry,
+            sender_state: input.senderState ?? null,
+            receiver_date_of_birth: input.receiverDateOfBirth,
+            current_address: input.currentAddress,
+            identity_address: input.identityAddress ?? null,
+            identity_document_type: input.identityDocumentType,
+            identity_document_number: input.identityDocumentNumber,
+            identity_place_of_issue: input.identityPlaceOfIssue,
+            identity_issuing_country: input.identityIssuingCountry,
+            identity_issue_date: input.identityIssueDate,
+            identity_expiry_date: input.identityExpiryDate,
+            has_visa: input.hasVisa,
+            visa_type: input.visaType ?? null,
+            visa_number: input.visaNumber ?? null,
+            visa_issue_date: input.visaIssueDate ?? null,
+            visa_expiry_date: input.visaExpiryDate ?? null,
+            employment_status: input.employmentStatus,
+            country_of_birth: input.countryOfBirth,
+            nationality: input.nationality,
+            sender_relationship: input.senderRelationship,
+            receive_purpose: input.receivePurpose,
+            sender_name: input.senderName,
+            received_date: input.receivedDate,
             paid_currency: input.paidCurrency,
             payout_currency: input.payoutCurrency,
             wu_usd_amount: input.wuUsdAmount,
@@ -71,16 +132,25 @@ export class PrismaWuRepository implements IWuRepository {
 
         // 4. Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT)
         const lines: any[] = [];
+        const vndAccountId = input.receivedVnd > 0
+          ? await this.cashAccount(tx, input.branchId, 'VND')
+          : null;
+        const usdAccountId = input.receivedUsd > 0
+          ? await this.cashAccount(tx, input.branchId, 'USD')
+          : null;
+        const payoutAccountIds = [vndAccountId, usdAccountId]
+          .filter((id): id is string => Boolean(id))
+          .sort();
+        for (const accountId of payoutAccountIds) await this.lockFundAccount(tx, accountId);
+
         if (input.receivedVnd > 0) {
-          const acc = await this.cashAccount(tx, input.branchId, 'VND');
-          await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
-          lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedVnd,
+          await this.assertEnoughBalance(tx, vndAccountId!, input.receivedVnd, 'VND');
+          lines.push({ fund_account_id: vndAccountId!, direction: 'CREDIT', amount: input.receivedVnd,
             currency_code: 'VND', exchange_rate: 1, base_amount_vnd: input.receivedVnd });
         }
         if (input.receivedUsd > 0) {
-          const acc = await this.cashAccount(tx, input.branchId, 'USD');
-          await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
-          lines.push({ fund_account_id: acc, direction: 'CREDIT', amount: input.receivedUsd,
+          await this.assertEnoughBalance(tx, usdAccountId!, input.receivedUsd, 'USD');
+          lines.push({ fund_account_id: usdAccountId!, direction: 'CREDIT', amount: input.receivedUsd,
             currency_code: 'USD', exchange_rate: rate, base_amount_vnd: input.receivedUsd * rate });
         }
         if (lines.length === 0) throw new BadRequestException('Phải trả khách ít nhất 1 loại tiền (USD hoặc VND)');
@@ -103,7 +173,9 @@ export class PrismaWuRepository implements IWuRepository {
 
         // 5. Công nợ WU tăng (Paid Currency)
         const debtAmount = input.paidCurrency === 'USD' ? input.wuUsdAmount : input.wuVndAmount;
-        const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'WU', input.paidCurrency, businessDate);
+        const debtAcc = await this.createDebtAccount(
+          tx, txn.id, txn.transaction_no, input.branchId, 'WU', input.paidCurrency, businessDate,
+        );
         await tx.debt_movements.create({
           data: {
             debt_account_id: debtAcc,
@@ -140,7 +212,7 @@ export class PrismaWuRepository implements IWuRepository {
   async findById(id: string): Promise<WuTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { wu_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
     });
     return row?.wu_transaction_details ? toDomain(row) : null;
   }
@@ -148,7 +220,7 @@ export class PrismaWuRepository implements IWuRepository {
   async list(filter?: ListWuFilter): Promise<WuTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'WU', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { wu_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { wu_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.wu_transaction_details).map(toDomain);
@@ -174,8 +246,7 @@ export class PrismaWuRepository implements IWuRepository {
     return acc.id;
   }
 
-  private async ensureEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
-    await this.lockFundAccount(tx, fundAccountId);
+  private async assertEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
     const balance = await this.balance(tx, fundAccountId);
     if (amount > balance) {
       throw new BadRequestException(`Không đủ tiền mặt ${currency}. Tồn hiện tại ${balance}, cần chi ${amount}`);
@@ -194,26 +265,38 @@ export class PrismaWuRepository implements IWuRepository {
     return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
-  private async ensureDebtAccount(
-    tx: any, branchId: string, provider: string, currency: Currency2, businessDate: Date,
+  private async createDebtAccount(
+    tx: any, transactionId: string, transactionNo: string, branchId: string,
+    provider: string, currency: Currency2, businessDate: Date,
   ): Promise<string> {
-    const account = await tx.debt_accounts.upsert({
-      where: {
-        branch_id_provider_code_currency_code_business_date: {
-          branch_id: branchId, provider_code: provider, currency_code: currency, business_date: businessDate,
-        },
-      },
-      update: {},
-      create: {
+    const account = await tx.debt_accounts.create({
+      data: {
+        transaction_id: transactionId,
         branch_id: branchId,
         provider_code: provider,
         currency_code: currency,
         business_date: businessDate,
-        name: `Công nợ ${provider} ${currency} ngày ${businessDate.toISOString().slice(0, 10)}`,
+        name: `Công nợ ${provider} - ${transactionNo}`,
+        lifecycle_status: 'PENDING',
       },
     });
     return account.id;
   }
+}
+
+function recentDistinct(values: Array<string | null>, limit = 5): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const rawValue of values) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    const key = value.toLocaleLowerCase('vi-VN');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+    if (result.length === limit) break;
+  }
+  return result;
 }
 
 function toDomain(row: any): WuTransaction {
@@ -225,11 +308,36 @@ function toDomain(row: any): WuTransaction {
     id: row.id,
     transactionNo: row.transaction_no,
     branchId: row.branch_id,
+    bankAccountId: d.bank_account_id,
     shiftId: row.shift_id,
     businessDate: row.business_date,
     status: row.status,
+    debtStatus: row.debt_account?.lifecycle_status,
     customerName: row.customer_name ?? null,
     customerPhone: row.customer_phone ?? null,
+    sendingCountry: d.sending_country,
+    senderState: d.sender_state ?? null,
+    receiverDateOfBirth: d.receiver_date_of_birth,
+    currentAddress: d.current_address,
+    identityAddress: d.identity_address ?? null,
+    identityDocumentType: d.identity_document_type,
+    identityDocumentNumber: d.identity_document_number,
+    identityPlaceOfIssue: d.identity_place_of_issue,
+    identityIssuingCountry: d.identity_issuing_country,
+    identityIssueDate: d.identity_issue_date,
+    identityExpiryDate: d.identity_expiry_date,
+    hasVisa: d.has_visa,
+    visaType: d.visa_type,
+    visaNumber: d.visa_number,
+    visaIssueDate: d.visa_issue_date,
+    visaExpiryDate: d.visa_expiry_date,
+    employmentStatus: d.employment_status,
+    countryOfBirth: d.country_of_birth,
+    nationality: d.nationality,
+    senderRelationship: d.sender_relationship,
+    receivePurpose: d.receive_purpose,
+    senderName: d.sender_name,
+    receivedDate: d.received_date,
     shiftCode: row.shifts?.shift_code,
     mtcn: d.mtcn,
     wuUsdAmount: wuUsd,
@@ -241,7 +349,7 @@ function toDomain(row: any): WuTransaction {
     appliedRate: applied,
     paidCurrency: d.paid_currency,
     payoutCurrency: d.payout_currency,
-    profit: wuProfit(wuRate, applied, wuUsd),
+    transactionValueVnd: Number(d.received_usd) * applied + Number(d.received_vnd),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
   };

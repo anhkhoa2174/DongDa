@@ -4,7 +4,7 @@
 import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { IMgRepository, CreateMgInput, ListMgFilter } from '../../../domain/repositories/mg.repository';
-import { MgTransaction, Currency2, mgImpliedRate, mgProfit } from '../../../domain/entities/mg.entity';
+import { MgTransaction, Currency2, mgImpliedRate } from '../../../domain/entities/mg.entity';
 import { toVietnamBusinessDate } from '../business-date';
 
 @Injectable()
@@ -64,11 +64,21 @@ export class PrismaMgRepository implements IMgRepository {
       // Ledger: trả khách → quỹ tiền mặt GIẢM (CREDIT).
       // Nếu khách nhận USD lẻ, phần chẵn chi USD và phần lẻ quy đổi chi VND.
       const lines: any[] = [];
+      const usdAccountId = input.receivedUsd > 0
+        ? await this.cashAccount(tx, input.branchId, 'USD')
+        : null;
+      const vndAccountId = input.receivedVnd > 0
+        ? await this.cashAccount(tx, input.branchId, 'VND')
+        : null;
+      const payoutAccountIds = [usdAccountId, vndAccountId]
+        .filter((id): id is string => Boolean(id))
+        .sort();
+      for (const accountId of payoutAccountIds) await this.lockFundAccount(tx, accountId);
+
       if (input.receivedUsd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'USD');
-        await this.ensureEnoughBalance(tx, acc, input.receivedUsd, 'USD');
+        await this.assertEnoughBalance(tx, usdAccountId!, input.receivedUsd, 'USD');
         lines.push({
-          fund_account_id: acc,
+          fund_account_id: usdAccountId!,
           direction: 'CREDIT',
           amount: input.receivedUsd,
           currency_code: 'USD',
@@ -77,10 +87,9 @@ export class PrismaMgRepository implements IMgRepository {
         });
       }
       if (input.receivedVnd > 0) {
-        const acc = await this.cashAccount(tx, input.branchId, 'VND');
-        await this.ensureEnoughBalance(tx, acc, input.receivedVnd, 'VND');
+        await this.assertEnoughBalance(tx, vndAccountId!, input.receivedVnd, 'VND');
         lines.push({
-          fund_account_id: acc,
+          fund_account_id: vndAccountId!,
           direction: 'CREDIT',
           amount: input.receivedVnd,
           currency_code: 'VND',
@@ -108,7 +117,9 @@ export class PrismaMgRepository implements IMgRepository {
 
       // Công nợ MG tăng (Paid Currency)
       const debtAmount = input.paidCurrency === 'USD' ? input.mgUsdAmount : input.mgVndAmount;
-      const debtAcc = await this.ensureDebtAccount(tx, input.branchId, 'MG', input.paidCurrency, businessDate);
+      const debtAcc = await this.createDebtAccount(
+        tx, txn.id, txn.transaction_no, input.branchId, 'MG', input.paidCurrency, businessDate,
+      );
       await tx.debt_movements.create({
         data: {
           debt_account_id: debtAcc,
@@ -135,7 +146,7 @@ export class PrismaMgRepository implements IMgRepository {
   async findById(id: string): Promise<MgTransaction | null> {
     const row = await this.prisma.customer_transactions.findUnique({
       where: { id },
-      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { mg_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
     });
     return row?.mg_transaction_details ? toDomain(row) : null;
   }
@@ -143,7 +154,7 @@ export class PrismaMgRepository implements IMgRepository {
   async list(filter?: ListMgFilter): Promise<MgTransaction[]> {
     const rows = await this.prisma.customer_transactions.findMany({
       where: { operation_code: 'MG', ...(filter?.branchId && { branch_id: filter.branchId }) },
-      include: { mg_transaction_details: true, shifts: { select: { shift_code: true } } },
+      include: { mg_transaction_details: true, debt_account: { select: { lifecycle_status: true } }, shifts: { select: { shift_code: true } } },
       orderBy: { created_at: 'desc' },
     });
     return rows.filter((r) => r.mg_transaction_details).map(toDomain);
@@ -166,8 +177,7 @@ export class PrismaMgRepository implements IMgRepository {
     return acc.id;
   }
 
-  private async ensureEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
-    await this.lockFundAccount(tx, fundAccountId);
+  private async assertEnoughBalance(tx: any, fundAccountId: string, amount: number, currency: Currency2) {
     const balance = await this.balance(tx, fundAccountId);
     if (amount > balance) {
       throw new BadRequestException(`Không đủ tiền mặt ${currency}. Tồn hiện tại ${balance}, cần chi ${amount}`);
@@ -186,22 +196,19 @@ export class PrismaMgRepository implements IMgRepository {
     return lines.reduce((sum: number, line: any) => sum + (line.direction === 'DEBIT' ? Number(line.amount) : -Number(line.amount)), 0);
   }
 
-  private async ensureDebtAccount(
-    tx: any, branchId: string, provider: string, currency: Currency2, businessDate: Date,
+  private async createDebtAccount(
+    tx: any, transactionId: string, transactionNo: string, branchId: string,
+    provider: string, currency: Currency2, businessDate: Date,
   ): Promise<string> {
-    const account = await tx.debt_accounts.upsert({
-      where: {
-        branch_id_provider_code_currency_code_business_date: {
-          branch_id: branchId, provider_code: provider, currency_code: currency, business_date: businessDate,
-        },
-      },
-      update: {},
-      create: {
+    const account = await tx.debt_accounts.create({
+      data: {
+        transaction_id: transactionId,
         branch_id: branchId,
         provider_code: provider,
         currency_code: currency,
         business_date: businessDate,
-        name: `Công nợ ${provider} ${currency} ngày ${businessDate.toISOString().slice(0, 10)}`,
+        name: `Công nợ ${provider} - ${transactionNo}`,
+        lifecycle_status: 'PENDING',
       },
     });
     return account.id;
@@ -221,6 +228,7 @@ function toDomain(row: any): MgTransaction {
     shiftId: row.shift_id,
     businessDate: row.business_date,
     status: row.status,
+    debtStatus: row.debt_account?.lifecycle_status,
     customerName: row.customer_name ?? null,
     customerPhone: row.customer_phone ?? null,
     shiftCode: row.shifts?.shift_code,
@@ -235,7 +243,7 @@ function toDomain(row: any): MgTransaction {
     systemRate: Number(d.system_rate),
     appliedRate: applied,
     paidCurrency: d.paid_currency,
-    profit: mgProfit(mgRate, applied, mgUsd),
+    transactionValueVnd: Number(d.received_usd ?? 0) * applied + Number(d.received_vnd ?? 0),
     createdByUserId: row.created_by_user_id,
     createdAt: row.created_at,
   };

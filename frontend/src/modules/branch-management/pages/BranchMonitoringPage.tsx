@@ -34,6 +34,7 @@ import { useAuthStore } from '@/modules/auth/model/auth.store';
 import {
   formatExchangeRate,
   formatDateTime,
+  formatUsd,
   formatVnd,
 } from '@/shared/utils/formatters';
 import type { BranchFundStatus, CreateBranchPayload, FundCurrencyBalanceDto, MonitoringPeriod } from '../api/branchMonitoring.api';
@@ -192,7 +193,7 @@ export function BranchMonitoringPage() {
             )}
             metrics={[
               { icon: <WalletOutlined />, label: 'Tiền mặt VND', value: formatVnd(funds?.vndCash ?? 0), note: 'Tồn tại chi nhánh' },
-              { icon: <DollarOutlined />, label: 'Tiền mặt USD', value: `${(funds?.usdCash ?? 0).toLocaleString('en-US')} USD`, note: 'Tồn tại chi nhánh' },
+              { icon: <DollarOutlined />, label: 'Tiền mặt USD', value: formatUsd(funds?.usdCash ?? 0), note: 'Tồn tại chi nhánh' },
               { icon: <BarChartOutlined />, label: 'Số giao dịch', value: String(activity?.transactionCount ?? 0), note: `${activity?.completedCount ?? 0} giao dịch hoàn tất` },
               { icon: <BankOutlined />, label: 'Giá trị giao dịch', value: formatVnd(activity?.transactionValueVnd ?? 0), note: 'Theo kỳ đang chọn' },
             ]}

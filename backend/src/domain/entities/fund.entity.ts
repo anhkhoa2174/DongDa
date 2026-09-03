@@ -105,11 +105,23 @@ export interface CentralFundConversion {
     currencyCode: CurrencyCode;
     amount: number;
     rate: number;
+    grossVndAmount: number;
+    deduction: number;
     vndAmount: number;
   }>;
   totalVndAmount: number;
   note?: string | null;
   postedAt: Date;
+}
+
+export function calculateCentralFundConversionValue(amount: number, rate: number, deduction: number) {
+  const grossVndAmount = Math.round(amount * rate);
+  const roundedDeduction = Math.round(deduction);
+  return {
+    grossVndAmount,
+    deduction: roundedDeduction,
+    vndAmount: grossVndAmount - roundedDeduction,
+  };
 }
 
 export type FundMovementHistoryKind = 'RECEIPT' | 'EXPENSE' | 'TRANSFER_IN' | 'TRANSFER_OUT';

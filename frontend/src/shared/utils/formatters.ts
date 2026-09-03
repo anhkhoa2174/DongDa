@@ -176,6 +176,23 @@ export function formatCurrency(
   return formatForeignCurrency(value, normalizedCurrency, maximumFractionDigits);
 }
 
+type BankAccountLabelValue = {
+  bankCode: string;
+  accountName?: string | null;
+  accountNo: string;
+  currentBalance: number;
+  currencyCode?: string | null;
+};
+
+/** Standard label used by every bank-account selector. */
+export function formatBankAccountLabel(account: BankAccountLabelValue) {
+  const accountName = account.accountName?.trim() || 'Không tên';
+  return `${account.bankCode} - ${accountName} - ${account.accountNo} - ${formatCurrency(
+    account.currentBalance,
+    account.currencyCode || 'VND',
+  )}`;
+}
+
 export function formatNumber(value: NullableNumber, maximumFractionDigits = 2) {
   return formatExchangeRate(value, maximumFractionDigits);
 }

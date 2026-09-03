@@ -1,0 +1,56 @@
+# Deploy bản TEST (test.dongda.info.vn) khi push nhánh dev đang hoạt động.
+# Trước đây bước này Claude tự SSH tay — không qua Actions nên lỗi không hiện ở đâu cả.
+# Từ giờ mọi lần cập nhật bản test đều chạy qua đây: build/migrate/healthcheck lỗi ở bước nào
+# thì step đó đỏ ngay trên tab Actions, kèm log đầy đủ, và GitHub tự gửi email cho người push khi fail.
+name: Deploy DongDa (test)
+
+on:
+  push:
+    branches: [feat/test-flows-and-bugfix]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, dongda]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend
+        run: |
+          set -e
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend":/app -w /app node:20-alpine \
+            sh -c "npm install --no-audit --no-fund && npm run build"
+
+      - name: Đồng bộ code + cấu hình vào /srv/dongda-test
+        run: |
+          set -e
+          mkdir -p /srv/dongda-test/src /srv/dongda-test/www
+          rm -rf /srv/dongda-test/src/*
+          cp -r . /srv/dongda-test/src/
+          rm -rf /srv/dongda-test/www/*
+          cp -r frontend/dist/* /srv/dongda-test/www/
+          test -f /srv/dongda-test/.env || { echo "THIẾU /srv/dongda-test/.env"; exit 1; }
+          test -f /srv/dongda-test/docker-compose.yml || { echo "THIẾU /srv/dongda-test/docker-compose.yml (dựng thủ công lần đầu)"; exit 1; }
+
+      - name: Build & up (test stack, port 8080)
+        working-directory: /srv/dongda-test
+        run: |
+          set -e
+          docker compose up -d --build
+          docker image prune -f
+
+      - name: Kiểm tra sức khỏe
+        run: |
+          set -e
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/auth/me || true)
+            [ "$code" = "401" ] && echo "Backend test OK (401 khi chưa đăng nhập)" && exit 0
+            sleep 3
+          done
+          echo "Backend test không phản hồi sau 120s"
+          docker compose -f /srv/dongda-test/docker-compose.yml logs --tail 80 backend
+          exit 1

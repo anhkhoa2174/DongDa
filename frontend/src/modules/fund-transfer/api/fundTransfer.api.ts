@@ -32,8 +32,6 @@ export interface FundBalanceDto {
   balance: number;
 }
 
-export interface BranchRef { id: string; code: string; name: string; type: string; }
-
 export interface CreateFundTransferPayload {
   destinationBranchId: string;
   items: Array<{ currencyCode: string; amount: number }>;
@@ -50,5 +48,6 @@ export const fundApi = {
     httpClient.patch<FundTransferDto>(`/fund/transfers/${id}/confirm`).then((r) => r.data),
   reject: (id: string) =>
     httpClient.patch<FundTransferDto>(`/fund/transfers/${id}/reject`).then((r) => r.data),
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
+  cancel: (id: string) =>
+    httpClient.patch<FundTransferDto>(`/fund/transfers/${id}/cancel`).then((r) => r.data),
 };

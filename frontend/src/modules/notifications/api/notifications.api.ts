@@ -6,6 +6,7 @@ export type NotificationCategory =
   | 'REPORT'
   | 'FUND_TRANSFER'
   | 'FUND_MOVEMENT'
+  | 'BANK'
   | 'SHIFT'
   | 'DEBT'
   | 'RECONCILIATION'

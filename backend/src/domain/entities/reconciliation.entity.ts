@@ -51,6 +51,7 @@ export interface ReconItem {
   journalAmount: number;
   varianceAmount: number;
   currencyCode: 'USD' | 'VND';
+  customerName?: string | null; // tên khách theo Journal (ưu tiên) hoặc theo hệ thống
   note?: string;
 }
 
@@ -66,47 +67,67 @@ export interface ReconResult {
 
 const EPS = 0.01;
 
+export function normalizeReconciliationCode(code: string): string {
+  return String(code ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function isValidReconciliationCode(code: string, provider: 'WU' | 'MG'): boolean {
+  const normalized = normalizeReconciliationCode(code);
+  return provider === 'WU' ? /^\d{10}$/.test(normalized) : /^[A-Z0-9]{8}$/.test(normalized);
+}
+
 // Thuật toán đối chiếu thuần (không phụ thuộc DB)
 export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResult {
   const items: ReconItem[] = [];
-  const key = (code: string, currency: string) => `${code}::${currency}`;
-  const sysByCode = new Map(system.map((s) => [key(s.code, s.currencyCode), s]));
-  const matchedCodes = new Set<string>();
+  const key = (code: string, currency: string, branchId?: string | null) =>
+    `${branchId ?? ''}::${normalizeReconciliationCode(code)}::${currency}`;
+  const sysByCode = new Map<string, SystemTxn[]>();
+  for (const txn of system) {
+    const matchKey = key(txn.code, txn.currencyCode, txn.branchId);
+    const candidates = sysByCode.get(matchKey) ?? [];
+    candidates.push(txn);
+    sysByCode.set(matchKey, candidates);
+  }
+  const matchedTransactionIds = new Set<string>();
 
   for (const jr of journal) {
     const currencyCode = jr.currencyCode ?? 'USD';
-    const matchKey = key(jr.code, currencyCode);
-    const sys = sysByCode.get(matchKey);
+    const code = normalizeReconciliationCode(jr.code);
+    const matchKey = key(code, currencyCode, jr.branchId);
+    const sys = sysByCode.get(matchKey)?.shift();
     if (!sys) {
       items.push({
-        status: ReconItemStatus.MISSING_IN_SYSTEM, code: jr.code,
-        branchId: jr.branchId ?? null, currencyCode,
+        status: ReconItemStatus.MISSING_IN_SYSTEM, code,
+        branchId: jr.branchId ?? null, currencyCode, customerName: jr.customerName ?? null,
         systemAmount: 0, journalAmount: jr.amount, varianceAmount: jr.amount,
         note: 'Journal có nhưng hệ thống chưa ghi nhận',
       });
       continue;
     }
-    matchedCodes.add(matchKey);
+    matchedTransactionIds.add(sys.transactionId);
     const variance = sys.amount - jr.amount;
     if (Math.abs(variance) < EPS) {
       items.push({
-        status: ReconItemStatus.MATCHED, code: jr.code, transactionId: sys.transactionId,
+        status: ReconItemStatus.MATCHED, code, transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: 0,
+        customerName: jr.customerName ?? sys.customerName ?? null,
       });
     } else {
       items.push({
-        status: ReconItemStatus.AMOUNT_VARIANCE, code: jr.code, transactionId: sys.transactionId,
+        status: ReconItemStatus.AMOUNT_VARIANCE, code, transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode, systemAmount: sys.amount, journalAmount: jr.amount, varianceAmount: variance,
-        note: `Lệch ${variance} USD`,
+        customerName: jr.customerName ?? sys.customerName ?? null,
+        note: `Lệch ${variance} ${currencyCode}`,
       });
     }
   }
 
   for (const sys of system) {
-    if (!matchedCodes.has(key(sys.code, sys.currencyCode))) {
+    if (!matchedTransactionIds.has(sys.transactionId)) {
       items.push({
-        status: ReconItemStatus.MISSING_IN_JOURNAL, code: sys.code, transactionId: sys.transactionId,
+        status: ReconItemStatus.MISSING_IN_JOURNAL, code: normalizeReconciliationCode(sys.code), transactionId: sys.transactionId,
         branchId: sys.branchId, currencyCode: sys.currencyCode, systemAmount: sys.amount, journalAmount: 0, varianceAmount: sys.amount,
+        customerName: sys.customerName ?? null,
         note: 'Hệ thống có nhưng Journal thiếu',
       });
     }

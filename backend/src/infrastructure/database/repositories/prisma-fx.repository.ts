@@ -5,8 +5,9 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { toVietnamBusinessDate } from '../business-date';
 import { IFxRepository, CreateFxInput, ListFxFilter } from '../../../domain/repositories/fx.repository';
-import { FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
+import { calculateFxVndAmount, FxTransaction, CurrencyCode } from '../../../domain/entities/fx.entity';
 import { canonicalActiveFundAccount } from '../canonical-fund-account';
+import { claimFinancialRequest, completeFinancialRequest } from '../financial-idempotency';
 
 @Injectable()
 export class PrismaFxRepository implements IFxRepository {
@@ -15,9 +16,15 @@ export class PrismaFxRepository implements IFxRepository {
   async create(input: CreateFxInput): Promise<FxTransaction> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
-    const vndAmount = Math.round(input.fxAmount * input.rate);
+    const { grossVndAmount, vndAmount } = calculateFxVndAmount(input);
+    const idempotencyScope = `FX_CREATE:${input.createdByUserId}`;
 
     const txnId = await this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<{ transactionId: string }>(
+        tx, idempotencyScope, input.idempotencyKey, input,
+      );
+      if (replay) return replay.transactionId;
+
       const shift = await this.ensureShift(tx, input.branchId);
       const vndAcc = await this.cashAccount(tx, input.branchId, 'VND');
       const fxAcc = await this.currencyAccount(tx, input.branchId, input.fxCurrency);
@@ -61,6 +68,9 @@ export class PrismaFxRepository implements IFxRepository {
           fx_amount: input.fxAmount,
           rate: input.rate,
           is_buy: input.isBuy,
+          fractional_amount: input.fractionalAmount,
+          fractional_rate: input.fractionalRate,
+          deduction_vnd: input.deductionVnd,
         },
       });
 
@@ -85,12 +95,17 @@ export class PrismaFxRepository implements IFxRepository {
           source_id: txn.id,
           status: 'POSTED',
           posted_at: now,
-          description: `${input.isBuy ? 'Mua' : 'Bán'} ${input.fxAmount} ${input.fxCurrency}`,
+          description: input.isBuy
+            ? `Mua ${input.fxAmount} ${input.fxCurrency}; gộp ${grossVndAmount} VND; khấu trừ ${input.deductionVnd} VND`
+            : `Bán ${input.fxAmount} ${input.fxCurrency}`,
           created_by_user_id: input.createdByUserId,
           ledger_lines: { create: [vndLine, fxLine] as any },
         },
       });
 
+      await completeFinancialRequest(
+        tx, idempotencyScope, input.idempotencyKey, { transactionId: txn.id },
+      );
       return txn.id;
     });
 
@@ -115,12 +130,15 @@ export class PrismaFxRepository implements IFxRepository {
   }
 
   async currencyStock(branchId?: string) {
-    // Tồn ngoại tệ = các sổ FUND_A + CASH_USD
+    // Tồn quỹ phục vụ form FX = Quỹ gốc VND/USD + các sổ Quỹ A.
     const accounts = await this.prisma.fund_accounts.findMany({
       where: {
         status: 'ACTIVE',
         ...(branchId && { branch_id: branchId }),
-        OR: [{ account_type: 'FUND_A' }, { account_type: 'CASH', currency_code: 'USD' }],
+        OR: [
+          { account_type: 'FUND_A' },
+          { account_type: 'CASH', currency_code: { in: ['VND', 'USD'] } },
+        ],
       },
     });
     const ledgerLines = accounts.length === 0
@@ -199,6 +217,9 @@ function toDomain(row: any): FxTransaction {
     isBuy: d.is_buy,
     fxCurrency: d.fx_currency as CurrencyCode,
     fxAmount: Number(d.fx_amount),
+    fractionalAmount: Number(d.fractional_amount ?? 0),
+    fractionalRate: d.fractional_rate == null ? null : Number(d.fractional_rate),
+    deductionVnd: Number(d.deduction_vnd ?? 0),
     rate: Number(d.rate),
     vndAmount: Number(row.vnd_amount),
     createdByUserId: row.created_by_user_id,

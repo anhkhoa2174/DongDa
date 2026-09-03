@@ -25,6 +25,13 @@ export interface CashCountLine {
   systemAmount: number;
   actualAmount: number;
   variance: number; // actual - system  (>0 thừa, <0 thiếu, =0 khớp)
+  denominations?: DenominationCount[];
+}
+
+export interface DenominationCount {
+  denomination: number;
+  quantity: number;
+  amount: number;
 }
 
 export interface CashCount {
@@ -38,6 +45,7 @@ export interface CashCount {
 export interface CountInput {
   currency: CurrencyCode;
   actualAmount: number;
+  denominations?: Array<Pick<DenominationCount, 'denomination' | 'quantity'>>;
 }
 
 export function varianceLabel(v: number): 'KHỚP' | 'THỪA' | 'THIẾU' {

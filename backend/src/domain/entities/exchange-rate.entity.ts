@@ -44,6 +44,7 @@ export interface ExchangeRate {
   buyRate?: number | null;
   sellRate?: number | null;
   rate: number;
+  margin: number;
   effectiveFrom: Date;
   effectiveTo?: Date | null;
   status: RateStatus;
@@ -74,4 +75,12 @@ export function rateIdentityOf(r: ExchangeRate): RateIdentity {
 // Chỉ được duyệt/từ chối khi còn ở DRAFT
 export function canApprove(rate: ExchangeRate): boolean {
   return rate.status === RateStatus.DRAFT;
+}
+
+export function counterpartRateType(rateType: ExchangeRateType): ExchangeRateType | null {
+  if (rateType === ExchangeRateType.PAID_BUY) return ExchangeRateType.PAID_SELL;
+  if (rateType === ExchangeRateType.PAID_SELL) return ExchangeRateType.PAID_BUY;
+  if (rateType === ExchangeRateType.FX_BUY) return ExchangeRateType.FX_SELL;
+  if (rateType === ExchangeRateType.FX_SELL) return ExchangeRateType.FX_BUY;
+  return null;
 }

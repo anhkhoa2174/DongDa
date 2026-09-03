@@ -1,4 +1,5 @@
 import { httpClient } from '@/shared/api/httpClient';
+import { runIdempotent } from '@/shared/utils/idempotency';
 
 export interface FxTransactionDto {
   id: string;
@@ -11,19 +12,23 @@ export interface FxTransactionDto {
   isBuy: boolean;
   fxCurrency: string;
   fxAmount: number;
+  fractionalAmount: number;
+  fractionalRate?: number | null;
+  deductionVnd: number;
   rate: number;
   vndAmount: number;
   createdAt: string;
 }
 
 export interface FxStockDto { branchId: string; currency: string; balance: number; }
-export interface BranchRef { id: string; code: string; name: string; type: string; }
 
 export interface CreateFxPayload {
   branchId: string;
   isBuy: boolean;
   fxCurrency: string;
   fxAmount: number;
+  fractionalAmount?: number;
+  deductionVnd?: number;
   rate: number;
   customerName?: string;
 }
@@ -33,7 +38,6 @@ export const fxApi = {
     httpClient.get<FxTransactionDto[]>('/fx/transactions', { params: { branchId } }).then((r) => r.data),
   stock: (branchId?: string) =>
     httpClient.get<FxStockDto[]>('/fx/stock', { params: { branchId } }).then((r) => r.data),
-  create: (payload: CreateFxPayload) =>
-    httpClient.post<FxTransactionDto>('/fx/transactions', payload).then((r) => r.data),
-  branches: () => httpClient.get<BranchRef[]>('/branches').then((r) => r.data),
+  create: (payload: CreateFxPayload) => runIdempotent('FX_CREATE', payload, (headers) =>
+    httpClient.post<FxTransactionDto>('/fx/transactions', payload, { headers }).then((r) => r.data)),
 };

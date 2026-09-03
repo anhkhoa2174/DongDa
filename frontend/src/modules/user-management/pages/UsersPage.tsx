@@ -211,7 +211,7 @@ export function UsersPage() {
 
   return (
     <PageScaffold
-      title="Quản trị người dùng"
+      title="Người dùng"
       description="Quản lý tài khoản KTTH và nhân viên trong toàn hệ thống."
       moduleName="user-management"
       extra={<Button type="primary" icon={<PlusOutlined />} onClick={openAccountModal}>Tạo tài khoản</Button>}

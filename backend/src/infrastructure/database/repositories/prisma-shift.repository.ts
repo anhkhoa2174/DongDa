@@ -11,6 +11,51 @@ import { NotificationService } from '../../notifications/notification.service';
 import { toVietnamBusinessDate } from '../business-date';
 import { canonicalFundAccount } from '../../../domain/entities/fund-account';
 
+const CASH_DENOMINATIONS: Record<'VND' | 'USD', number[]> = {
+  VND: [500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000, 500],
+  USD: [100, 50, 20, 10, 5, 2, 1],
+};
+
+type SubmittedDenomination = { denomination: number; quantity: number };
+
+export function validateCashDenominations(
+  currency: string,
+  actualAmount: number,
+  submitted?: SubmittedDenomination[],
+) {
+  const denominationConfig = CASH_DENOMINATIONS[currency as 'VND' | 'USD'];
+  if (!denominationConfig) {
+    if (submitted?.length) {
+      throw new BadRequestException(`${currency} chỉ kiểm theo tổng số lượng, không nhập mệnh giá`);
+    }
+    return [];
+  }
+  if (!submitted?.length) {
+    throw new BadRequestException(`${currency} phải được kiểm theo từng mệnh giá`);
+  }
+
+  const seen = new Set<number>();
+  for (const item of submitted) {
+    if (!denominationConfig.includes(item.denomination)) {
+      throw new BadRequestException(`Mệnh giá ${item.denomination} ${currency} không hợp lệ`);
+    }
+    if (seen.has(item.denomination)) {
+      throw new BadRequestException(`Mệnh giá ${item.denomination} ${currency} bị trùng`);
+    }
+    seen.add(item.denomination);
+  }
+  const denominationTotal = submitted.reduce(
+    (total, item) => total + item.denomination * item.quantity,
+    0,
+  );
+  if (Math.abs(denominationTotal - actualAmount) >= 0.005) {
+    throw new BadRequestException(`Tổng mệnh giá ${currency} không khớp số thực đếm`);
+  }
+  return submitted
+    .filter((item) => item.quantity > 0)
+    .map((item) => ({ ...item, amount: item.denomination * item.quantity }));
+}
+
 @Injectable()
 export class PrismaShiftRepository implements IShiftRepository {
   constructor(
@@ -80,7 +125,7 @@ export class PrismaShiftRepository implements IShiftRepository {
   async getCashCount(shiftId: string): Promise<CashCount[]> {
     const counts = await this.prisma.cash_counts.findMany({
       where: { shift_id: shiftId },
-      include: { cash_count_lines: true },
+      include: { cash_count_lines: { include: { cash_count_denominations: true } } },
       orderBy: { counted_at: 'asc' },
     });
     return counts.map((c: any) => ({
@@ -93,6 +138,13 @@ export class PrismaShiftRepository implements IShiftRepository {
         systemAmount: Number(l.system_amount),
         actualAmount: Number(l.actual_amount),
         variance: Number(l.variance),
+        denominations: l.cash_count_denominations
+          .map((item: any) => ({
+            denomination: Number(item.denomination),
+            quantity: item.quantity,
+            amount: Number(item.amount),
+          }))
+          .sort((first: any, second: any) => second.denomination - first.denomination),
       })),
     }));
   }
@@ -103,11 +155,18 @@ export class PrismaShiftRepository implements IShiftRepository {
     tx: any, shiftId: string, branchId: string, userId: string,
     counts: CountInput[], now: Date, note: string,
   ): Promise<CashCount> {
-    const requiredAccounts = await tx.fund_accounts.findMany({
+    const activeAccounts = await tx.fund_accounts.findMany({
       where: { branch_id: branchId, status: 'ACTIVE', account_type: { in: ['CASH', 'FUND_A'] } },
       select: { currency_code: true },
     });
-    const requiredCurrencies = new Set<string>(requiredAccounts.map((account: any) => String(account.currency_code)));
+    const activeCurrencies = [...new Set<string>(activeAccounts.map((account: any) => String(account.currency_code)))];
+    const requiredCurrencies = new Set<string>();
+    for (const currency of activeCurrencies) {
+      const accounts = await this.fundAccounts(tx, branchId, currency as CurrencyCode);
+      let systemAmount = 0;
+      for (const account of accounts) systemAmount += await this.balance(tx, account.id);
+      if (Math.abs(systemAmount) >= 0.005) requiredCurrencies.add(currency);
+    }
     const submittedCurrencies = new Set<string>(counts.map((count) => String(count.currency)));
     const missing = [...requiredCurrencies].filter((currency) => !submittedCurrencies.has(currency));
     if (missing.length > 0) throw new BadRequestException(`Phiếu kiểm quỹ thiếu loại tiền: ${missing.join(', ')}`);
@@ -119,6 +178,8 @@ export class PrismaShiftRepository implements IShiftRepository {
         throw new BadRequestException(`Phiếu kiểm quỹ có loại tiền ${c.currency} bị trùng`);
       }
       seenCurrencies.add(c.currency);
+
+      const denominations = validateCashDenominations(c.currency, c.actualAmount, c.denominations);
 
       const accounts = await this.fundAccounts(tx, branchId, c.currency);
       if (accounts.length === 0) throw new BadRequestException(`Chi nhánh chưa có sổ quỹ để kiểm ${c.currency}`);
@@ -137,6 +198,9 @@ export class PrismaShiftRepository implements IShiftRepository {
         system_amount: system,
         actual_amount: c.actualAmount,
         variance: c.actualAmount - system,
+        cash_count_denominations: denominations.length > 0 ? {
+          create: denominations,
+        } : undefined,
       });
     }
     const cc = await tx.cash_counts.create({
@@ -149,7 +213,7 @@ export class PrismaShiftRepository implements IShiftRepository {
         note,
         cash_count_lines: { create: lines },
       },
-      include: { cash_count_lines: true },
+      include: { cash_count_lines: { include: { cash_count_denominations: true } } },
     });
     return {
       id: cc.id,
@@ -161,6 +225,13 @@ export class PrismaShiftRepository implements IShiftRepository {
         systemAmount: Number(l.system_amount),
         actualAmount: Number(l.actual_amount),
         variance: Number(l.variance),
+        denominations: l.cash_count_denominations
+          .map((item: any) => ({
+            denomination: Number(item.denomination),
+            quantity: item.quantity,
+            amount: Number(item.amount),
+          }))
+          .sort((first: any, second: any) => second.denomination - first.denomination),
       })),
     };
   }

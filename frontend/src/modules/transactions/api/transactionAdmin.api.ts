@@ -43,6 +43,15 @@ export type TransactionAdjustmentRequest = {
 export const transactionAdminApi = {
   voidDirectly: (transactionId: string, reason: string) =>
     httpClient.post(`/transactions/${transactionId}/void`, { reason }).then((response) => response.data),
+  replaceDirectly: (
+    transactionId: string,
+    payload: {
+      action: 'REPLACE';
+      reason: string;
+      proposedCorrection?: string;
+      correctedData: Record<string, number>;
+    },
+  ) => httpClient.post(`/transactions/${transactionId}/replace`, payload).then((response) => response.data),
   updateMetadata: (transactionId: string, payload: UpdateTransactionMetadataPayload) =>
     httpClient.patch<UpdatedTransactionMetadata>(`/transactions/${transactionId}/metadata`, payload)
       .then((response) => response.data),

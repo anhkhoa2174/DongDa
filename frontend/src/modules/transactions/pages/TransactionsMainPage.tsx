@@ -30,14 +30,17 @@ import {
   Tag,
   Typography,
 } from 'antd';
+import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   formatDateTime,
+  formatCurrency,
   formatExchangeRate,
   formatUsd,
   formatVnd,
@@ -48,9 +51,11 @@ import {
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
-import { useBranches as useWuBranches, useWuTransactions } from '@/modules/western-union/hooks/useWu';
+import { useBranches } from '@/shared/hooks/useBranches';
+import { useWuTransactions } from '@/modules/western-union/hooks/useWu';
 import { useMgTransactions } from '@/modules/moneygram/hooks/useMg';
 import { useFxTransactions } from '@/modules/foreign-exchange/hooks/useFx';
+import { domesticTransferApi } from '@/modules/domestic-transfer/api/domesticTransfer.api';
 import { transactionAdminApi } from '../api/transactionAdmin.api';
 import type { TransactionAdjustmentRequest } from '../api/transactionAdmin.api';
 import { useTransactionShift } from '../hooks/useTransactionShift';
@@ -76,6 +81,14 @@ const statusMeta: Record<TransactionStatus, { label: string; color: string }> = 
 function normalizeTransactionStatus(status?: string): TransactionStatus {
   if (status && status in statusMeta) return status as TransactionStatus;
   return 'COMPLETED';
+}
+
+function formatProviderPaidAmount(
+  paidCurrency: 'USD' | 'VND',
+  usdAmount: number,
+  vndAmount: number,
+) {
+  return paidCurrency === 'USD' ? formatUsd(usdAmount) : formatVnd(vndAmount);
 }
 
 const createActions = [
@@ -112,12 +125,16 @@ export function TransactionsMainPage() {
   const role = user?.role;
   const { currentShift } = useTransactionShift();
   const access = getTransactionAccess(role, currentShift);
-  const { data: branches = [] } = useWuBranches();
+  const { data: branches = [] } = useBranches();
   const isControlUser = role === 'director' || role === 'accountant';
   const scopedBranchId = isControlUser ? undefined : user?.branchId;
   const { data: wuTransactions = [], isLoading: isWuLoading } = useWuTransactions(scopedBranchId);
   const { data: mgTransactions = [], isLoading: isMgLoading } = useMgTransactions(scopedBranchId);
   const { data: fxTransactions = [], isLoading: isFxLoading } = useFxTransactions(scopedBranchId);
+  const { data: domesticTransfers = [], isLoading: isDomesticLoading } = useQuery({
+    queryKey: ['domestic-transfers', scopedBranchId ?? 'all'],
+    queryFn: () => domesticTransferApi.list(scopedBranchId),
+  });
   const [keyword, setKeyword] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'ALL' | TransactionSource>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
@@ -135,7 +152,7 @@ export function TransactionsMainPage() {
   const adjustmentAction = Form.useWatch('action', deactivateForm) ?? 'REPLACE';
   const replacementFxAmount = Form.useWatch('fxAmount', deactivateForm) ?? 0;
   const [reviewForm] = Form.useForm<ReviewValues>();
-  const isLoading = isWuLoading || isMgLoading || isFxLoading;
+  const isLoading = isWuLoading || isMgLoading || isFxLoading || isDomesticLoading;
   const canControlTransactions = isControlUser || isUiTestMode;
   const canRequestAdjustment = canControlTransactions || role === 'branch';
   const { data: adjustmentRequests = [], isLoading: isAdjustmentLoading } = useQuery({
@@ -149,7 +166,9 @@ export function TransactionsMainPage() {
       queryClient.invalidateQueries({ queryKey: ['wu'] }),
       queryClient.invalidateQueries({ queryKey: ['mg'] }),
       queryClient.invalidateQueries({ queryKey: ['fx-trading'] }),
+      queryClient.invalidateQueries({ queryKey: ['domestic-transfers'] }),
       queryClient.invalidateQueries({ queryKey: ['fund'] }),
+      queryClient.invalidateQueries({ queryKey: ['bank'] }),
       queryClient.invalidateQueries({ queryKey: ['debts'] }),
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] }),
     ]);
@@ -163,16 +182,21 @@ export function TransactionsMainPage() {
       editForm.resetFields();
       void message.success('Đã cập nhật thông tin giao dịch và ghi Audit Log');
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể sửa giao dịch');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể sửa giao dịch'));
     },
   });
   const adjustmentMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => (
-      isControlUser && values.action === 'VOID'
-        ? transactionAdminApi.voidDirectly(id, values.reason)
-        : transactionAdminApi.createAdjustmentRequest(id, values)
-    ),
+    mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => {
+      if (!isControlUser) return transactionAdminApi.createAdjustmentRequest(id, values);
+      if (values.action === 'VOID') return transactionAdminApi.voidDirectly(id, values.reason);
+      return transactionAdminApi.replaceDirectly(id, {
+        action: 'REPLACE',
+        reason: values.reason,
+        proposedCorrection: values.proposedCorrection,
+        correctedData: values.correctedData ?? {},
+      });
+    },
     onSuccess: async (_, variables) => {
       await invalidateTransactionQueries();
       await queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] });
@@ -180,13 +204,15 @@ export function TransactionsMainPage() {
       setDeactivateTarget(null);
       deactivateForm.resetFields();
       void message.success(
-        isControlUser && variables.values.action === 'VOID'
-          ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
+        isControlUser
+          ? variables.values.action === 'VOID'
+            ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
+            : 'Đã thay thế giao dịch và ghi lại quỹ/công nợ'
           : 'Đã lập phiếu điều chỉnh và gửi duyệt',
       );
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể lập phiếu điều chỉnh');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể lập phiếu điều chỉnh'));
     },
   });
   const reviewMutation = useMutation({
@@ -203,8 +229,8 @@ export function TransactionsMainPage() {
       reviewForm.resetFields();
       void message.success(variables.action === 'APPROVE' ? 'Đã duyệt và ghi sổ phiếu điều chỉnh' : 'Đã từ chối phiếu điều chỉnh');
     },
-    onError: (error: any) => {
-      void message.error(error?.response?.data?.message ?? 'Không thể xử lý phiếu điều chỉnh');
+    onError: (error: unknown) => {
+      void message.error(getApiErrorMessage(error, 'Không thể xử lý phiếu điều chỉnh'));
     },
   });
 
@@ -230,15 +256,21 @@ export function TransactionsMainPage() {
         type: `WU trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.payoutCurrency === 'USD'
-          ? `${formatUsd(transaction.receivedUsd)} + ${formatVnd(transaction.receivedVnd)}`
-          : formatVnd(transaction.receivedVnd),
-        vndAmount: transaction.receivedUsd * transaction.appliedRate + transaction.receivedVnd,
+        amountLabel: formatProviderPaidAmount(
+          transaction.paidCurrency,
+          transaction.wuUsdAmount,
+          transaction.wuVndAmount,
+        ),
+        vndAmount: transaction.transactionValueVnd,
+        debtLabel: transaction.paidCurrency === 'USD'
+          ? formatUsd(transaction.wuUsdAmount)
+          : formatVnd(transaction.wuVndAmount),
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
+        debtStatus: transaction.debtStatus,
         createdAtRaw: transaction.createdAt,
         financialData: {
           wuUsdAmount: transaction.wuUsdAmount,
@@ -256,17 +288,21 @@ export function TransactionsMainPage() {
         type: `MG trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: transaction.payoutCurrency === 'USD'
-          ? formatUsd(transaction.payoutAmount)
-          : formatVnd(transaction.payoutAmount),
-        vndAmount: transaction.payoutCurrency === 'USD'
-          ? transaction.payoutAmount * transaction.appliedRate
-          : transaction.payoutAmount,
+        amountLabel: formatProviderPaidAmount(
+          transaction.paidCurrency,
+          transaction.mgUsdAmount,
+          transaction.mgVndAmount,
+        ),
+        vndAmount: transaction.transactionValueVnd,
+        debtLabel: transaction.paidCurrency === 'USD'
+          ? formatUsd(transaction.mgUsdAmount)
+          : formatVnd(transaction.mgVndAmount),
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
         createdAt: formatDateTime(transaction.createdAt),
         status: normalizeTransactionStatus(transaction.status),
+        debtStatus: transaction.debtStatus,
         createdAtRaw: transaction.createdAt,
         financialData: {
           paidAmount: transaction.paidCurrency === 'USD' ? transaction.mgUsdAmount : transaction.mgVndAmount,
@@ -284,8 +320,9 @@ export function TransactionsMainPage() {
         type: transaction.isBuy ? 'Mua ngoại tệ' : 'Bán ngoại tệ',
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: `${formatExchangeRate(transaction.fxAmount)} ${transaction.fxCurrency}`,
+        amountLabel: formatCurrency(transaction.fxAmount, transaction.fxCurrency),
         vndAmount: transaction.vndAmount,
+        debtLabel: undefined,
         branchId,
         branch: branchNameById.get(branchId) ?? branchId,
         shiftCode: transaction.shiftCode ?? '',
@@ -299,12 +336,36 @@ export function TransactionsMainPage() {
         },
         };
       }),
+      ...domesticTransfers.map((transaction) => {
+        const branchId = transaction.branchId;
+        return {
+          key: transaction.id,
+          code: transaction.transactionNo,
+          source: 'DOMESTIC' as const,
+          type: transaction.transferType === 'CASH_TO_BANK'
+            ? 'Nhận tiền mặt, chuyển khoản'
+            : 'Nhận chuyển khoản, trả tiền mặt',
+          customerName: transaction.customerName ?? '',
+          customerPhone: transaction.customerPhone ?? '',
+          amountLabel: transaction.transferType === 'CASH_TO_BANK'
+            ? `Tiền mặt vào ${formatVnd(transaction.cashAmount)}`
+            : `Tiền mặt ra ${formatVnd(transaction.cashAmount)}`,
+          vndAmount: transaction.transactionValueVnd,
+          debtLabel: undefined,
+          branchId,
+          branch: branchNameById.get(branchId) ?? branchId,
+          shiftCode: transaction.shiftCode ?? '',
+          createdAt: formatDateTime(transaction.createdAt),
+          status: normalizeTransactionStatus(transaction.status),
+          createdAtRaw: transaction.createdAt,
+        };
+      }),
     ];
 
     return rows
       .sort((a, b) => Date.parse(b.createdAtRaw) - Date.parse(a.createdAtRaw))
       .map((transaction) => transaction);
-  }, [branchNameById, fxTransactions, mgTransactions, wuTransactions]);
+  }, [branchNameById, domesticTransfers, fxTransactions, mgTransactions, wuTransactions]);
 
   const openEditModal = (transaction: AggregatedTransaction) => {
     setEditTarget(transaction);
@@ -323,7 +384,7 @@ export function TransactionsMainPage() {
   const openDeactivateModal = (transaction: AggregatedTransaction) => {
     setDeactivateTarget(transaction);
     deactivateForm.setFieldsValue({
-      action: 'REPLACE',
+      action: transaction.source === 'DOMESTIC' ? 'VOID' : 'REPLACE',
       reason: undefined,
       proposedCorrection: undefined,
       wuUsdAmount: transaction.financialData?.wuUsdAmount,
@@ -383,16 +444,23 @@ export function TransactionsMainPage() {
 
   const columns: ColumnsType<AggregatedTransaction> = [
     {
-      title: 'Mã GD',
-      dataIndex: 'code',
-      fixed: 'left',
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      title: 'Giao dịch',
+      key: 'transaction',
+      width: 210,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text strong>{record.code}</Typography.Text>
+          <Space size={4} wrap>
+            <Tag color={sourceMeta[record.source].color}>{sourceMeta[record.source].label}</Tag>
+            <Typography.Text type="secondary" className="text-xs!">{record.type}</Typography.Text>
+          </Space>
+        </Space>
+      ),
     },
-    { title: 'Nhóm GD', dataIndex: 'source', render: (value: TransactionSource) => <Tag color={sourceMeta[value].color}>{sourceMeta[value].label}</Tag> },
-    { title: 'Loại giao dịch', dataIndex: 'type' },
     {
       title: 'Khách hàng',
       dataIndex: 'customerName',
+      width: 170,
       render: (value: string, record) => (
         <div>
           <Typography.Text strong className="block!">{value || 'Chưa nhập'}</Typography.Text>
@@ -400,20 +468,53 @@ export function TransactionsMainPage() {
         </div>
       ),
     },
-    { title: 'Số tiền', dataIndex: 'amountLabel', align: 'right' },
-    { title: 'Quy đổi VND', dataIndex: 'vndAmount', align: 'right', render: (value: number) => formatVnd(value) },
-    { title: 'Chi nhánh', dataIndex: 'branch' },
-    { title: 'Ca', dataIndex: 'shiftCode', render: (value?: string) => value || <Typography.Text type="secondary">Chưa gắn ca</Typography.Text> },
-    { title: 'Thời gian', dataIndex: 'createdAt' },
-    { title: 'Trạng thái', dataIndex: 'status', render: (value: TransactionStatus) => <Tag color={statusMeta[value].color}>{statusMeta[value].label}</Tag> },
+    {
+      title: 'Giá trị giao dịch',
+      key: 'transactionValue',
+      align: 'right',
+      width: 170,
+      render: (_, record) => <Typography.Text strong>{record.amountLabel}</Typography.Text>,
+    },
+    {
+      title: 'Công nợ',
+      dataIndex: 'debtLabel',
+      align: 'right',
+      width: 160,
+      render: (value?: string) => value
+        ? <Typography.Text strong>{value}</Typography.Text>
+        : <Typography.Text type="secondary">Không phát sinh</Typography.Text>,
+    },
+    {
+      title: 'Chi nhánh / ca',
+      key: 'branchShift',
+      width: 210,
+      render: (_, record) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{record.branch}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs!">{record.shiftCode || 'Chưa gắn ca'}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Thời gian / trạng thái',
+      key: 'timeStatus',
+      width: 170,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Typography.Text>{record.createdAt}</Typography.Text>
+          <Tag color={statusMeta[record.status].color}>{statusMeta[record.status].label}</Tag>
+        </Space>
+      ),
+    },
     {
       title: '',
       key: 'actions',
-      fixed: 'right',
-      width: 170,
+      width: 150,
       render: (_, record) => {
         const isInactive = ['VOID', 'VOIDED', 'DEACTIVATED'].includes(record.status);
-        if ((!canControlTransactions && !canRequestAdjustment) || isInactive) {
+        const isReconciled = record.debtStatus === 'RECONCILED' || record.debtStatus === 'SETTLED';
+        if ((!canControlTransactions && !canRequestAdjustment) || isInactive || isReconciled) {
+          if (isReconciled) return <Tag color="blue">Đã đối chiếu · Chỉ xem</Tag>;
           return <Typography.Text type="secondary">Chỉ xem</Typography.Text>;
         }
 
@@ -671,7 +772,8 @@ export function TransactionsMainPage() {
             <Col xs={24} lg={4}>
               <DatePicker.RangePicker
                 className="w-full"
-                format="DD/MM/YYYY"
+                format={DATE_INPUT_FORMAT}
+                placeholder={DATE_RANGE_PLACEHOLDERS}
                 value={dateRange}
                 onChange={(dates) => setDateRange(dates as [Dayjs | null, Dayjs | null] | null)}
               />
@@ -682,7 +784,7 @@ export function TransactionsMainPage() {
             columns={columns}
             dataSource={filteredTransactions}
             loading={isLoading}
-            scroll={{ x: 1400 }}
+            scroll={{ x: 1200 }}
             pagination={{ pageSize: 10 }}
           />
         </Card>
@@ -735,7 +837,7 @@ export function TransactionsMainPage() {
       </Modal>
 
       <Modal
-        title={`${isControlUser && adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
+        title={`${isControlUser ? (adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Thay thế giao dịch') : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
         open={Boolean(deactivateTarget)}
         onCancel={() => setDeactivateTarget(null)}
         footer={null}
@@ -746,18 +848,22 @@ export function TransactionsMainPage() {
             className="mb-4"
             type={isControlUser && adjustmentAction === 'VOID' ? 'error' : 'warning'}
             showIcon
-            message={isControlUser && adjustmentAction === 'VOID'
-              ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
-              : 'Phiếu cần được GĐ/KTTH khác duyệt trước khi ghi sổ'}
-            description={isControlUser && adjustmentAction === 'VOID'
-              ? 'Thao tác không cần duyệt lại. Công nợ đã tất toán hoặc giao dịch đã chốt Journal vẫn không thể hủy trực tiếp.'
-              : 'Nếu giao dịch thuộc ca đã đóng, bút toán đảo và giao dịch thay thế sẽ được ghi vào ca đang mở hiện tại. Tỷ giá của giao dịch cũ được giữ nguyên.'}
+            message={isControlUser
+              ? adjustmentAction === 'VOID'
+                ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
+                : 'Giao dịch cũ sẽ được đảo và thay thế ngay'
+              : 'Phiếu cần được GĐ/KTTH duyệt trước khi ghi sổ'}
+            description={isControlUser
+              ? 'Chỉ giao dịch có công nợ PENDING mới được thao tác. Giao dịch đã RECONCILED hoặc SETTLED bị khóa.'
+              : 'Nếu được duyệt, bút toán đảo và giao dịch thay thế được ghi vào ca đang mở; tỷ giá giao dịch cũ được giữ nguyên.'}
           />
           <Form.Item name="action" label="Cách xử lý" rules={[{ required: true }]}>
             <Segmented
               block
               options={[
-                { label: 'Thay thế giao dịch', value: 'REPLACE' },
+                ...(deactivateTarget?.source === 'DOMESTIC'
+                  ? []
+                  : [{ label: 'Thay thế giao dịch', value: 'REPLACE' }]),
                 { label: 'Hủy giao dịch', value: 'VOID' },
               ]}
             />
@@ -827,7 +933,7 @@ export function TransactionsMainPage() {
             <Button onClick={() => setDeactivateTarget(null)}>Hủy</Button>
             <Button type="primary" htmlType="submit" loading={adjustmentMutation.isPending}>
               {adjustmentAction === 'REPLACE'
-                ? 'Gửi phiếu thay thế'
+                ? isControlUser ? 'Thay thế giao dịch ngay' : 'Gửi phiếu thay thế'
                 : isControlUser ? 'Hủy giao dịch ngay' : 'Gửi phiếu hủy'}
             </Button>
           </div>
