@@ -28,11 +28,12 @@ jobs:
       - name: Đồng bộ code + cấu hình vào /srv/dongda-test
         run: |
           set -e
+          # rsync --exclude .git (không cp -r .): "rm -rf src/*" không khớp file ẩn nên .git cũ không
+          # bao giờ bị xoá, cp -r sau đó cố ghi đè file git object cũ (git đặt quyền chỉ-đọc 444) -> lỗi
+          # thật gặp: "Permission denied" hàng loạt trên .git/objects ở lần deploy thứ 2 trở đi.
           mkdir -p /srv/dongda-test/src /srv/dongda-test/www
-          rm -rf /srv/dongda-test/src/*
-          cp -r . /srv/dongda-test/src/
-          rm -rf /srv/dongda-test/www/*
-          cp -r frontend/dist/* /srv/dongda-test/www/
+          rsync -a --delete --exclude .git --exclude node_modules ./ /srv/dongda-test/src/
+          rsync -a --delete frontend/dist/ /srv/dongda-test/www/
           test -f /srv/dongda-test/.env || { echo "THIẾU /srv/dongda-test/.env"; exit 1; }
           test -f /srv/dongda-test/docker-compose.yml || { echo "THIẾU /srv/dongda-test/docker-compose.yml (dựng thủ công lần đầu)"; exit 1; }
 
