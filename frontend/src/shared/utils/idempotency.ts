@@ -20,15 +20,11 @@ export async function runIdempotent<T>(
   memoryKeys.set(cacheKey, idempotencyKey);
   writeSessionKey(storageKey, idempotencyKey);
 
-  try {
-    const result = await send({ 'Idempotency-Key': idempotencyKey });
-    memoryKeys.delete(cacheKey);
-    removeSessionKey(storageKey);
-    return result;
-  } catch (error) {
-    // Giữ khóa sau timeout/lỗi mạng để lần gửi lại không tạo thêm bút toán.
-    throw error;
-  }
+  // Khi send lỗi, các lệnh xóa phía dưới không chạy nên key được giữ lại cho lần retry.
+  const result = await send({ 'Idempotency-Key': idempotencyKey });
+  memoryKeys.delete(cacheKey);
+  removeSessionKey(storageKey);
+  return result;
 }
 
 function stableStringify(value: unknown): string {

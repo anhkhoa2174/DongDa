@@ -124,6 +124,7 @@ describe('PrismaBankRepository financial locking', () => {
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer_transactions: {
         findUnique: jest.fn().mockResolvedValue({ status: 'COMPLETED' }),
       },
@@ -148,6 +149,7 @@ describe('PrismaBankRepository financial locking', () => {
     const repository = new PrismaBankRepository(prisma as any, {} as any);
 
     await expect(repository.settleAdvanceCk({
+      idempotencyKey: 'settle-bank-001',
       advanceMovementId: advance.id,
       source: 'BANK_ACCOUNT',
       sourceBankAccountId: source.id,
@@ -211,6 +213,7 @@ describe('PrismaBankRepository financial locking', () => {
     };
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer_transactions: {
         findUnique: jest.fn().mockResolvedValue({ status: 'COMPLETED' }),
       },
@@ -251,6 +254,7 @@ describe('PrismaBankRepository financial locking', () => {
     const repository = new PrismaBankRepository(prisma as any, {} as any);
 
     await expect(repository.settleAdvanceCk({
+      idempotencyKey: 'settle-cash-001',
       advanceMovementId: advance.id,
       source: 'HEAD_OFFICE_CASH',
       settledByUserId: settledMovement.created_by_user_id,

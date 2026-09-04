@@ -49,6 +49,7 @@ export interface InternalBankTransferInput {
 }
 
 export interface SettleAdvanceCkInput {
+  idempotencyKey: string;
   advanceMovementId: string; // ID của movement ADVANCE_CK gốc
   // HEAD_OFFICE_CASH: trừ Quỹ chung; BANK_ACCOUNT: trừ tài khoản ngân hàng nguồn.
   source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';

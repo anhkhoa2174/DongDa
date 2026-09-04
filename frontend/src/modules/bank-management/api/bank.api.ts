@@ -116,7 +116,8 @@ export const bankApi = {
   advances: (params: { bankAccountId?: string; branchId?: string; status?: 'ADVANCE_CK' | 'SETTLED' | 'VOIDED' }) =>
     httpClient.get<BankMovementDto[]>('/bank/advances', { params }).then((r) => r.data),
   settleAdvanceCk: (advanceId: string, payload: { source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
-    httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload).then((r) => r.data),
+    runIdempotent(`BANK_ADVANCE_SETTLE:${advanceId}`, payload, (headers) =>
+      httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload, { headers }).then((r) => r.data)),
   debts: () => httpClient.get<DebtAccountDto[]>('/debts').then((r) => r.data),
   receive: (payload: { bankAccountId: string; debtAccountId: string; amount: number; bankReference?: string; description?: string }) =>
     httpClient.post('/bank/receive', payload).then((r) => r.data),

@@ -527,7 +527,16 @@ export class PrismaBankRepository implements IBankRepository {
   async settleAdvanceCk(input: import('../../../domain/repositories/bank.repository').SettleAdvanceCkInput): Promise<BankMovement> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
+    const idempotencyScope = `BANK_ADVANCE_SETTLE:${input.advanceMovementId}`;
     return this.prisma.$transaction(async (tx) => {
+      const replay = await claimFinancialRequest<BankMovement>(
+        tx,
+        idempotencyScope,
+        input.idempotencyKey,
+        input,
+      );
+      if (replay) return replay;
+
       const advance = await tx.bank_balance_movements.findUnique({ where: { id: input.advanceMovementId } });
       if (!advance || advance.movement_type !== 'ADVANCE_CK') {
         throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
@@ -732,7 +741,7 @@ export class PrismaBankRepository implements IBankRepository {
         where: { id: targetId },
         data: { current_balance: after, available_balance: after },
       });
-      return {
+      const result: BankMovement = {
         ...toMovement(movement),
         settlementSource: {
           type: input.source,
@@ -741,6 +750,8 @@ export class PrismaBankRepository implements IBankRepository {
           balanceAfter: sourceBalanceAfter,
         },
       };
+      await completeFinancialRequest(tx, idempotencyScope, input.idempotencyKey, result);
+      return result;
     });
   }
 

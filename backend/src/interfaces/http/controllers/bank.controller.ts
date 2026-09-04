@@ -107,8 +107,13 @@ export class BankController {
   @Post('advance-ck/:id/settle')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  settleAdvanceCk(@Request() req: any, @Param('id') id: string, @Body() dto: SettleAdvanceCkDto) {
-    return this.settleAdvance.execute(id, dto, req.user.id);
+  settleAdvanceCk(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: SettleAdvanceCkDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.settleAdvance.execute(id, dto, req.user.id, requireIdempotencyKey(idempotencyKey));
   }
 
   // Danh sách tạm ứng CK — STAFF chỉ thấy chi nhánh mình
