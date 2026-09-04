@@ -78,6 +78,13 @@ const statusMeta: Record<TransactionStatus, { label: string; color: string }> = 
   ADJUSTED: { label: 'Đã điều chỉnh', color: 'blue' },
 };
 
+const debtStatusMeta: Record<NonNullable<AggregatedTransaction['debtStatus']>, { label: string; color: string }> = {
+  PENDING: { label: 'Chờ đối chiếu', color: 'gold' },
+  RECONCILED: { label: 'Chờ thanh toán', color: 'blue' },
+  SETTLED: { label: 'Đã thanh toán', color: 'green' },
+  CANCELLED: { label: 'Đã hủy', color: 'default' },
+};
+
 function normalizeTransactionStatus(status?: string): TransactionStatus {
   if (status && status in statusMeta) return status as TransactionStatus;
   return 'COMPLETED';
@@ -480,9 +487,16 @@ export function TransactionsMainPage() {
       dataIndex: 'debtLabel',
       align: 'right',
       width: 160,
-      render: (value?: string) => value
-        ? <Typography.Text strong>{value}</Typography.Text>
-        : <Typography.Text type="secondary">Không phát sinh</Typography.Text>,
+      render: (value: string | undefined, record) => {
+        if (!value) return <Typography.Text type="secondary">Không phát sinh</Typography.Text>;
+        const debtMeta = record.debtStatus ? debtStatusMeta[record.debtStatus] : undefined;
+        return (
+          <Space direction="vertical" size={2} align="end">
+            <Typography.Text strong>{value}</Typography.Text>
+            {debtMeta && <Tag color={debtMeta.color} className="m-0!">{debtMeta.label}</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: 'Chi nhánh / ca',
