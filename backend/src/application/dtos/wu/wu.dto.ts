@@ -72,6 +72,12 @@ export class CreateWuDto {
   @IsBoolean()
   hasVisa: boolean;
 
+  @IsOptional()
+  @IsEnum(['TOURIST', 'WORK_PERMIT', 'TRC'] as any, {
+    message: 'visaType phải là TOURIST, WORK_PERMIT hoặc TRC',
+  })
+  visaType?: string;
+
   @ValidateIf((value) => value.hasVisa)
   @IsString()
   @MaxLength(100)

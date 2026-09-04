@@ -65,6 +65,7 @@ export interface CreateWuPayload {
   identityIssueDate: string;
   identityExpiryDate: string;
   hasVisa: boolean;
+  visaType?: 'TOURIST' | 'WORK_PERMIT' | 'TRC';
   visaNumber?: string;
   visaIssueDate?: string;
   visaExpiryDate?: string;

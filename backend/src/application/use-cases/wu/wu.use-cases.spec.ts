@@ -80,7 +80,7 @@ describe('WU financial rules', () => {
     expect(rateRepo.findActive).not.toHaveBeenCalled();
   });
 
-  it('passes the selected settlement bank to the transaction repository', async () => {
+  it('passes the selected settlement bank and visa type to the transaction repository', async () => {
     const wuRepo = {
       mtcnExists: jest.fn().mockResolvedValue(false),
       create: jest.fn().mockResolvedValue({ id: 'wu-1' }),
@@ -88,10 +88,11 @@ describe('WU financial rules', () => {
     const rateRepo = { findActive: jest.fn().mockResolvedValue([{ rate: 26_000 }]) };
     const useCase = new CreateWuUseCase(wuRepo as any, rateRepo as any);
 
-    await useCase.execute(base, 'user-1');
+    await useCase.execute({ ...base, visaType: 'WORK_PERMIT' }, 'user-1');
 
     expect(wuRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       bankAccountId: base.bankAccountId,
+      visaType: 'WORK_PERMIT',
     }));
   });
 });

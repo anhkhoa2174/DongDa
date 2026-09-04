@@ -85,7 +85,7 @@ export class CreateWuUseCase {
       identityIssueDate: new Date(dto.identityIssueDate),
       identityExpiryDate: new Date(dto.identityExpiryDate),
       hasVisa: dto.hasVisa,
-      visaType: dto.hasVisa ? 'TOURIST' : undefined,
+      visaType: dto.hasVisa ? dto.visaType ?? 'TOURIST' : undefined,
       visaNumber: dto.visaNumber,
       visaIssueDate: dto.visaIssueDate ? new Date(dto.visaIssueDate) : undefined,
       visaExpiryDate: dto.visaExpiryDate ? new Date(dto.visaExpiryDate) : undefined,

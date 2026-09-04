@@ -34,10 +34,33 @@ const US_STATES: Array<[string, string]> = [
   ['DC', 'District of Columbia'],
 ];
 
+const CANADA_PROVINCES: Array<[string, string]> = [
+  ['AB', 'Alberta'], ['BC', 'British Columbia'], ['MB', 'Manitoba'], ['NB', 'New Brunswick'],
+  ['NL', 'Newfoundland and Labrador'], ['NS', 'Nova Scotia'], ['NT', 'Northwest Territories'],
+  ['NU', 'Nunavut'], ['ON', 'Ontario'], ['PE', 'Prince Edward Island'], ['QC', 'Quebec'],
+  ['SK', 'Saskatchewan'], ['YT', 'Yukon'],
+];
+
+const MEXICO_STATES: Array<[string, string]> = [
+  ['AGS', 'Aguascalientes'], ['BC', 'Baja California'], ['BCS', 'Baja California Sur'],
+  ['CAMP', 'Campeche'], ['CHIS', 'Chiapas'], ['CHIH', 'Chihuahua'], ['COAH', 'Coahuila'],
+  ['COL', 'Colima'], ['CDMX', 'Ciudad de Mexico'], ['DGO', 'Durango'], ['GTO', 'Guanajuato'],
+  ['GRO', 'Guerrero'], ['HGO', 'Hidalgo'], ['JAL', 'Jalisco'], ['MEX', 'Estado de Mexico'],
+  ['MICH', 'Michoacan'], ['MOR', 'Morelos'], ['NAY', 'Nayarit'], ['NL', 'Nuevo Leon'],
+  ['OAX', 'Oaxaca'], ['PUE', 'Puebla'], ['QRO', 'Queretaro'], ['QROO', 'Quintana Roo'],
+  ['SLP', 'San Luis Potosi'], ['SIN', 'Sinaloa'], ['SON', 'Sonora'], ['TAB', 'Tabasco'],
+  ['TAMPS', 'Tamaulipas'], ['TLAX', 'Tlaxcala'], ['VER', 'Veracruz'], ['YUC', 'Yucatan'],
+  ['ZAC', 'Zacatecas'],
+];
+
 const usStateByCode = new Map(US_STATES.map(([code, name]) => [code, name]));
 const usStateByName = new Map(US_STATES.map(([, name]) => [name.toLocaleLowerCase('en-US'), name]));
 
-export const usStateOptions = US_STATES.map(([, name]) => ({ value: name }));
+export const usStateOptions = [
+  ...US_STATES.map(([code, name]) => ({ value: name, label: `${code} - ${name} (USA)` })),
+  ...CANADA_PROVINCES.map(([code, name]) => ({ value: name, label: `${code} - ${name} (CAN)` })),
+  ...MEXICO_STATES.map(([code, name]) => ({ value: name, label: `${code} - ${name} (MEX)` })),
+];
 
 export const employmentStatusSuggestions = [
   'Buôn bán nhỏ / Small business',

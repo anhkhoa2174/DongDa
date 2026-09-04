@@ -109,6 +109,7 @@ export function WuWorkspacePage() {
   const transactionRate = Form.useWatch('appliedRate', form) ?? 0;
   const payoutCurrency = Form.useWatch('payoutCurrency', form) ?? 'USD';
   const paidCurrency = Form.useWatch('paidCurrency', form) ?? 'USD';
+  const identityDocumentType = Form.useWatch('identityDocumentType', form);
   const bankAccountId = Form.useWatch('bankAccountId', form);
   const selectedBranchId = Form.useWatch('branchId', form) as string | undefined;
   const { data: recentOptions } = useWuRecentOptions(selectedBranchId);
@@ -168,7 +169,7 @@ export function WuWorkspacePage() {
   }, [form, fxUsdRate, implied, paidCurrency, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
 
   useEffect(() => {
-    if (!hasVisa) form.setFieldsValue({ visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
+    if (!hasVisa) form.setFieldsValue({ visaType: undefined, visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
   }, [form, hasVisa]);
 
   useEffect(() => {
@@ -195,6 +196,7 @@ export function WuWorkspacePage() {
     identityIssueDate: v.identityIssueDate.format('YYYY-MM-DD'),
     identityExpiryDate: v.identityExpiryDate.format('YYYY-MM-DD'),
     hasVisa: v.hasVisa,
+    visaType: v.hasVisa ? v.visaType : undefined,
     visaNumber: v.hasVisa ? v.visaNumber : undefined,
     visaIssueDate: v.hasVisa ? v.visaIssueDate?.format('YYYY-MM-DD') : undefined,
     visaExpiryDate: v.hasVisa ? v.visaExpiryDate?.format('YYYY-MM-DD') : undefined,
@@ -274,28 +276,41 @@ export function WuWorkspacePage() {
                 nationality: 'VIETNAM',
                 identityIssuingCountry: 'VIETNAM',
               }}>
-              <Typography.Title level={5}>Chi tiết trả tiền</Typography.Title>
+              <Typography.Title level={5}>I. Thông tin chi trả</Typography.Title>
               <Row gutter={8}>
-                <Col span={12}><Form.Item
+                <Col xs={24} md={12}><Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
+                  <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
+                </Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item
                   name="mtcn"
-                  label="MSKH (10 số)"
+                  label="MTCN (10 chữ số)"
                   rules={[{ required: true }, { pattern: /^\d{10}$/, message: '10 chữ số' }]}
                   getValueFromEvent={(event: ChangeEvent<HTMLInputElement>) => normalizeDigits(event.target.value, 10)}
                   getValueProps={(value) => ({ value: formatWuMtcn(value) })}
                 >
                   <Input inputMode="numeric" maxLength={12} placeholder="633-775-1692" /></Form.Item></Col>
-                <Col span={12}><Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
-                  <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
-                </Form.Item></Col>
               </Row>
+              <Form.Item name="senderName" label="Tên người gửi" rules={[requiredRule]}><Input /></Form.Item>
               <Row gutter={8}>
-                <Col span={12}><Form.Item name="wuUsdAmount" label="Số tiền nhận (USD/WU)" rules={[positiveNumberRule('Số tiền nhận (USD/WU)')]}>
+                <Col xs={24} md={12}><Form.Item name="wuUsdAmount" label="Số tiền WU thanh toán (USD)" rules={[positiveNumberRule('Số tiền WU thanh toán (USD)')]}>
                   <InputNumber min={0} precision={2} keyboard={false} addonBefore="$" style={{ width: '100%' }} formatter={usdInputFormatter} parser={usdInputParser} /></Form.Item></Col>
-                <Col span={12}><Form.Item name="wuVndAmount" label="Amount VND (WU)" rules={[positiveNumberRule('Amount VND (WU)')]}>
+                <Col xs={24} md={12}><Form.Item name="wuVndAmount" label="Số tiền WU thanh toán (VND)" rules={[positiveNumberRule('Số tiền WU thanh toán (VND)')]}>
                   <InputNumber min={0} precision={0} keyboard={false} addonAfter="VND" style={{ width: '100%' }} formatter={numberInputFormatter} parser={numberInputParser} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
-                <Col span={12}><Form.Item name="receivedVnd" label="Trả khách VND">
+                <Col xs={24} md={12}><Form.Item name="sendingCountry" label="Nước gửi" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'sendingCountry')} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="senderState" label="Tiểu bang (USA, CAN, MEX)" extra="Nhập mã bang để tìm, ví dụ CA - California"><AutoComplete options={usStateOptions} filterOption={filterReferenceOption} placeholder="Nhập mã hoặc tên bang" /></Form.Item></Col>
+              </Row>
+              <Form.Item name="receivedDate" label="Ngày nhận tiền" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(date) => date.isAfter(dayjs(), 'day')} style={{ width: '100%' }} /></Form.Item>
+
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="payoutCurrency" label="Tiền khách nhận">
+                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="paidCurrency" label="Paid Currency (WU hoàn)">
+                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
+              </Row>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="receivedVnd" label="Trả khách VND">
                   <InputNumber
                     min={0}
                     precision={0}
@@ -307,7 +322,7 @@ export function WuWorkspacePage() {
                     formatter={numberInputFormatter}
                     parser={numberInputParser}
                   /></Form.Item></Col>
-                <Col span={12}><Form.Item name="receivedUsd" label="Trả khách USD (số nguyên)">
+                <Col xs={24} md={12}><Form.Item name="receivedUsd" label="Trả khách USD (số nguyên)">
                   <InputNumber
                     min={0}
                     max={Math.trunc(Math.max(Number(wuUsd), 0))}
@@ -320,12 +335,6 @@ export function WuWorkspacePage() {
                     formatter={usdInputFormatter}
                     parser={usdInputParser}
                   /></Form.Item></Col>
-              </Row>
-              <Row gutter={8}>
-                <Col span={12}><Form.Item name="payoutCurrency" label="Tiền khách nhận">
-                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
-                <Col span={12}><Form.Item name="paidCurrency" label="Paid Currency (WU hoàn)">
-                  <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} /></Form.Item></Col>
               </Row>
               <Form.Item
                 name="bankAccountId"
@@ -360,60 +369,47 @@ export function WuWorkspacePage() {
                 onChange={(value) => form.setFieldsValue({ appliedRate: value })}
               />
 
-              <Typography.Title level={5}>Người gửi</Typography.Title>
-              <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="senderName" label="Tên họ người gửi" rules={[requiredRule]}><Input /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="sendingCountry" label="Nước gửi tiền" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onBlur={() => normalizeCountryField(form, 'sendingCountry')} /></Form.Item></Col>
-              </Row>
-              <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="senderState" label="Tiểu bang (USA, CAN, MEX)" extra="Không bắt buộc · Tiểu bang Mỹ lưu bằng tên đầy đủ"><AutoComplete options={usStateOptions} filterOption={filterReferenceOption} placeholder="Ví dụ: California" /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="receivedDate" label="Ngày gửi" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} disabledDate={(date) => date.isAfter(dayjs(), 'day')} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-
-              <Typography.Title level={5}>Người nhận</Typography.Title>
-              <Row gutter={8}>
-                <Col xs={24} md={8}><Form.Item name="customerName" label="Họ tên người nhận" rules={[requiredRule]}><Input /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="senderRelationship" label="Quan hệ với người gửi" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập quan hệ" options={mergeSuggestionOptions(recentOptions?.senderRelationships, senderRelationshipSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
-                <Col xs={24} md={8}><Form.Item name="receiverDateOfBirth" label="Ngày sinh" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-
-              <Typography.Title level={5}>Địa chỉ người nhận</Typography.Title>
-              <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="currentAddress" label="Địa chỉ hiện tại" rules={[requiredRule]}><Input /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="customerPhone" label="Số điện thoại người nhận" rules={[requiredRule]}><Input inputMode="tel" /></Form.Item></Col>
-              </Row>
-              <Form.Item name="identityAddress" label="Địa chỉ CCCD" extra="Không bắt buộc"><Input /></Form.Item>
-
-              <Typography.Title level={5}>Giấy tờ</Typography.Title>
+              <Typography.Title level={5}>II. Thông tin người nhận</Typography.Title>
+              <Form.Item name="customerName" label="Tên người nhận" rules={[requiredRule]}><Input /></Form.Item>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="identityDocumentType" label="Loại giấy tờ tùy thân" rules={[requiredRule]}><Select options={[{ value: 'PASSPORT', label: 'Passport' }, { value: 'CCCD', label: 'CCCD' }]} onChange={handleIdentityDocumentTypeChange} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="identityDocumentNumber" label="Số giấy tờ / Passport" rules={[requiredRule]}><Input /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityDocumentNumber" label="Số giấy tờ tùy thân" rules={[requiredRule]}><Input /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="identityExpiryDate" label="Ngày hết hạn" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+                <Col xs={24} md={12}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+              </Row>
+              <Row gutter={8}>
+                <Col xs={24} md={12}><Form.Item name="identityPlaceOfIssue" label="Nơi cấp" rules={[requiredRule]}>
+                  {identityDocumentType === 'PASSPORT' ? (
+                    <AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia" onBlur={() => normalizeCountryField(form, 'identityPlaceOfIssue')} />
+                  ) : (
+                    <Input maxLength={150} placeholder="CỤC CẢNH SÁT QLHC VỀ TTXH" onBlur={(event) => form.setFieldValue('identityPlaceOfIssue', normalizeUpperText(event.currentTarget.value))} />
+                  )}
+                </Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item name="identityIssuingCountry" label="Quốc gia cấp" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onChange={(value) => syncLinkedCountryFields('identityIssuingCountry', value)} onBlur={() => normalizeLinkedCountryField('identityIssuingCountry')} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="identityPlaceOfIssue" label="Nơi cấp" rules={[requiredRule]}><Input maxLength={150} placeholder="Ví dụ: CỤC CẢNH SÁT QLHC VỀ TTXH" onBlur={(event) => form.setFieldValue('identityPlaceOfIssue', normalizeUpperText(event.currentTarget.value))} /></Form.Item></Col>
               </Row>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="countryOfBirth" label="Quốc gia khai sinh" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="Chọn quốc gia hoặc nhập" onChange={(value) => syncLinkedCountryFields('countryOfBirth', value)} onBlur={() => normalizeLinkedCountryField('countryOfBirth')} /></Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item name="nationality" label="Quốc tịch" rules={[requiredRule]}><AutoComplete options={countryOptions} filterOption={filterReferenceOption} placeholder="VIETNAM" onChange={(value) => syncLinkedCountryFields('nationality', value)} onBlur={() => normalizeLinkedCountryField('nationality')} /></Form.Item></Col>
               </Row>
-              <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="identityIssueDate" label="Ngày cấp" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="identityExpiryDate" label="Ngày hết hạn" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
-              </Row>
-              <Row gutter={8}>
-                <Col xs={24} md={12}><Form.Item name="receivePurpose" label="Mục đích nhận tiền" rules={[requiredRule]}><AutoComplete allowClear maxLength={150} placeholder="Chọn hoặc nhập mục đích" options={mergeSuggestionOptions(recentOptions?.receivePurposes, receivePurposeSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
-                <Col xs={24} md={12}><Form.Item name="employmentStatus" label="Tình trạng việc làm" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập nghề nghiệp" options={mergeSuggestionOptions(recentOptions?.employmentStatuses, employmentStatusSuggestions)} filterOption={filterRecentOption} /></Form.Item></Col>
-              </Row>
 
               <Form.Item name="hasVisa" valuePropName="checked"><Checkbox>Có Visa</Checkbox></Form.Item>
               {hasVisa && (
                 <Row gutter={8}>
-                  <Col xs={24} md={8}><Form.Item name="visaNumber" label="Số Visa" rules={[requiredRule]}><Input /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name="visaIssueDate" label="Ngày cấp Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
-                  <Col xs={24} md={8}><Form.Item name="visaExpiryDate" label="Ngày hết hạn Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={24} md={6}><Form.Item name="visaType" label="Loại Visa" rules={[requiredRule]}><Select options={VISA_TYPE_OPTIONS} /></Form.Item></Col>
+                  <Col xs={24} md={6}><Form.Item name="visaNumber" label="Số Visa" rules={[requiredRule]}><Input /></Form.Item></Col>
+                  <Col xs={24} md={6}><Form.Item name="visaIssueDate" label="Ngày cấp Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
+                  <Col xs={24} md={6}><Form.Item name="visaExpiryDate" label="Ngày hết hạn Visa" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item></Col>
                 </Row>
               )}
+              <Form.Item name="receiverDateOfBirth" label="Ngày sinh" rules={[requiredRule]}><DatePicker format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} style={{ width: '100%' }} /></Form.Item>
+              <Form.Item name="currentAddress" label="Địa chỉ hiện tại" rules={[requiredRule]}><Input /></Form.Item>
+              <Form.Item name="identityAddress" label="Địa chỉ CCCD" extra="Không bắt buộc"><Input /></Form.Item>
+              <Form.Item name="customerPhone" label="Số điện thoại" rules={[requiredRule]}><Input inputMode="tel" /></Form.Item>
+              <Form.Item name="employmentStatus" label="Tình trạng việc làm" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập nghề nghiệp" options={mergeSuggestionOptions(recentOptions?.employmentStatuses, employmentStatusSuggestions)} filterOption={filterRecentOption} /></Form.Item>
+              <Form.Item name="senderRelationship" label="Mối quan hệ với người gửi" rules={[requiredRule]}><AutoComplete allowClear maxLength={100} placeholder="Chọn hoặc nhập quan hệ" options={mergeSuggestionOptions(recentOptions?.senderRelationships, senderRelationshipSuggestions)} filterOption={filterRecentOption} /></Form.Item>
+              <Form.Item name="receivePurpose" label="Mục đích giao dịch" rules={[requiredRule]}><AutoComplete allowClear maxLength={150} placeholder="Chọn hoặc nhập mục đích" options={mergeSuggestionOptions(recentOptions?.receivePurposes, receivePurposeSuggestions)} filterOption={filterRecentOption} /></Form.Item>
 
               <div className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 p-4">
                 <Typography.Text strong>Tóm tắt giao dịch</Typography.Text>
@@ -498,6 +494,7 @@ interface WuFormValues {
   identityIssueDate: Dayjs;
   identityExpiryDate: Dayjs;
   hasVisa: boolean;
+  visaType?: 'TOURIST' | 'WORK_PERMIT' | 'TRC';
   visaNumber?: string;
   visaIssueDate?: Dayjs;
   visaExpiryDate?: Dayjs;
@@ -520,6 +517,11 @@ interface WuFormValues {
 type LinkedCountryField = 'countryOfBirth' | 'nationality' | 'identityIssuingCountry';
 const LINKED_COUNTRY_FIELDS: LinkedCountryField[] = ['countryOfBirth', 'nationality', 'identityIssuingCountry'];
 const CCCD_PLACE_OF_ISSUE = 'CỤC CẢNH SÁT QLHC VỀ TTXH';
+const VISA_TYPE_OPTIONS = [
+  { value: 'TOURIST', label: 'Visa Du lịch / Tourist' },
+  { value: 'WORK_PERMIT', label: 'Lao động / Work permit' },
+  { value: 'TRC', label: 'Thẻ tạm trú / TRC' },
+];
 
 const requiredRule = { required: true, message: 'Vui lòng nhập thông tin' };
 function normalizeCountryField(form: ReturnType<typeof Form.useForm>[0], field: string) {

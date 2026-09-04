@@ -9,6 +9,7 @@ import {
 } from '../../domain/services/wu-reference-data';
 
 const TEMPLATE_PATH = join(process.cwd(), 'src', 'assets', 'wu-form-template.xlsx');
+const ACB_TEMPLATE_PATH = join(process.cwd(), 'src', 'assets', 'wu-acb-form-template.xlsx');
 const WORKBOOK_XML = 'xl/workbook.xml';
 const WORKBOOK_RELS_XML = 'xl/_rels/workbook.xml.rels';
 const CONTENT_TYPES_XML = '[Content_Types].xml';
@@ -20,17 +21,19 @@ type CellValue = string | number | undefined;
 export class XlsxWuFormExporterService implements IWuFormExporter {
   async export(bank: WuFormBank, dto: CreateWuDto): Promise<WuFormExport> {
     try {
-      const entries = unzipSync(await readFile(TEMPLATE_PATH));
+      const entries = unzipSync(await readFile(bank === 'ACB' ? ACB_TEMPLATE_PATH : TEMPLATE_PATH));
       const workbookXml = readXml(entries, WORKBOOK_XML);
       const paths = resolveSheetPaths(workbookXml, readXml(entries, WORKBOOK_RELS_XML));
       const isVietnamese = isVietnamCountry(dto.identityIssuingCountry);
       const targetName = bank === 'ACB'
-        ? (isVietnamese ? 'PHIẾU ACB (VN)' : 'PHIẾU ACB (NƯỚC NGOÀI)')
+        ? 'PHIẾU ACB (VN)'
         : (isVietnamese ? 'PHIẾU MSB (vn)' : 'PHIẾU MSB (nước ngoài)');
 
+      if (bank === 'ACB') prepareAcbTemplate(entries, paths, targetName);
       patchSheet(entries, paths, targetName, outputCells(dto, bank, isVietnamese));
       keepOnlySheet(entries, workbookXml, paths, targetName, bank);
       removeStaleCalculationChain(entries);
+      removeExternalLinks(entries);
       return { buffer: Buffer.from(zipSync(entries, { level: 6 })), filename: `WU-${bank}-${dto.mtcn}.xlsx` };
     } catch (error) {
       throw new InternalServerErrorException(
@@ -62,21 +65,43 @@ function outputCells(dto: CreateWuDto, bank: WuFormBank, isVietnamese: boolean):
   const nationality = normalizeCountryName(dto.nationality?.trim() || dto.countryOfBirth);
   if (bank === 'ACB') {
     const cells: Record<string, CellValue> = {
-      D6: mtcn, D7: sendingCountry, [isVietnamese ? 'H9' : 'H10']: senderState,
-      D11: paidAmount, [isVietnamese ? 'J11' : 'M11']: dto.paidCurrency,
-      [isVietnamese ? 'D13' : 'C13']: dto.customerName, D14: dob, K14: dto.customerPhone,
-      D15: dto.currentAddress, D16: dto.identityAddress, G18: dto.identityDocumentType,
-      K18: dto.identityDocumentNumber, C19: issuingCountry,
-      J19: issueDate, M19: expiryDate, D22: dto.employmentStatus,
-      [isVietnamese ? 'D23' : 'D24']: countryOfBirth,
-      [isVietnamese ? 'F24' : 'F25']: dto.senderRelationship,
-      [isVietnamese ? 'K24' : 'K25']: dto.receivePurpose,
-      [isVietnamese ? 'B27' : 'B28']: dto.senderName,
+      D6: mtcn,
+      D7: sendingCountry,
+      D8: senderState,
+      D10: paidAmount,
+      G10: dto.paidCurrency,
+      D12: dto.customerName,
+      D13: dob,
+      K13: dto.customerPhone,
+      D14: dto.currentAddress,
+      D15: dto.identityAddress,
+      G17: dto.identityDocumentType,
+      K17: dto.identityDocumentNumber,
+      C18: issuingCountry,
+      G18: placeOfIssue,
+      J18: issueDate,
+      M18: expiryDate,
+      C20: dto.hasVisa ? visaTypeLabel(dto.visaType) : '',
+      G20: dto.hasVisa ? dto.visaNumber : '',
+      J20: dto.hasVisa ? formatDate(dto.visaIssueDate) : '',
+      M20: dto.hasVisa ? formatDate(dto.visaExpiryDate) : '',
+      D21: dto.employmentStatus,
+      D22: countryOfBirth,
+      J22: nationality,
+      D23: dto.senderRelationship,
+      J23: dto.receivePurpose,
+      D25: dto.senderName,
+      C35: mtcn,
+      H35: dto.identityDocumentNumber,
+      C37: paidAmount,
+      D37: dto.paidCurrency,
+      H37: dto.identityDocumentType,
+      H39: placeOfIssue,
+      C41: paidAmount,
+      G41: issueDate,
+      I41: expiryDate,
+      C43: dto.appliedRate,
     };
-    if (!isVietnamese) Object.assign(cells, {
-      C21: dto.hasVisa ? 'Du lịch / Tourists' : '', G21: dto.hasVisa ? dto.visaNumber : '',
-      J21: dto.hasVisa ? formatDate(dto.visaIssueDate) : '', M21: dto.hasVisa ? formatDate(dto.visaExpiryDate) : '',
-    });
     return cells;
   }
   return {
@@ -87,6 +112,15 @@ function outputCells(dto: CreateWuDto, bank: WuFormBank, isVietnamese: boolean):
     C31: issueDate, G31: expiryDate, C33: placeOfIssue,
     G33: issuingCountry, C35: nationality, G35: countryOfBirth,
   };
+}
+
+function prepareAcbTemplate(entries: ZipEntries, paths: Map<string, string>, name: string) {
+  const path = paths.get(name);
+  if (!path || !entries[path]) throw new Error(`Không tìm thấy sheet mẫu ${name}`);
+  const xml = readXml(entries, path)
+    .replace('<mergeCells count="78">', '<mergeCells count="79">')
+    .replace('<mergeCell ref="A8:N9"/>', '<mergeCell ref="A8:C9"/><mergeCell ref="D8:N9"/>');
+  entries[path] = strToU8(xml);
 }
 
 function resolveSheetPaths(workbookXml: string, relationshipsXml: string) {
@@ -107,14 +141,19 @@ function resolveSheetPaths(workbookXml: string, relationshipsXml: string) {
 }
 
 function replaceCellValue(xml: string, address: string, value: CellValue) {
-  const pattern = new RegExp(`<c\\b([^>]*\\br="${address}"[^>]*)(?:\\s*/>|>[\\s\\S]*?<\\/c>)`);
-  const match = xml.match(pattern);
+  const openTagPattern = new RegExp(`<c\\b([^>]*\\br="${address}"[^>]*)>`);
+  const match = openTagPattern.exec(xml);
   if (!match) throw new Error(`Không tìm thấy ô ${address} trong file mẫu`);
   const attrs = match[1].replace(/\s+t="[^"]*"/g, '').replace(/\/\s*$/, '');
   const replacement = typeof value === 'number'
     ? `<c${attrs}><v>${value}</v></c>`
     : `<c${attrs} t="inlineStr"><is><t xml:space="preserve">${escapeXml(String(value ?? ''))}</t></is></c>`;
-  return xml.replace(pattern, replacement);
+  const cellStart = match.index;
+  const cellEnd = match[0].endsWith('/>')
+    ? cellStart + match[0].length
+    : xml.indexOf('</c>', cellStart + match[0].length) + 4;
+  if (cellEnd < 4) throw new Error(`Ô ${address} trong file mẫu không hợp lệ`);
+  return `${xml.slice(0, cellStart)}${replacement}${xml.slice(cellEnd)}`;
 }
 
 function keepOnlySheet(
@@ -187,6 +226,18 @@ function removeStaleCalculationChain(entries: ZipEntries) {
   entries[CONTENT_TYPES_XML] = strToU8(contentTypes);
 }
 
+function removeExternalLinks(entries: ZipEntries) {
+  for (const path of Object.keys(entries)) {
+    if (path.startsWith('xl/externalLinks/')) delete entries[path];
+  }
+  entries[WORKBOOK_XML] = strToU8(readXml(entries, WORKBOOK_XML)
+    .replace(/<externalReferences>[\s\S]*?<\/externalReferences>/g, ''));
+  entries[WORKBOOK_RELS_XML] = strToU8(readXml(entries, WORKBOOK_RELS_XML)
+    .replace(/<Relationship\b[^>]*Type="[^"]*\/externalLink"[^>]*\/?\s*>/g, ''));
+  entries[CONTENT_TYPES_XML] = strToU8(readXml(entries, CONTENT_TYPES_XML)
+    .replace(/<Override\b[^>]*PartName="\/xl\/externalLinks\/[^"]+"[^>]*\/?\s*>/g, ''));
+}
+
 function readXml(entries: ZipEntries, path: string) {
   const entry = entries[path];
   if (!entry) throw new Error(`Thiếu thành phần ${path} trong file mẫu`);
@@ -214,4 +265,10 @@ function formatDate(value?: string) {
   if (!value) return '';
   const [year, month, day] = value.slice(0, 10).split('-');
   return `${day}/${month}/${year}`;
+}
+
+function visaTypeLabel(value?: string) {
+  if (value === 'WORK_PERMIT') return 'Lao động / Work permit';
+  if (value === 'TRC') return 'Thẻ tạm trú / TRC';
+  return value ? 'Visa Du lịch / Tourist' : '';
 }
