@@ -60,7 +60,7 @@ export function useAdvances(params: { bankAccountId?: string; branchId?: string;
 export function useSettleAdvanceCk() {
   const invalidate = useInvalidateBank();
   return useMutation({
-    mutationFn: ({ advanceId, source, sourceBankAccountId, note }: { advanceId: string; source: 'BRANCH_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
+    mutationFn: ({ advanceId, source, sourceBankAccountId, note }: { advanceId: string; source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
       bankApi.settleAdvanceCk(advanceId, { source, sourceBankAccountId, note }),
     onSuccess: invalidate,
   });

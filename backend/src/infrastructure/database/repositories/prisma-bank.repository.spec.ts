@@ -171,4 +171,111 @@ describe('PrismaBankRepository financial locking', () => {
       }),
     });
   });
+
+  it('settles a cash-funded advance from the company head-office fund', async () => {
+    const advance = {
+      id: '00000000-0000-0000-0000-000000000110',
+      movement_no: 'ADVANCE-002',
+      bank_account_id: '00000000-0000-0000-0000-000000000120',
+      branch_id: '00000000-0000-0000-0000-000000000130',
+      movement_type: 'ADVANCE_CK',
+      amount: 1_500_000,
+      bank_reference: 'DOMESTIC:00000000-0000-0000-0000-000000000140',
+    };
+    const target = {
+      id: advance.bank_account_id,
+      account_no: 'TARGET',
+      branch_id: advance.branch_id,
+      currency_code: 'VND',
+      current_balance: -1_500_000,
+      status: 'ACTIVE',
+    };
+    const headOfficeId = '00000000-0000-0000-0000-000000000150';
+    const cashAccountId = '00000000-0000-0000-0000-000000000160';
+    const settledMovement = {
+      id: '00000000-0000-0000-0000-000000000170',
+      movement_no: 'ADVANCE-SETTLE-002',
+      bank_account_id: target.id,
+      branch_id: advance.branch_id,
+      movement_type: 'ADVANCE_SETTLE',
+      business_date: new Date('2026-09-04'),
+      amount: advance.amount,
+      currency_code: 'VND',
+      balance_before: -1_500_000,
+      balance_after: 0,
+      bank_reference: advance.id,
+      description: 'Hoàn tạm ứng từ Quỹ chung',
+      status: 'POSTED',
+      created_by_user_id: '00000000-0000-0000-0000-000000000180',
+      created_at: new Date('2026-09-04T08:00:00Z'),
+    };
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      customer_transactions: {
+        findUnique: jest.fn().mockResolvedValue({ status: 'COMPLETED' }),
+      },
+      branch: {
+        findUnique: jest.fn().mockResolvedValue({ company_id: '00000000-0000-0000-0000-000000000190' }),
+        findFirst: jest.fn().mockResolvedValue({ id: headOfficeId }),
+      },
+      fund_accounts: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: cashAccountId,
+          code: 'CASH-VND',
+          account_type: 'CASH',
+          currency_code: 'VND',
+          status: 'ACTIVE',
+        }),
+      },
+      ledger_lines: {
+        findMany: jest.fn().mockResolvedValue([{ direction: 'DEBIT', amount: 5_000_000 }]),
+      },
+      cash_movements: {
+        create: jest.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000200' }),
+      },
+      ledger_entries: { create: jest.fn().mockResolvedValue({}) },
+      bank_accounts: {
+        findUnique: jest.fn().mockResolvedValue(target),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(target),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      bank_balance_movements: {
+        findUnique: jest.fn().mockResolvedValue(advance),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(settledMovement),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    const repository = new PrismaBankRepository(prisma as any, {} as any);
+
+    await expect(repository.settleAdvanceCk({
+      advanceMovementId: advance.id,
+      source: 'HEAD_OFFICE_CASH',
+      settledByUserId: settledMovement.created_by_user_id,
+    })).resolves.toEqual(expect.objectContaining({
+      balanceBefore: -1_500_000,
+      balanceAfter: 0,
+      settlementSource: {
+        type: 'HEAD_OFFICE_CASH',
+        label: 'Quỹ chung',
+        balanceBefore: 5_000_000,
+        balanceAfter: 3_500_000,
+      },
+    }));
+    expect(tx.branch.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ type: 'HEAD_OFFICE', status: 'ACTIVE' }),
+    }));
+    expect(tx.cash_movements.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ branch_id: headOfficeId, fund_account_id: cashAccountId }),
+    });
+    expect(tx.ledger_entries.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ branch_id: headOfficeId }),
+    });
+    expect(tx.bank_accounts.update).toHaveBeenLastCalledWith({
+      where: { id: target.id },
+      data: { current_balance: 0, available_balance: 0 },
+    });
+  });
 });

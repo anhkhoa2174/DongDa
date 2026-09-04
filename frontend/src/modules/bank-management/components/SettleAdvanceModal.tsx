@@ -1,5 +1,5 @@
 // Hoàn tạm ứng CK — bắt buộc chọn NGUỒN đối ứng (không tự sinh tiền):
-//   Quỹ tiền mặt chi nhánh: trừ tiền mặt (đã thu của khách) -> cộng lại TK đã ứng
+//   Quỹ chung: trừ tiền mặt tại Hội sở -> cộng lại TK đã ứng
 //   Tài khoản ngân hàng khác: CK nội bộ — trừ TK nguồn -> cộng TK đã ứng
 import { App, Form, Input, Modal, Segmented, Select, Typography } from 'antd';
 import { useMemo } from 'react';
@@ -9,7 +9,7 @@ import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
 import { useSettleAdvanceCk } from '../hooks/useBank';
 
 interface FormValues {
-  source: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+  source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
   sourceBankAccountId?: string;
   note?: string;
 }
@@ -69,12 +69,12 @@ export function SettleAdvanceModal({
         Cộng lại <b>{money(advance.amount)}</b> vào TK {target ? formatBankAccountLabel(target) : '—'}.
         Chọn nguồn tiền bị trừ đối ứng:
       </Typography.Paragraph>
-      <Form form={form} layout="vertical" initialValues={{ source: 'BRANCH_CASH' }}>
+      <Form form={form} layout="vertical" initialValues={{ source: 'HEAD_OFFICE_CASH' }}>
         <Form.Item name="source" label="Nguồn hoàn ứng" rules={[{ required: true }]}>
           <Segmented
             block
             options={[
-              { value: 'BRANCH_CASH', label: 'Quỹ tiền mặt chi nhánh' },
+              { value: 'HEAD_OFFICE_CASH', label: 'Tiền mặt Quỹ chung' },
               { value: 'BANK_ACCOUNT', label: 'Tài khoản ngân hàng khác' },
             ]}
           />
@@ -87,7 +87,7 @@ export function SettleAdvanceModal({
             </Form.Item>
           ) : (
             <Typography.Paragraph type="secondary" className="text-xs!">
-              Trừ quỹ tiền mặt {advance.currencyCode} của chi nhánh đã ứng (tiền mặt thu của khách), ghi phiếu chi + bút toán sổ quỹ.
+              Trừ tiền mặt {advance.currencyCode} tại Quỹ chung, ghi phiếu chi và bút toán sổ quỹ Hội sở.
             </Typography.Paragraph>
           )}
         </Form.Item>

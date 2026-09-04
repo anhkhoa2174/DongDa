@@ -50,8 +50,8 @@ export interface InternalBankTransferInput {
 
 export interface SettleAdvanceCkInput {
   advanceMovementId: string; // ID của movement ADVANCE_CK gốc
-  // BRANCH_CASH: trừ quỹ tiền mặt chi nhánh đã ứng; BANK_ACCOUNT: trừ tài khoản ngân hàng nguồn
-  source: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+  // HEAD_OFFICE_CASH: trừ Quỹ chung; BANK_ACCOUNT: trừ tài khoản ngân hàng nguồn.
+  source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
   sourceBankAccountId?: string;
   settledByUserId: string;
   note?: string;

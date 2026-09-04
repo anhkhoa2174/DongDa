@@ -64,12 +64,12 @@ export interface BankMovement {
   settled?: boolean;
   settledMovementId?: string | null;
   settledAt?: Date | null;
-  settledDescription?: string | null; // "Hoàn tạm ứng ... từ quỹ tiền mặt chi nhánh / từ TK ..."
+  settledDescription?: string | null; // "Hoàn tạm ứng ... từ Quỹ chung / từ TK ..."
   voided?: boolean;
   voidedAt?: Date | null;
   voidReason?: string | null;
   settlementSource?: {
-    type: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+    type: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
     label: string;
     balanceBefore: number;
     balanceAfter: number;

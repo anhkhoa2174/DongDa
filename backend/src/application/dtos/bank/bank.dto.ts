@@ -120,10 +120,10 @@ export class CreateInternalBankTransferDto {
 // Hoàn lại tạm ứng CK
 export class SettleAdvanceCkDto {
   // Nguồn tiền hoàn ứng — bắt buộc có tài khoản đối ứng, không được "in tiền":
-  //   BRANCH_CASH  = quỹ tiền mặt chi nhánh đã ứng (tiền mặt thu của khách) giảm, TK ngân hàng đã ứng tăng
+  //   HEAD_OFFICE_CASH = quỹ tiền mặt Hội sở giảm, TK ngân hàng đã ứng tăng
   //   BANK_ACCOUNT = chuyển khoản nội bộ: TK nguồn giảm, TK đã ứng tăng
-  @IsIn(['BRANCH_CASH', 'BANK_ACCOUNT'])
-  source: 'BRANCH_CASH' | 'BANK_ACCOUNT';
+  @IsIn(['HEAD_OFFICE_CASH', 'BANK_ACCOUNT'])
+  source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
 
   @IsOptional()
   @IsUUID()

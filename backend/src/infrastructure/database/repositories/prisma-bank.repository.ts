@@ -522,7 +522,7 @@ export class PrismaBankRepository implements IBankRepository {
   }
 
   // Hoàn lại tạm ứng CK cuối ngày — PHẢI có tài khoản đối ứng (không tự sinh tiền):
-  //   BRANCH_CASH : chi quỹ tiền mặt chi nhánh đã ứng (ghi cash_movements + ledger CREDIT) -> TK ngân hàng tăng
+  //   HEAD_OFFICE_CASH: chi Quỹ chung (ghi cash_movements + ledger CREDIT) -> TK ngân hàng tăng
   //   BANK_ACCOUNT: chuyển khoản nội bộ — TK nguồn giảm (TRANSFER_OUT) -> TK đã ứng tăng
   async settleAdvanceCk(input: import('../../../domain/repositories/bank.repository').SettleAdvanceCkInput): Promise<BankMovement> {
     const now = new Date();
@@ -551,6 +551,7 @@ export class PrismaBankRepository implements IBankRepository {
       const amount = Number(advance.amount);
       const targetId = advance.bank_account_id;
       const sourceBankAccountId = input.source === 'BANK_ACCOUNT' ? input.sourceBankAccountId : undefined;
+      const isCashSource = input.source === 'HEAD_OFFICE_CASH';
       const targetSnapshot = await tx.bank_accounts.findUnique({ where: { id: targetId } });
       if (!targetSnapshot) throw new NotFoundException('Không tìm thấy tài khoản đã ứng');
       if (input.source === 'BANK_ACCOUNT') {
@@ -561,17 +562,37 @@ export class PrismaBankRepository implements IBankRepository {
       }
 
       // Quy ước khóa toàn hệ thống: quỹ trước, ngân hàng sau; mỗi nhóm theo ID tăng dần.
-      const cashAccount = input.source === 'BRANCH_CASH'
+      const advanceBranch = isCashSource
+        ? await tx.branch.findUnique({
+            where: { id: advance.branch_id },
+            select: { company_id: true },
+          })
+        : null;
+      const headOffice = isCashSource && advanceBranch
+        ? await tx.branch.findFirst({
+            where: {
+              company_id: advanceBranch.company_id,
+              type: 'HEAD_OFFICE',
+              status: 'ACTIVE',
+            },
+            orderBy: { created_at: 'asc' },
+            select: { id: true },
+          })
+        : null;
+      if (isCashSource && !headOffice) {
+        throw new BadRequestException('Chưa cấu hình chi nhánh Hội sở (HO) cho công ty');
+      }
+      const cashAccount = isCashSource
         ? await canonicalActiveFundAccount(
             tx,
-            advance.branch_id,
+            headOffice!.id,
             targetSnapshot.currency_code as CurrencyCode,
             false,
           )
         : null;
-      if (input.source === 'BRANCH_CASH' && !cashAccount) {
+      if (isCashSource && !cashAccount) {
         throw new BadRequestException(
-          `Chi nhánh chưa có sổ tiền mặt ${targetSnapshot.currency_code} để hoàn ứng`,
+          `Quỹ chung chưa có sổ tiền mặt ${targetSnapshot.currency_code} để hoàn ứng`,
         );
       }
       if (cashAccount) await this.lockFundAccount(tx, cashAccount.id);
@@ -630,27 +651,27 @@ export class PrismaBankRepository implements IBankRepository {
         sourceBalanceBefore = srcBefore;
         sourceBalanceAfter = srcBefore - amount;
       } else {
-        // BRANCH_CASH: chi quỹ tiền mặt của chi nhánh đã ứng (tiền mặt đã thu của khách)
+        // HEAD_OFFICE_CASH: tiền đã được chi nhánh tiếp về HO theo dòng tiền thực tế.
         const lines = await tx.ledger_lines.findMany({
           where: { fund_account_id: cashAccount!.id, ledger_entries: { status: 'POSTED' } },
           select: { direction: true, amount: true },
         });
         const cashBalance = lines.reduce((sum: number, l: any) => sum + (l.direction === 'DEBIT' ? Number(l.amount) : -Number(l.amount)), 0);
         if (amount > cashBalance) {
-          throw new BadRequestException(`Quỹ tiền mặt chi nhánh không đủ (còn ${cashBalance} ${target.currency_code})`);
+          throw new BadRequestException(`Quỹ chung không đủ tiền mặt (còn ${cashBalance} ${target.currency_code})`);
         }
         const rate = await this.activeCashRate(tx, String(target.currency_code));
         const movementNo = `ADV-SETTLE-CASH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
         const cashMovement = await tx.cash_movements.create({
           data: {
             movement_no: movementNo,
-            branch_id: advance.branch_id,
+            branch_id: headOffice!.id,
             fund_account_id: cashAccount!.id,
             movement_type: 'CASH_OUT',
             business_date: businessDate,
             amount,
             currency_code: target.currency_code,
-            source_name: 'Hoàn tạm ứng CK',
+            source_name: 'Quỹ chung hoàn tạm ứng CK',
             description: `Hoàn tạm ứng CK ${advance.movement_no}${input.note ? ` - ${input.note}` : ''}`,
             status: 'POSTED',
             approved_by_user_id: input.settledByUserId,
@@ -662,7 +683,7 @@ export class PrismaBankRepository implements IBankRepository {
           data: {
             entry_no: `LE-${movementNo}`,
             business_date: businessDate,
-            branch_id: advance.branch_id,
+            branch_id: headOffice!.id,
             source_type: 'CASH_MOVEMENT',
             source_id: cashMovement.id,
             status: 'POSTED',
@@ -682,7 +703,7 @@ export class PrismaBankRepository implements IBankRepository {
             },
           },
         });
-        sourceLabel = 'từ quỹ tiền mặt chi nhánh';
+        sourceLabel = 'từ Quỹ chung';
         sourceBalanceBefore = cashBalance;
         sourceBalanceAfter = cashBalance - amount;
       }
