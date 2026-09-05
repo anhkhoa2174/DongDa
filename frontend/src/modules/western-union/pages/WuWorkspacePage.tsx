@@ -44,6 +44,9 @@ import {
   usStateOptions,
 } from '../model/wuReferenceData';
 
+// Màu thanh kéo tỷ giá khi đã sẵn sàng chọn (đủ 2 số tiền WU) — đỏ nổi bật để NV nhận ra ngay (feedback a Kiển).
+const WU_RATE_ACTIVE_COLOR = '#ff4d4f';
+
 export function WuWorkspacePage() {
   const { message } = App.useApp();
   const { data: activeRates = [] } = useActiveRates();
@@ -128,6 +131,8 @@ export function WuWorkspacePage() {
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
   const hasVisa = Form.useWatch('hasVisa', form) ?? false;
   const isDirectVndPayout = payoutCurrency === 'VND' && paidCurrency === 'VND';
+  // Đã nhập đủ 2 số tiền WU (USD + VND) và có đủ tỷ giá hệ thống -> bật thanh kéo, tô đỏ để NV nhận ra ngay.
+  const isRateSliderActive = Boolean(systemRate && fxUsdRate && implied) && !isDirectVndPayout;
   const payoutEquivalent = payoutCurrency === 'USD'
     ? receivedUsd * transactionRate + receivedVnd
     : receivedVnd;
@@ -355,17 +360,22 @@ export function WuWorkspacePage() {
               <Form.Item name="appliedRate" label="Tỷ giá giao dịch" rules={[positiveNumberRule('Tỷ giá giao dịch')]}>
                 <InputNumber min={rateBounds.min} max={rateBounds.max} precision={6} step={PAID_RATE_STEP} keyboard={false} disabled={isDirectVndPayout} addonAfter="VND/USD" style={{ width: '100%' }} formatter={exchangeRateInputFormatter} parser={exchangeRateInputParser} />
               </Form.Item>
+              {/* Sau khi nhập đủ 2 số tiền WU, thanh kéo bật màu đỏ để NV nhận ra ngay cần chọn tỷ giá (feedback a Kiển). */}
               <Slider
                 min={rateBounds.min}
                 max={rateBounds.max}
                 step={PAID_RATE_STEP}
                 value={clampPaidRate(transactionRate, implied, systemRate, fxUsdRate)}
-                disabled={!systemRate || !fxUsdRate || !implied || isDirectVndPayout}
+                disabled={!isRateSliderActive}
                 tooltip={{ formatter: (value) => formatExchangeRate(Number(value ?? 0)) }}
                 marks={{
                   [rateBounds.min]: formatExchangeRate(rateBounds.min),
                   [rateBounds.max]: formatExchangeRate(rateBounds.max),
                 }}
+                styles={isRateSliderActive ? {
+                  track: { background: WU_RATE_ACTIVE_COLOR },
+                  handle: { borderColor: WU_RATE_ACTIVE_COLOR, boxShadow: `0 0 0 4px ${WU_RATE_ACTIVE_COLOR}26` },
+                } : undefined}
                 onChange={(value) => form.setFieldsValue({ appliedRate: value })}
               />
 
