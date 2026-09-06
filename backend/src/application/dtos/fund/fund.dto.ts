@@ -105,6 +105,9 @@ export class ConvertCentralFundItemDto {
 }
 
 export class ConvertCentralFundDto {
+  @IsIn(['BUY', 'SELL'])
+  direction: 'BUY' | 'SELL';
+
   @ArrayMinSize(1, { message: 'Phiếu quy đổi phải có ít nhất một loại ngoại tệ' })
   @ArrayMaxSize(18, { message: 'Phiếu quy đổi có tối đa 18 loại ngoại tệ' })
   @ArrayUnique((item: ConvertCentralFundItemDto) => item.currencyCode, { message: 'Mỗi loại ngoại tệ chỉ được thêm một lần trong phiếu quy đổi' })

@@ -465,7 +465,10 @@ export class PrismaFundRepository implements IFundRepository {
   async convertCentralFund(input: ConvertCentralFundInput): Promise<CentralFundConversion> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
-    const voucherNo = `QDA-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const isBuy = input.direction === 'BUY';
+    const operationLabel = isBuy ? 'Mua ngoại tệ Quỹ A' : 'Bán ngoại tệ Quỹ A';
+    const voucherNo = `QDA-${isBuy ? 'MUA' : 'BAN'}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const idempotencyScope = `CENTRAL_FUND_CONVERSION_${input.direction}`;
 
     const currencies = input.items.map((item) => item.currencyCode);
     if (new Set(currencies).size !== currencies.length) {
@@ -474,6 +477,14 @@ export class PrismaFundRepository implements IFundRepository {
     const conversionItems = [...input.items].sort((a, b) => a.currencyCode.localeCompare(b.currencyCode));
 
     return this.prisma.$transaction(async (tx) => {
+      const existing = await claimFinancialRequest<CentralFundConversion>(
+        tx,
+        idempotencyScope,
+        input.idempotencyKey,
+        input,
+      );
+      if (existing) return existing;
+
       const headOffice = await tx.branch.findFirst({
         where: { type: 'HEAD_OFFICE', status: 'ACTIVE' },
         orderBy: { created_at: 'asc' },
@@ -489,12 +500,14 @@ export class PrismaFundRepository implements IFundRepository {
       let firstMovementId: string | null = null;
 
       for (const [index, item] of conversionItems.entries()) {
-        const foreignAccount = await canonicalActiveFundAccount(tx, headOffice.id, item.currencyCode);
+        const foreignAccount = await canonicalActiveFundAccount(tx, headOffice.id, item.currencyCode, isBuy);
         if (!foreignAccount) throw new BadRequestException(`Quỹ A Hội sở chưa có sổ ${item.currencyCode}`);
         await this.lockFundAccount(tx, foreignAccount.id);
-        const available = await this.balance(tx, foreignAccount.id);
-        if (item.amount > available) {
-          throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
+        if (!isBuy) {
+          const available = await this.balance(tx, foreignAccount.id);
+          if (item.amount > available) {
+            throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
+          }
         }
 
         if (!Number.isFinite(item.rate) || item.rate <= 0) {
@@ -512,15 +525,16 @@ export class PrismaFundRepository implements IFundRepository {
         if (deduction >= grossVndAmount) {
           throw new BadRequestException(`Khấu trừ ${item.currencyCode} phải nhỏ hơn thành tiền trước khấu trừ`);
         }
+        const cashFlowLabel = isBuy ? 'thực chi' : 'thực thu';
         const description = input.note
-          ? `Bán Quỹ A ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, thực thu ${vndAmount} VND - ${input.note}`
-          : `Bán Quỹ A ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, thực thu ${vndAmount} VND`;
+          ? `${operationLabel} ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, ${cashFlowLabel} ${vndAmount} VND - ${input.note}`
+          : `${operationLabel} ${item.currencyCode}: ${item.amount} x ${rate}, khấu trừ ${deduction} VND, ${cashFlowLabel} ${vndAmount} VND`;
         const foreignMovement = await tx.cash_movements.create({
           data: {
-            movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}-OUT`,
+            movement_no: `${voucherNo}-${String(index + 1).padStart(2, '0')}-${isBuy ? 'IN' : 'OUT'}`,
             branch_id: headOffice.id, fund_account_id: foreignAccount.id,
-            movement_type: 'CASH_OUT', business_date: businessDate, amount: item.amount,
-            currency_code: item.currencyCode, source_name: 'Bán ngoại tệ Quỹ A', description,
+            movement_type: isBuy ? 'CASH_IN' : 'CASH_OUT', business_date: businessDate, amount: item.amount,
+            currency_code: item.currencyCode, source_name: operationLabel, description,
             status: 'POSTED', created_by_user_id: input.createdByUserId,
             approved_by_user_id: input.createdByUserId, posted_at: now,
           },
@@ -528,12 +542,12 @@ export class PrismaFundRepository implements IFundRepository {
         firstMovementId ??= foreignMovement.id;
         await tx.ledger_entries.create({
           data: {
-            entry_no: `LE-${voucherNo}-${String(index + 1).padStart(2, '0')}-OUT`,
+            entry_no: `LE-${voucherNo}-${String(index + 1).padStart(2, '0')}-${isBuy ? 'IN' : 'OUT'}`,
             business_date: businessDate, branch_id: headOffice.id,
             source_type: 'CASH_MOVEMENT', source_id: foreignMovement.id, status: 'POSTED', posted_at: now,
             description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
             ledger_lines: { create: [{
-              fund_account_id: foreignAccount.id, direction: 'CREDIT', amount: item.amount,
+              fund_account_id: foreignAccount.id, direction: isBuy ? 'DEBIT' : 'CREDIT', amount: item.amount,
               currency_code: item.currencyCode, exchange_rate: rate, base_amount_vnd: vndAmount,
             }] },
           },
@@ -549,38 +563,47 @@ export class PrismaFundRepository implements IFundRepository {
       }
 
       const totalVndAmount = resultItems.reduce((sum, item) => sum + item.vndAmount, 0);
-      const description = input.note ? `Thu VND từ bán ngoại tệ Quỹ A - ${input.note}` : 'Thu VND từ bán ngoại tệ Quỹ A';
+      if (isBuy) {
+        const availableVnd = await this.balance(tx, vndAccount.id);
+        if (totalVndAmount > availableVnd) {
+          throw new BadRequestException(`Quỹ tiền mặt VND không đủ (còn ${availableVnd} VND)`);
+        }
+      }
+      const vndAction = isBuy ? 'Chi VND mua ngoại tệ Quỹ A' : 'Thu VND từ bán ngoại tệ Quỹ A';
+      const description = input.note ? `${vndAction} - ${input.note}` : vndAction;
       const vndMovement = await tx.cash_movements.create({
         data: {
-          movement_no: `${voucherNo}-IN`, branch_id: headOffice.id, fund_account_id: vndAccount.id,
-          movement_type: 'CASH_IN', business_date: businessDate, amount: totalVndAmount,
-          currency_code: 'VND', source_name: 'Bán ngoại tệ Quỹ A', description,
+          movement_no: `${voucherNo}-${isBuy ? 'OUT' : 'IN'}`, branch_id: headOffice.id, fund_account_id: vndAccount.id,
+          movement_type: isBuy ? 'CASH_OUT' : 'CASH_IN', business_date: businessDate, amount: totalVndAmount,
+          currency_code: 'VND', source_name: operationLabel, description,
           status: 'POSTED', created_by_user_id: input.createdByUserId,
           approved_by_user_id: input.createdByUserId, posted_at: now,
         },
       });
       await tx.ledger_entries.create({
         data: {
-          entry_no: `LE-${voucherNo}-IN`, business_date: businessDate, branch_id: headOffice.id,
+          entry_no: `LE-${voucherNo}-${isBuy ? 'OUT' : 'IN'}`, business_date: businessDate, branch_id: headOffice.id,
           source_type: 'CASH_MOVEMENT', source_id: vndMovement.id, status: 'POSTED', posted_at: now,
           description, created_by_user_id: input.createdByUserId, approved_by_user_id: input.createdByUserId,
           ledger_lines: { create: [{
-            fund_account_id: vndAccount.id, direction: 'DEBIT', amount: totalVndAmount,
+            fund_account_id: vndAccount.id, direction: isBuy ? 'CREDIT' : 'DEBIT', amount: totalVndAmount,
             currency_code: 'VND', exchange_rate: 1, base_amount_vnd: totalVndAmount,
           }] },
         },
       });
       await this.notifications.notifyUsers({
-        title: `Phiếu bán ngoại tệ Quỹ A ${voucherNo} đã ghi sổ`,
+        title: `Phiếu ${operationLabel.toLowerCase()} ${voucherNo} đã ghi sổ`,
         body: `${resultItems.map((item) => `${item.amount} ${item.currencyCode} x ${item.rate} - ${item.deduction} VND`).join('; ')} = ${totalVndAmount} VND`,
         sourceType: 'CENTRAL_FUND_CONVERSION',
         sourceId: firstMovementId,
       }, { userIds: [input.createdByUserId], roles: ['ADMIN', 'MANAGER'] }, tx);
 
-      return {
-        voucherNo, items: resultItems, totalVndAmount,
+      const result: CentralFundConversion = {
+        voucherNo, direction: input.direction, items: resultItems, totalVndAmount,
         note: input.note ?? null, postedAt: now,
       };
+      await completeFinancialRequest(tx, idempotencyScope, input.idempotencyKey, result);
+      return result;
     });
   }
 

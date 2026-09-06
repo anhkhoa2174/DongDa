@@ -306,7 +306,7 @@ export function CentralFundPage() {
           <Button className="fund-action--secondary" icon={<CalculatorOutlined />} onClick={() => navigate('/shift-management/active-shift')}>Kiểm Quỹ Tổng</Button>
           {canCreateCashMovement && (
             <>
-              <Button className="fund-action--conversion" icon={<SwapOutlined />} onClick={() => navigate('/fund-management/central-fund/convert-fund-a')}>Bán ngoại tệ Quỹ A</Button>
+              <Button className="fund-action--conversion" icon={<SwapOutlined />} onClick={() => navigate('/fund-management/central-fund/convert-fund-a')}>Mua/Bán ngoại tệ Quỹ A</Button>
               <Button icon={<PlusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/receipts')}>Tạo Phiếu Thu</Button>
               <Button icon={<MinusCircleOutlined />} onClick={() => navigate('/fund-management/central-fund/expenses')}>Tạo Phiếu Chi</Button>
             </>

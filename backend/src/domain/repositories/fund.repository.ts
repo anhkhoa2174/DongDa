@@ -43,6 +43,8 @@ export interface ListFundMovementHistoryFilter {
 }
 
 export interface ConvertCentralFundInput {
+  idempotencyKey: string;
+  direction: 'BUY' | 'SELL';
   items: Array<{ currencyCode: CurrencyCode; amount: number; rate: number; deduction: number }>;
   note?: string;
   createdByUserId: string;

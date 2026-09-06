@@ -140,8 +140,10 @@ export class CreateFundMovementUseCase {
 export class ConvertCentralFundUseCase {
   constructor(@Inject('IFundRepository') private readonly fundRepo: IFundRepository) {}
 
-  execute(dto: ConvertCentralFundDto, userId: string): Promise<CentralFundConversion> {
+  execute(dto: ConvertCentralFundDto, userId: string, idempotencyKey: string): Promise<CentralFundConversion> {
     return this.fundRepo.convertCentralFund({
+      idempotencyKey,
+      direction: dto.direction,
       items: dto.items.map((item) => ({
         currencyCode: item.currencyCode as CurrencyCode,
         amount: item.amount,

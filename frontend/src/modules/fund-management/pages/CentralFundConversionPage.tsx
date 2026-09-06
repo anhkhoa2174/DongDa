@@ -1,8 +1,10 @@
 import { ArrowLeftOutlined, DeleteOutlined, PlusOutlined, SwapOutlined } from '@ant-design/icons';
-import { App, Alert, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Typography } from 'antd';
+import { App, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Tabs, Typography } from 'antd';
 import axios from 'axios';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
+import { CURRENCIES, getCurrencyMetadata } from '@/shared/constants/currencies';
 import {
   exchangeRateInputFormatter,
   exchangeRateInputParser,
@@ -16,6 +18,7 @@ import { useCentralFundSummary, useConvertCentralFundA } from '../hooks/useCentr
 
 type ConversionItem = { currencyCode?: string; amount?: number; rate?: number; deduction?: number };
 type ConversionForm = { items: ConversionItem[]; note?: string };
+type ConversionDirection = 'BUY' | 'SELL';
 
 const EMPTY_ITEM: ConversionItem = {
   currencyCode: undefined,
@@ -36,20 +39,32 @@ export function CentralFundConversionPage() {
   const navigate = useNavigate();
   const { message } = App.useApp();
   const [form] = Form.useForm<ConversionForm>();
+  const [direction, setDirection] = useState<ConversionDirection>('SELL');
   const { data: summary, isLoading } = useCentralFundSummary();
   const convert = useConvertCentralFundA();
   const watchedItems = Form.useWatch('items', form) ?? [];
-  const availableFunds = (summary?.fundA ?? []).filter((item) => item.amount > 0);
+  const fundBalances = summary?.fundA ?? [];
+  const availableFunds = fundBalances.filter((item) => item.amount > 0);
+  const selectableCurrencies = direction === 'SELL'
+    ? availableFunds.map((fund) => fund.currency)
+    : CURRENCIES.filter((currency) => currency.code !== 'VND' && currency.code !== 'USD')
+      .map((currency) => currency.code);
   const selectedCurrencies = watchedItems.map((item) => item?.currencyCode).filter(Boolean);
 
-  const currencyOptionsFor = (index: number) => availableFunds
-    .filter((fund) => fund.currency === watchedItems[index]?.currencyCode || !selectedCurrencies.includes(fund.currency))
-    .map((fund) => ({
-      value: fund.currency,
-      label: `${fund.currency} - Tồn ${formatCurrency(fund.amount, fund.currency)}`,
-    }));
+  const currencyOptionsFor = (index: number) => selectableCurrencies
+    .filter((currency) => currency === watchedItems[index]?.currencyCode || !selectedCurrencies.includes(currency))
+    .map((currency) => {
+      const fund = fundBalances.find((item) => item.currency === currency);
+      const metadata = getCurrencyMetadata(currency);
+      return {
+        value: currency,
+        label: direction === 'SELL'
+          ? `${currency} - Tồn ${formatCurrency(fund?.amount ?? 0, currency)}`
+          : `${currency} - ${metadata.name}${fund ? ` - Tồn ${formatCurrency(fund.amount, currency)}` : ''}`,
+      };
+    });
 
-  const itemFund = (index: number) => availableFunds.find(
+  const itemFund = (index: number) => fundBalances.find(
     (fund) => fund.currency === watchedItems[index]?.currencyCode,
   );
   const estimatedTotalVnd = watchedItems.reduce((sum, item) => {
@@ -60,6 +75,7 @@ export function CentralFundConversionPage() {
   const submit = async (values: ConversionForm) => {
     try {
       const result = await convert.mutateAsync({
+        direction,
         items: values.items.map((item) => ({
           currencyCode: item.currencyCode!,
           amount: Number(item.amount),
@@ -68,7 +84,10 @@ export function CentralFundConversionPage() {
         })),
         note: values.note?.trim() || undefined,
       });
-      message.success(`Đã bán ${result.items.length} loại ngoại tệ, thực thu ${formatVnd(result.totalVndAmount)}`);
+      message.success(
+        `Đã ${direction === 'BUY' ? 'mua' : 'bán'} ${result.items.length} loại ngoại tệ, `
+        + `${direction === 'BUY' ? 'thực chi' : 'thực thu'} ${formatVnd(result.totalVndAmount)}`,
+      );
       form.resetFields();
     } catch (error) {
       message.error(errorMessage(error));
@@ -77,8 +96,8 @@ export function CentralFundConversionPage() {
 
   return (
     <PageScaffold
-      title="Bán ngoại tệ Quỹ A"
-      description="Giảm tồn nhiều loại ngoại tệ tại Hội sở và ghi tăng tiền mặt VND trong cùng một phiếu."
+      title="Mua/Bán ngoại tệ Quỹ A"
+      description="Giao dịch nhiều loại ngoại tệ tại Hội sở bằng tỷ giá và mức khấu trừ nhập trực tiếp."
       moduleName="fund-management"
       extra={(
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/fund-management/central-fund')}>
@@ -87,14 +106,20 @@ export function CentralFundConversionPage() {
       )}
     >
       <Row justify="center">
-        <Col xs={24} xl={18}>
-          <Card title={<Space><SwapOutlined />Phiếu bán ngoại tệ tại Hội sở</Space>} loading={isLoading}>
-            <Alert
-              type="info"
-              showIcon
-              className="mb-5"
-              message="Nghiệp vụ không yêu cầu mở ca"
-              description="Nhập tỷ giá và khấu trừ riêng cho từng ngoại tệ. Hệ thống không dùng tỷ giá ACTIVE; toàn bộ phiếu được kiểm tra và ghi sổ đồng thời."
+        <Col xs={24}>
+          <Card title={<Space><SwapOutlined />Phiếu giao dịch ngoại tệ tại Hội sở</Space>} loading={isLoading}>
+            <Tabs
+              className="fund-conversion-tabs"
+              size="large"
+              activeKey={direction}
+              onChange={(key) => {
+                setDirection(key as ConversionDirection);
+                form.resetFields();
+              }}
+              items={[
+                { key: 'SELL', label: 'Bán ngoại tệ Quỹ A' },
+                { key: 'BUY', label: 'Mua ngoại tệ Quỹ A' },
+              ]}
             />
             <Form form={form} layout="vertical" initialValues={{ items: [EMPTY_ITEM] }} onFinish={submit}>
               <Form.List name="items">
@@ -114,7 +139,7 @@ export function CentralFundConversionPage() {
                               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-xs font-bold text-[#f5b301]">
                                 {String(index + 1).padStart(2, '0')}
                               </span>
-                              <Typography.Text strong>Khoản ngoại tệ bán</Typography.Text>
+                              <Typography.Text strong>Khoản ngoại tệ {direction === 'BUY' ? 'mua' : 'bán'}</Typography.Text>
                             </Space>
                             <Button
                               danger
@@ -130,7 +155,7 @@ export function CentralFundConversionPage() {
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'currencyCode']}
-                                label="Ngoại tệ Quỹ A"
+                                label={direction === 'BUY' ? 'Ngoại tệ cần mua' : 'Ngoại tệ Quỹ A'}
                                 className="mb-0"
                                 rules={[{ required: true, message: 'Chọn loại ngoại tệ' }]}
                               >
@@ -151,26 +176,28 @@ export function CentralFundConversionPage() {
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'amount']}
-                                label="Số lượng bán"
+                                label={`Số lượng ${direction === 'BUY' ? 'mua' : 'bán'}`}
                                 className="mb-0"
-                                extra={fund ? `Tồn khả dụng: ${formatCurrency(fund.amount, fund.currency)}` : 'Chọn ngoại tệ để kiểm tra tồn'}
+                                extra={direction === 'BUY'
+                                  ? `Cho phép số lẻ, tối đa 2 chữ số${fund ? ` · Đang tồn ${formatCurrency(fund.amount, fund.currency)}` : ''}`
+                                  : (fund ? `Tồn khả dụng: ${formatCurrency(fund.amount, fund.currency)}` : 'Chọn ngoại tệ để kiểm tra tồn')}
                                 rules={[
                                   { required: true, message: 'Nhập số lượng' },
-                                  {
-                                    validator: (_, value) => Number(value) > 0 && Number(value) <= (fund?.amount ?? 0)
+                                  ...(direction === 'SELL' ? [{
+                                    validator: (_rule: unknown, value: number | undefined) => Number(value) > 0 && Number(value) <= (fund?.amount ?? 0)
                                       ? Promise.resolve()
                                       : Promise.reject(new Error(`Không được vượt tồn ${fund?.amount ?? 0}`)),
-                                  },
+                                  }] : []),
                                 ]}
                               >
                                 <InputNumber
                                   className="w-full"
                                   size="large"
                                   min={0.01}
-                                  max={fund?.amount}
+                                  max={direction === 'SELL' ? fund?.amount : undefined}
                                   precision={2}
                                   controls={false}
-                                  addonAfter={fund?.currency ?? 'Ngoại tệ'}
+                                  addonAfter={watchedItems[index]?.currencyCode ?? 'Ngoại tệ'}
                                   formatter={numberInputFormatter}
                                   parser={numberInputParser}
                                 />
@@ -183,7 +210,7 @@ export function CentralFundConversionPage() {
                                 label="Tỷ giá"
                                 className="mb-0"
                                 rules={[
-                                  { required: true, message: 'Nhập tỷ giá bán' },
+                                  { required: true, message: `Nhập tỷ giá ${direction === 'BUY' ? 'mua' : 'bán'}` },
                                   { type: 'number', min: 0.000001, message: 'Tỷ giá phải lớn hơn 0' },
                                 ]}
                               >
@@ -193,7 +220,7 @@ export function CentralFundConversionPage() {
                                   min={0.000001}
                                   precision={6}
                                   controls={false}
-                                  addonAfter={`VND/${fund?.currency ?? 'NT'}`}
+                                  addonAfter={`VND/${watchedItems[index]?.currencyCode ?? 'NT'}`}
                                   formatter={exchangeRateInputFormatter}
                                   parser={exchangeRateInputParser}
                                 />
@@ -253,7 +280,7 @@ export function CentralFundConversionPage() {
                       type="dashed"
                       icon={<PlusOutlined />}
                       onClick={() => add({ ...EMPTY_ITEM })}
-                      disabled={fields.length >= availableFunds.length}
+                      disabled={fields.length >= Math.min(selectableCurrencies.length, 18)}
                       block
                     >
                       Thêm loại tiền
@@ -264,13 +291,16 @@ export function CentralFundConversionPage() {
 
               <div className="fund-conversion-total">
                 <span>{watchedItems.length} khoản ngoại tệ trong phiếu</span>
-                <div><small>Tổng VND dự kiến thu về</small><strong>{formatVnd(estimatedTotalVnd)}</strong></div>
+                <div>
+                  <small>{direction === 'BUY' ? 'Tổng tiền mặt VND dự kiến chi' : 'Tổng VND dự kiến thu về'}</small>
+                  <strong>{formatVnd(estimatedTotalVnd)}</strong>
+                </div>
               </div>
               <Form.Item name="note" label="Ghi chú" className="mt-5">
                 <Input.TextArea rows={3} maxLength={1000} showCount placeholder="Đối tác hoặc nội dung giao dịch" />
               </Form.Item>
               <Button type="primary" htmlType="submit" icon={<SwapOutlined />} loading={convert.isPending} size="large" block>
-                Xác nhận bán {watchedItems.length} loại ngoại tệ
+                Xác nhận {direction === 'BUY' ? 'mua' : 'bán'} {watchedItems.length} loại ngoại tệ
               </Button>
             </Form>
           </Card>

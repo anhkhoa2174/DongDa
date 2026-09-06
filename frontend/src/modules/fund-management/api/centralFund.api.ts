@@ -57,6 +57,7 @@ export interface CentralFundMovementDto extends CreateCentralFundMovementPayload
 
 export interface CentralFundConversionDto {
   voucherNo: string;
+  direction: 'BUY' | 'SELL';
   items: Array<{
     currencyCode: string;
     amount: number;
@@ -97,11 +98,12 @@ export const centralFundApi = {
       .post<CentralFundMovementDto>('/fund/branch-movements', payload, { headers })
       .then((response) => response.data)),
   convertFundA: (payload: {
+    direction: 'BUY' | 'SELL';
     items: Array<{ currencyCode: string; amount: number; rate: number; deduction: number }>;
     note?: string;
-  }) => httpClient
-    .post<CentralFundConversionDto>('/fund/central-conversions', payload)
-    .then((response) => response.data),
+  }) => runIdempotent(`CENTRAL_FUND_CONVERSION_${payload.direction}`, payload, (headers) => httpClient
+    .post<CentralFundConversionDto>('/fund/central-conversions', payload, { headers })
+    .then((response) => response.data)),
   getMovementHistory: (branchId?: string) => httpClient
     .get<FundMovementHistoryDto[]>('/fund/movement-history', { params: { branchId } })
     .then((response) => response.data),

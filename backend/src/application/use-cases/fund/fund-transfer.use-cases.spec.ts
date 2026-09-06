@@ -71,6 +71,7 @@ describe('central Fund A conversion', () => {
   it('passes a normalized conversion request and actor to the repository', async () => {
     const converted = {
       voucherNo: 'QDA-001',
+      direction: 'SELL' as const,
       items: [{
         currencyCode: 'EUR', amount: 100, rate: 30_000,
         grossVndAmount: 3_000_000, deduction: 50_000, vndAmount: 2_950_000,
@@ -81,13 +82,42 @@ describe('central Fund A conversion', () => {
     const useCase = new ConvertCentralFundUseCase(repo as any);
 
     await expect(useCase.execute({
+      direction: 'SELL',
       items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, deduction: 50_000 }],
       note: '  Đổi tại ngân hàng  ',
-    }, 'admin-1'))
+    }, 'admin-1', 'idem-1'))
       .resolves.toEqual(converted);
     expect(repo.convertCentralFund).toHaveBeenCalledWith({
+      idempotencyKey: 'idem-1', direction: 'SELL',
       items: [{ currencyCode: 'EUR', amount: 100, rate: 30_000, deduction: 50_000 }],
       note: 'Đổi tại ngân hàng', createdByUserId: 'admin-1',
+    });
+  });
+
+  it('keeps fractional foreign currency and BUY direction when buying into Fund A', async () => {
+    const converted = {
+      voucherNo: 'QDA-MUA-001',
+      direction: 'BUY' as const,
+      items: [{
+        currencyCode: 'EUR', amount: 10.25, rate: 30_000,
+        grossVndAmount: 307_500, deduction: 7_500, vndAmount: 300_000,
+      }],
+      totalVndAmount: 300_000, postedAt: new Date(),
+    };
+    const repo = { convertCentralFund: jest.fn().mockResolvedValue(converted) };
+    const useCase = new ConvertCentralFundUseCase(repo as any);
+
+    await expect(useCase.execute({
+      direction: 'BUY',
+      items: [{ currencyCode: 'EUR', amount: 10.25, rate: 30_000, deduction: 7_500 }],
+    }, 'accountant-1', 'idem-buy-1')).resolves.toEqual(converted);
+
+    expect(repo.convertCentralFund).toHaveBeenCalledWith({
+      idempotencyKey: 'idem-buy-1',
+      direction: 'BUY',
+      items: [{ currencyCode: 'EUR', amount: 10.25, rate: 30_000, deduction: 7_500 }],
+      note: undefined,
+      createdByUserId: 'accountant-1',
     });
   });
 });

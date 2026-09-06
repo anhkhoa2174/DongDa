@@ -73,8 +73,12 @@ export class FundController {
   @Post('central-conversions')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  centralFundConversion(@Request() req: any, @Body() dto: ConvertCentralFundDto) {
-    return this.convertCentralFund.execute(dto, req.user.id);
+  centralFundConversion(
+    @Request() req: any,
+    @Body() dto: ConvertCentralFundDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.convertCentralFund.execute(dto, req.user.id, requireIdempotencyKey(idempotencyKey));
   }
 
   @Post('branch-movements')

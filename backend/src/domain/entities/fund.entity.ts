@@ -101,6 +101,7 @@ export interface CentralFundMovement {
 
 export interface CentralFundConversion {
   voucherNo: string;
+  direction: 'BUY' | 'SELL';
   items: Array<{
     currencyCode: CurrencyCode;
     amount: number;
