@@ -95,4 +95,37 @@ describe('WU financial rules', () => {
       visaType: 'WORK_PERMIT',
     }));
   });
+
+  it('uses Paid mua, tỷ giá mua USD và WU rate when both payout and paid currency are USD', async () => {
+    const wuRepo = {
+      mtcnExists: jest.fn().mockResolvedValue(false),
+      create: jest.fn().mockResolvedValue({ id: 'wu-usd-1' }),
+    };
+    const rateRepo = {
+      findActive: jest.fn()
+        .mockResolvedValueOnce([{ rate: 25_900 }])
+        .mockResolvedValueOnce([{ rate: 25_700 }]),
+    };
+    const useCase = new CreateWuUseCase(wuRepo as any, rateRepo as any);
+
+    await useCase.execute({
+      ...base,
+      payoutCurrency: 'USD',
+      paidCurrency: 'USD',
+      receivedUsd: 100,
+      receivedVnd: 6_475,
+      appliedRate: 25_900,
+    }, 'user-1');
+
+    expect(rateRepo.findActive).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      rateType: 'PAID_BUY',
+      provider: 'WU_MG',
+      fromCurrency: 'USD',
+    }));
+    expect(rateRepo.findActive).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      rateType: 'FX_BUY',
+      provider: 'INTERNAL',
+      fromCurrency: 'USD',
+    }));
+  });
 });

@@ -37,10 +37,12 @@ export class CreateWuUseCase {
       'Nơi cấp giấy tờ',
     ));
 
-    const rateType = dto.payoutCurrency === 'VND'
+    const usesBuyRate = dto.payoutCurrency === 'VND'
+      || (dto.payoutCurrency === 'USD' && dto.paidCurrency === 'USD');
+    const rateType = usesBuyRate
       ? ExchangeRateType.PAID_BUY
       : ExchangeRateType.PAID_SELL;
-    const fxRateType = dto.payoutCurrency === 'VND'
+    const fxRateType = usesBuyRate
       ? ExchangeRateType.FX_BUY
       : ExchangeRateType.FX_SELL;
     const [active, fxRates] = await Promise.all([

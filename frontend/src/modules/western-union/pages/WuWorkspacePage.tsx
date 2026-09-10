@@ -120,9 +120,11 @@ export function WuWorkspacePage() {
     account.status === 'ACTIVE' && account.currencyCode === paidCurrency
   ));
   const selectedBank = eligibleBankAccounts.find((account) => account.id === bankAccountId);
-  const rateType: ExchangeRateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
+  const usesBuyRate = payoutCurrency === 'VND'
+    || (payoutCurrency === 'USD' && paidCurrency === 'USD');
+  const rateType: ExchangeRateType = usesBuyRate ? 'PAID_BUY' : 'PAID_SELL';
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
-  const fxRateType: ExchangeRateType = payoutCurrency === 'VND' ? 'FX_BUY' : 'FX_SELL';
+  const fxRateType: ExchangeRateType = usesBuyRate ? 'FX_BUY' : 'FX_SELL';
   const fxUsdRate = findActiveRate(activeRates, fxRateType, 'USD', 'INTERNAL')?.rate;
   const rateSelectionKey = `${rateType}:${systemRate ?? 0}:${fxRateType}:${fxUsdRate ?? 0}`;
   const implied = wuUsd > 0 ? wuVnd / wuUsd : 0;
