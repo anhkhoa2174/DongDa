@@ -90,12 +90,15 @@ function normalizeTransactionStatus(status?: string): TransactionStatus {
   return 'COMPLETED';
 }
 
-function formatProviderPaidAmount(
-  paidCurrency: 'USD' | 'VND',
-  usdAmount: number,
-  vndAmount: number,
-) {
-  return paidCurrency === 'USD' ? formatUsd(usdAmount) : formatVnd(vndAmount);
+function formatCustomerPayout(receivedUsd: number, receivedVnd: number) {
+  const payouts: string[] = [];
+  if (receivedUsd > 0) payouts.push(formatUsd(receivedUsd));
+  if (receivedVnd > 0) payouts.push(formatVnd(receivedVnd));
+  return payouts.join(' + ') || formatVnd(0);
+}
+
+function formatAppliedRate(rate: number, currency = 'USD') {
+  return `Tỷ giá áp dụng: ${formatExchangeRate(rate)} VND/${currency}`;
 }
 
 const createActions = [
@@ -260,14 +263,11 @@ export function TransactionsMainPage() {
         key: transaction.id,
         code: transaction.transactionNo,
         source: 'WU' as const,
-        type: `WU trả ${transaction.payoutCurrency}`,
+        type: `Tỷ giá WU: ${formatExchangeRate(transaction.wuRate)} VND/USD`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: formatProviderPaidAmount(
-          transaction.paidCurrency,
-          transaction.wuUsdAmount,
-          transaction.wuVndAmount,
-        ),
+        amountLabel: formatCustomerPayout(transaction.receivedUsd, transaction.receivedVnd),
+        valueDetail: formatAppliedRate(transaction.appliedRate),
         vndAmount: transaction.transactionValueVnd,
         debtLabel: transaction.paidCurrency === 'USD'
           ? formatUsd(transaction.wuUsdAmount)
@@ -295,11 +295,8 @@ export function TransactionsMainPage() {
         type: `MG trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: formatProviderPaidAmount(
-          transaction.paidCurrency,
-          transaction.mgUsdAmount,
-          transaction.mgVndAmount,
-        ),
+        amountLabel: formatCustomerPayout(transaction.receivedUsd, transaction.receivedVnd),
+        valueDetail: formatAppliedRate(transaction.appliedRate),
         vndAmount: transaction.transactionValueVnd,
         debtLabel: transaction.paidCurrency === 'USD'
           ? formatUsd(transaction.mgUsdAmount)
@@ -327,7 +324,10 @@ export function TransactionsMainPage() {
         type: transaction.isBuy ? 'Mua ngoại tệ' : 'Bán ngoại tệ',
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
-        amountLabel: formatCurrency(transaction.fxAmount, transaction.fxCurrency),
+        amountLabel: transaction.isBuy
+          ? formatVnd(transaction.vndAmount)
+          : formatCurrency(transaction.fxAmount, transaction.fxCurrency),
+        valueDetail: formatAppliedRate(transaction.rate, transaction.fxCurrency),
         vndAmount: transaction.vndAmount,
         debtLabel: undefined,
         branchId,
@@ -349,9 +349,7 @@ export function TransactionsMainPage() {
           key: transaction.id,
           code: transaction.transactionNo,
           source: 'DOMESTIC' as const,
-          type: transaction.transferType === 'CASH_TO_BANK'
-            ? 'Nhận tiền mặt, chuyển khoản'
-            : 'Nhận chuyển khoản, trả tiền mặt',
+          type: `Phí GD: ${formatVnd(transaction.fee)}`,
           customerName: transaction.customerName ?? '',
           customerPhone: transaction.customerPhone ?? '',
           amountLabel: transaction.transferType === 'CASH_TO_BANK'
@@ -480,7 +478,14 @@ export function TransactionsMainPage() {
       key: 'transactionValue',
       align: 'right',
       width: 170,
-      render: (_, record) => <Typography.Text strong>{record.amountLabel}</Typography.Text>,
+      render: (_, record) => (
+        <Space direction="vertical" size={0} align="end">
+          <Typography.Text strong>{record.amountLabel}</Typography.Text>
+          {record.valueDetail && (
+            <Typography.Text type="secondary" className="text-xs!">{record.valueDetail}</Typography.Text>
+          )}
+        </Space>
+      ),
     },
     {
       title: 'Công nợ',

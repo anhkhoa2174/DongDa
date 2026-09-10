@@ -23,6 +23,7 @@ export type AggregatedTransaction = {
   customerName: string;
   customerPhone: string;
   amountLabel: string;
+  valueDetail?: string;
   vndAmount: number;
   debtLabel?: string;
   branch: string;
