@@ -4,7 +4,7 @@
 import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common';
 import { IShiftRepository } from '../../../domain/repositories/shift.repository';
 import { CurrencyCode } from '../../../domain/entities/shift.entity';
-import type { OpenShiftDto, CloseShiftDto } from '../../dtos/shift/shift.dto';
+import type { OpenShiftDto, CloseShiftDto, InShiftCashCountDto } from '../../dtos/shift/shift.dto';
 
 @Injectable()
 export class OpenShiftUseCase {
@@ -40,6 +40,24 @@ export class CloseShiftUseCase {
         currency: c.currency as CurrencyCode,
         actualAmount: c.actualAmount,
         denominations: c.denominations,
+      })),
+      note: dto.note,
+    });
+  }
+}
+
+@Injectable()
+export class RecordInShiftCashCountUseCase {
+  constructor(@Inject('IShiftRepository') private readonly repo: IShiftRepository) {}
+  execute(shiftId: string, dto: InShiftCashCountDto, userId: string) {
+    return this.repo.recordCashCount({
+      shiftId,
+      branchId: dto.branchId,
+      countedByUserId: userId,
+      counts: dto.counts.map((count) => ({
+        currency: count.currency as CurrencyCode,
+        actualAmount: count.actualAmount,
+        denominations: count.denominations,
       })),
       note: dto.note,
     });

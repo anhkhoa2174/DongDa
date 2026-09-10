@@ -18,6 +18,14 @@ export interface CloseShiftInput {
   note?: string;
 }
 
+export interface InShiftCashCountInput {
+  shiftId: string;
+  branchId?: string;
+  countedByUserId: string;
+  counts: CountInput[];
+  note?: string;
+}
+
 export interface ShiftWithCount {
   shift: Shift;
   cashCount?: CashCount;
@@ -27,5 +35,6 @@ export interface IShiftRepository {
   findCurrent(branchId: string): Promise<Shift | null>;
   openShift(input: OpenShiftInput): Promise<ShiftWithCount>;
   closeShift(input: CloseShiftInput): Promise<ShiftWithCount>;
+  recordCashCount(input: InShiftCashCountInput): Promise<CashCount>;
   getCashCount(shiftId: string): Promise<CashCount[]>;
 }

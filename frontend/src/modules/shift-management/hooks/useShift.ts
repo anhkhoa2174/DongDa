@@ -22,6 +22,15 @@ export function useOpenShift() {
     onSuccess: invalidate,
   });
 }
+export function useInShiftCashCount() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (value: { shiftId: string; branchId?: string; counts: CountInput[]; note?: string }) => (
+      shiftApi.count(value.shiftId, value.counts, value.branchId, value.note)
+    ),
+    onSuccess: invalidate,
+  });
+}
 export function useCloseShift() {
   const invalidate = useInvalidate();
   return useMutation({

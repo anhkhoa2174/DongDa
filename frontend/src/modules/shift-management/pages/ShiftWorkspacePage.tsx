@@ -12,6 +12,8 @@ import {
   Modal,
   Result,
   Row,
+  Select,
+  Space,
   Spin,
   Table,
   Tag,
@@ -22,17 +24,15 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   ArrowRightOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
   LockOutlined,
   PlayCircleOutlined,
+  PlusOutlined,
   SafetyCertificateOutlined,
-  UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
-import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
 import type { FundBalanceDto } from '@/modules/fund-transfer/api/fundTransfer.api';
@@ -46,7 +46,8 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useCloseShift, useCurrentShift, useOpenShift } from '../hooks/useShift';
+import { getCurrencyMetadata } from '@/shared/constants/currencies';
+import { useCloseShift, useCurrentShift, useInShiftCashCount, useOpenShift } from '../hooks/useShift';
 import type { CashCountLineDto, CountInput } from '../api/shift.api';
 
 type CountFormValues = {
@@ -90,7 +91,7 @@ function accountTypeLabel(accountType: string) {
   return accountType;
 }
 
-function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
+function countItemsFromBalances(balances: FundBalanceDto[], includeZero = false): CountItem[] {
   const grouped = balances
     .filter((item) => item.accountType === 'CASH' || item.accountType === 'FUND_A')
     .reduce<Map<string, CountItem>>((result, item) => {
@@ -108,7 +109,7 @@ function countItemsFromBalances(balances: FundBalanceDto[]): CountItem[] {
     }, new Map());
 
   return [...grouped.values()]
-    .filter((item) => Math.abs(item.balance) >= 0.005)
+    .filter((item) => includeZero || Math.abs(item.balance) >= 0.005)
     .sort((a, b) => {
       const ap = currencyPriority.includes(a.code) ? currencyPriority.indexOf(a.code) : 99;
       const bp = currencyPriority.includes(b.code) ? currencyPriority.indexOf(b.code) : 99;
@@ -207,19 +208,23 @@ export function ShiftWorkspacePage() {
   const { data: current, isLoading } = useCurrentShift(branchId);
   const { data: balances = [], isLoading: isLoadingBalances } = useFundBalances(branchId);
   const openShift = useOpenShift();
+  const inShiftCashCount = useInShiftCashCount();
   const closeShift = useCloseShift();
   const [openForm] = Form.useForm<CountFormValues>();
+  const [countForm] = Form.useForm<CountFormValues>();
   const [closeForm] = Form.useForm<CountFormValues>();
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
+  const [isCountModalOpen, setIsCountModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [extraCurrencyCodes, setExtraCurrencyCodes] = useState<string[]>([]);
 
-  const countItems = useMemo(() => countItemsFromBalances(balances), [balances]);
+  const allCountItems = useMemo(() => countItemsFromBalances(balances, true), [balances]);
+  const countItems = useMemo(() => allCountItems.filter((item) => (
+    Math.abs(item.balance) >= 0.005 || extraCurrencyCodes.includes(item.code)
+  )), [allCountItems, extraCurrencyCodes]);
   const shift = current?.shift;
   const openCount = current?.cashCounts?.[0];
-  const latestCount = current?.cashCounts?.[current.cashCounts.length - 1];
-  const hasDistinctLatestCount = Boolean(
-    latestCount && (!openCount || latestCount.id !== openCount.id),
-  );
+  const inShiftCounts = current?.cashCounts?.slice(1) ?? [];
   const isBusy = isLoading || isLoadingBalances;
 
   const showOpenModal = () => {
@@ -230,6 +235,11 @@ export function ShiftWorkspacePage() {
   const showCloseModal = () => {
     closeForm.setFieldsValue(initialCountValues(countItems));
     setIsCloseModalOpen(true);
+  };
+
+  const showCountModal = () => {
+    countForm.setFieldsValue(initialCountValues(countItems));
+    setIsCountModalOpen(true);
   };
 
   const onOpen = async (values: CountFormValues) => {
@@ -264,6 +274,23 @@ export function ShiftWorkspacePage() {
     }
   };
 
+  const onCount = async (values: CountFormValues) => {
+    if (!shift) return;
+    try {
+      await inShiftCashCount.mutateAsync({
+        shiftId: shift.id,
+        branchId,
+        counts: countLines(values, countItems),
+        note: values.note?.trim() || undefined,
+      });
+      message.success('Đã ghi nhận kiểm quỹ trong ca');
+      setIsCountModalOpen(false);
+      countForm.resetFields();
+    } catch (error: unknown) {
+      message.error(getApiErrorMessage(error, 'Kiểm quỹ thất bại'));
+    }
+  };
+
   return (
     <PageScaffold
       title="Ca làm việc & Kiểm quỹ"
@@ -282,35 +309,43 @@ export function ShiftWorkspacePage() {
         </Card>
       ) : (
         <div className="shift-workspace">
-          <OperationalOverviewCard
-            eyebrow="Ca làm việc hiện tại"
-            title={branchName}
-            icon={shift ? <CheckCircleOutlined /> : <ClockCircleOutlined />}
-            iconTone={shift ? 'success' : 'brand'}
-            meta={(
-              <Tag className="shift-hero__tag" color={shift ? 'green' : 'gold'}>
-                {shift ? 'ĐANG HOẠT ĐỘNG' : 'CHƯA MỞ CA'}
-              </Tag>
-            )}
-            aside={(
-              <Button
-                className={shift ? 'shift-hero__close-button' : 'shift-hero__open-button'}
-                type={shift ? 'default' : 'primary'}
-                danger={Boolean(shift)}
-                icon={shift ? <LockOutlined /> : <PlayCircleOutlined />}
-                onClick={shift ? showCloseModal : showOpenModal}
-                disabled={!shift && countItems.length === 0}
-                size="large"
-              >
-                {shift ? 'Kiểm quỹ và đóng ca' : 'Kiểm quỹ và mở ca'}
-              </Button>
-            )}
-            metrics={[
-              { icon: <SafetyCertificateOutlined />, label: 'Mã ca', value: shift?.shiftCode ?? 'Chưa cấp mã' },
-              { icon: <UserOutlined />, label: 'Nhân viên phụ trách', value: user?.name ?? '—' },
-              { icon: <ClockCircleOutlined />, label: 'Thời điểm mở', value: shift ? formatDateTime(shift.openedAt) : 'Chưa ghi nhận' },
-            ]}
-          />
+          <Card size="small" className="shift-toolbar">
+            <div className="shift-toolbar__content">
+              <Space wrap size={10}>
+                <Tag color={shift ? 'green' : 'gold'}>
+                  {shift ? 'CA ĐANG MỞ' : 'CHƯA MỞ CA'}
+                </Tag>
+                <Typography.Text strong>{branchName}</Typography.Text>
+                <Typography.Text type="secondary">
+                  {shift ? `${shift.shiftCode} · Mở lúc ${formatDateTime(shift.openedAt)}` : 'Chưa ghi nhận kiểm quỹ đầu ca'}
+                </Typography.Text>
+              </Space>
+              <Space wrap className="shift-toolbar__actions">
+                {shift && (
+                  <Button
+                    className="shift-hero__count-button"
+                    icon={<SafetyCertificateOutlined />}
+                    onClick={showCountModal}
+                    disabled={allCountItems.length === 0}
+                    size="large"
+                  >
+                    Kiểm quỹ
+                  </Button>
+                )}
+                <Button
+                  className={shift ? 'shift-hero__close-button' : 'shift-hero__open-button'}
+                  type={shift ? 'default' : 'primary'}
+                  danger={Boolean(shift)}
+                  icon={shift ? <LockOutlined /> : <PlayCircleOutlined />}
+                  onClick={shift ? showCloseModal : showOpenModal}
+                  disabled={!shift && allCountItems.length === 0}
+                  size="large"
+                >
+                  {shift ? 'Kiểm quỹ và đóng ca' : 'Kiểm quỹ và mở ca'}
+                </Button>
+              </Space>
+            </div>
+          </Card>
 
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16} className="flex">
@@ -343,15 +378,20 @@ export function ShiftWorkspacePage() {
             </Col>
           </Row>
 
-          {(openCount || hasDistinctLatestCount) && (
+          {(openCount || inShiftCounts.length > 0) && (
             <Card
               title={<SectionCardTitle icon={<SafetyCertificateOutlined />}>Lịch sử kiểm quỹ trong ca</SectionCardTitle>}
               extra={<Typography.Text type="secondary">Số liệu đã lưu trên hệ thống</Typography.Text>}
             >
               {openCount && <CountHistorySection title="Kiểm quỹ đầu ca" count={openCount} />}
-              {hasDistinctLatestCount && latestCount && (
-                <CountHistorySection title="Kiểm quỹ gần nhất" count={latestCount} divider={Boolean(openCount)} />
-              )}
+              {inShiftCounts.map((count, index) => (
+                <CountHistorySection
+                  key={count.id}
+                  title={`Kiểm quỹ trong ca #${index + 1}`}
+                  count={count}
+                  divider={Boolean(openCount) || index > 0}
+                />
+              ))}
             </Card>
           )}
 
@@ -360,6 +400,9 @@ export function ShiftWorkspacePage() {
             open={isOpenModalOpen}
             form={openForm}
             items={countItems}
+            availableItems={allCountItems}
+            extraCurrencyCodes={extraCurrencyCodes}
+            onExtraCurrencyCodesChange={setExtraCurrencyCodes}
             alertType="warning"
             alertMessage="Kiểm tra tiền thực tế tại quầy trước khi mở ca."
             submitText="Xác nhận và mở ca"
@@ -369,10 +412,30 @@ export function ShiftWorkspacePage() {
           />
 
           <CountModal
+            title="Kiểm quỹ trong ca"
+            open={isCountModalOpen}
+            form={countForm}
+            items={countItems}
+            availableItems={allCountItems}
+            extraCurrencyCodes={extraCurrencyCodes}
+            onExtraCurrencyCodesChange={setExtraCurrencyCodes}
+            alertType="info"
+            alertMessage="Phiếu kiểm được lưu vào lịch sử nhưng không mở hoặc đóng ca hiện tại."
+            submitText="Xác nhận kiểm quỹ"
+            loading={inShiftCashCount.isPending}
+            showNote
+            onCancel={() => setIsCountModalOpen(false)}
+            onFinish={onCount}
+          />
+
+          <CountModal
             title="Kiểm quỹ đóng ca"
             open={isCloseModalOpen}
             form={closeForm}
             items={countItems}
+            availableItems={allCountItems}
+            extraCurrencyCodes={extraCurrencyCodes}
+            onExtraCurrencyCodesChange={setExtraCurrencyCodes}
             alertType="info"
             alertMessage="Nhập số tiền thực đếm cuối ca. Sai lệch sẽ được lưu và gửi thông báo cho GĐ/KTTH."
             submitText="Đóng ca"
@@ -412,6 +475,9 @@ function CountModal({
   open,
   form,
   items,
+  availableItems,
+  extraCurrencyCodes,
+  onExtraCurrencyCodesChange,
   alertType,
   alertMessage,
   submitText,
@@ -425,6 +491,9 @@ function CountModal({
   open: boolean;
   form: FormInstance<CountFormValues>;
   items: CountItem[];
+  availableItems: CountItem[];
+  extraCurrencyCodes: string[];
+  onExtraCurrencyCodesChange: (codes: string[]) => void;
   alertType: 'info' | 'warning';
   alertMessage: string;
   submitText: string;
@@ -445,10 +514,46 @@ function CountModal({
     const actual = actualCount(watchedValues, item);
     return Math.abs(actual - Number(item.balance)) >= 0.005;
   });
+  const extraCurrencyOptions = availableItems
+    .filter((item) => Math.abs(item.balance) < 0.005)
+    .map((item) => {
+      const currency = getCurrencyMetadata(item.code);
+      return { value: item.code, label: `${item.code} - ${currency.name}` };
+    });
+  const handleExtraCurrenciesChange = (codes: string[]) => {
+    const selectedItems = availableItems.filter((item) => (
+      Math.abs(item.balance) >= 0.005 || codes.includes(item.code)
+    ));
+    const defaults = initialCountValues(selectedItems);
+    const current = form.getFieldsValue();
+    form.setFieldsValue({
+      counts: { ...defaults.counts, ...current.counts },
+      denominations: { ...defaults.denominations, ...current.denominations },
+    });
+    onExtraCurrencyCodesChange(codes);
+  };
   return (
     <Modal className="shift-count-modal" title={title} open={open} onCancel={onCancel} footer={null} width={920} destroyOnClose>
       <Alert type={alertType} showIcon className="mb-4" message={alertMessage} />
       <Form form={form} layout="vertical" onFinish={onFinish}>
+        <div className="shift-count-currency-picker">
+          <div>
+            <Typography.Text strong>Loại tiền kiểm thêm</Typography.Text>
+            <Typography.Text type="secondary">Chọn loại tiền có sổ quỹ nhưng đang có số dư 0</Typography.Text>
+          </div>
+          <Select
+            mode="multiple"
+            allowClear
+            maxTagCount="responsive"
+            value={extraCurrencyCodes}
+            options={extraCurrencyOptions}
+            onChange={handleExtraCurrenciesChange}
+            placeholder="Thêm loại tiền khác"
+            suffixIcon={<PlusOutlined />}
+            className="shift-count-currency-picker__select"
+            disabled={extraCurrencyOptions.length === 0}
+          />
+        </div>
         <div className="shift-count-list">
           {items.map((item) => {
             const denominations = cashDenominations[item.code];

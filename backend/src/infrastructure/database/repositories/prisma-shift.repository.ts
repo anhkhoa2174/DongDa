@@ -4,7 +4,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
-  IShiftRepository, OpenShiftInput, CloseShiftInput, ShiftWithCount,
+  IShiftRepository, OpenShiftInput, CloseShiftInput, InShiftCashCountInput, ShiftWithCount,
 } from '../../../domain/repositories/shift.repository';
 import { Shift, CashCount, CurrencyCode, CountInput } from '../../../domain/entities/shift.entity';
 import { NotificationService } from '../../notifications/notification.service';
@@ -120,6 +120,34 @@ export class PrismaShiftRepository implements IShiftRepository {
       return { shift: toShift(updated), cashCount: count };
     });
     return result;
+  }
+
+  async recordCashCount(input: InShiftCashCountInput): Promise<CashCount> {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM shifts WHERE id = ${input.shiftId}::uuid FOR UPDATE`;
+      const shift = await tx.shifts.findUnique({ where: { id: input.shiftId } });
+      if (!shift) throw new NotFoundException('Không tìm thấy ca');
+      if (input.branchId && shift.branch_id !== input.branchId) {
+        throw new BadRequestException('Không thể kiểm quỹ của chi nhánh khác');
+      }
+      if (shift.status !== 'OPEN') {
+        throw new BadRequestException('Chỉ có thể kiểm quỹ độc lập khi ca đang mở');
+      }
+
+      const count = await this.createCashCount(
+        tx,
+        shift.id,
+        shift.branch_id,
+        input.countedByUserId,
+        input.counts,
+        now,
+        input.note?.trim() || 'Kiểm quỹ trong ca',
+      );
+      this.requireVarianceNote(count, input.note, 'Kiểm quỹ trong ca');
+      await this.notifyCashVariance(tx, shift.branch_id, count.id, count, 'Sai lệch kiểm quỹ trong ca');
+      return count;
+    });
   }
 
   async getCashCount(shiftId: string): Promise<CashCount[]> {
@@ -261,21 +289,36 @@ export class PrismaShiftRepository implements IShiftRepository {
     return lines.reduce((s: number, l: any) => s + (l.direction === 'DEBIT' ? Number(l.amount) : -Number(l.amount)), 0);
   }
 
-  private async notifyCashVariance(tx: any, branchId: string, shiftId: string, count: CashCount) {
+  private async notifyCashVariance(
+    tx: any,
+    branchId: string,
+    sourceId: string,
+    count: CashCount,
+    title = 'Sai lệch kiểm quỹ khi đóng ca',
+  ) {
     const variances = count.lines.filter((line) => Math.abs(line.variance) >= 0.01);
     if (variances.length === 0) return;
 
     await this.notifications.notifyUsers({
-      title: 'Sai lệch kiểm quỹ khi đóng ca',
+      title,
       body: variances
         .map((line) => `${line.currencyCode}: hệ thống ${line.systemAmount}, thực đếm ${line.actualAmount}, lệch ${line.variance}`)
         .join('\n'),
       sourceType: 'SHIFT_CASH_COUNT',
-      sourceId: shiftId,
+      sourceId,
     }, {
       roles: ['ADMIN', 'MANAGER'],
       branchIds: [branchId],
     }, tx);
+  }
+
+  private requireVarianceNote(count: CashCount, note: string | undefined, action: string) {
+    const variances = count.lines.filter((line) => Number(line.variance) !== 0);
+    if (variances.length === 0 || note?.trim()) return;
+    const detail = variances
+      .map((line) => `${line.currencyCode} ${Number(line.variance) > 0 ? '+' : ''}${line.variance}`)
+      .join(', ');
+    throw new BadRequestException(`${action} có chênh lệch (${detail}). Vui lòng nhập lý do chênh lệch.`);
   }
 }
 

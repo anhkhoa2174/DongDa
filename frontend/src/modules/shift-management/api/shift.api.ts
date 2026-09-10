@@ -36,6 +36,8 @@ export const shiftApi = {
     httpClient.get<CurrentShiftDto>('/shifts/current', { params: { branchId } }).then((r) => r.data),
   open: (branchId: string, openingCounts: CountInput[]) =>
     httpClient.post('/shifts/open', { branchId, openingCounts }).then((r) => r.data),
+  count: (shiftId: string, counts: CountInput[], branchId?: string, note?: string) =>
+    httpClient.post(`/shifts/${shiftId}/cash-count`, { branchId, counts, note }).then((r) => r.data),
   close: (shiftId: string, closingCounts: CountInput[], branchId?: string, note?: string) =>
     httpClient.post(`/shifts/${shiftId}/close`, { branchId, closingCounts, note }).then((r) => r.data),
 };

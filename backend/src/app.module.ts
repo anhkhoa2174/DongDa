@@ -55,7 +55,7 @@ import { PrismaReportsRepository } from './infrastructure/database/repositories/
 import { GetSummaryUseCase } from './application/use-cases/reports/get-summary.use-case';
 import { ShiftController } from './interfaces/http/controllers/shift.controller';
 import { PrismaShiftRepository } from './infrastructure/database/repositories/prisma-shift.repository';
-import { OpenShiftUseCase, CloseShiftUseCase, CurrentShiftUseCase } from './application/use-cases/shift/shift.use-cases';
+import { OpenShiftUseCase, CloseShiftUseCase, CurrentShiftUseCase, RecordInShiftCashCountUseCase } from './application/use-cases/shift/shift.use-cases';
 import { OrganizationController } from './interfaces/http/controllers/organization.controller';
 import { TransactionAdminController } from './interfaces/http/controllers/transaction-admin.controller';
 import { BranchMonitoringController } from './interfaces/http/controllers/branch-monitoring.controller';
@@ -221,6 +221,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     OpenShiftUseCase,
     CloseShiftUseCase,
+    RecordInShiftCashCountUseCase,
     CurrentShiftUseCase,
 
     JwtStrategy,

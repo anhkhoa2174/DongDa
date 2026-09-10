@@ -62,3 +62,19 @@ export class CloseShiftDto {
   @IsString()
   note?: string;
 }
+
+export class InShiftCashCountDto {
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CountLineDto)
+  counts: CountLineDto[];
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}

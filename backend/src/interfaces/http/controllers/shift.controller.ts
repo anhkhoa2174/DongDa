@@ -2,6 +2,7 @@
 // Layer: Interface (HTTP)
 //   GET  /shifts/current?branchId   ca đang mở + kiểm quỹ
 //   POST /shifts/open               mở ca + kiểm quỹ đầu ca
+//   POST /shifts/:id/cash-count     kiểm quỹ trong ca, không thay đổi trạng thái ca
 //   POST /shifts/:id/close          đóng ca + kiểm quỹ cuối ca (khớp/thừa/thiếu)
 
 import { BadRequestException, Controller, Post, Get, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
@@ -9,8 +10,8 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { BranchAccessGuard } from '../guards/branch-access.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
-import { OpenShiftUseCase, CloseShiftUseCase, CurrentShiftUseCase } from '../../../application/use-cases/shift/shift.use-cases';
-import { OpenShiftDto, CloseShiftDto } from '../../../application/dtos/shift/shift.dto';
+import { OpenShiftUseCase, CloseShiftUseCase, CurrentShiftUseCase, RecordInShiftCashCountUseCase } from '../../../application/use-cases/shift/shift.use-cases';
+import { OpenShiftDto, CloseShiftDto, InShiftCashCountDto } from '../../../application/dtos/shift/shift.dto';
 
 @Controller('shifts')
 @UseGuards(JwtAuthGuard, BranchAccessGuard)
@@ -18,6 +19,7 @@ export class ShiftController {
   constructor(
     private readonly openShift: OpenShiftUseCase,
     private readonly closeShift: CloseShiftUseCase,
+    private readonly recordCashCount: RecordInShiftCashCountUseCase,
     private readonly currentShift: CurrentShiftUseCase,
   ) {}
 
@@ -30,6 +32,16 @@ export class ShiftController {
       throw new BadRequestException('Vui lòng chọn chi nhánh để xem ca hiện tại');
     }
     return this.currentShift.execute(branchId);
+  }
+
+  @Post(':id/cash-count')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  count(@Request() req: any, @Param('id') id: string, @Body() dto: InShiftCashCountDto) {
+    if (req.user.role === UserRole.STAFF) {
+      dto.branchId = req.user.branchId;
+    }
+    return this.recordCashCount.execute(id, dto, req.user.id);
   }
 
   @Post('open')
