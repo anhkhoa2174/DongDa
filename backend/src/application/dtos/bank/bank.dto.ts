@@ -2,7 +2,7 @@
 // Layer: Application
 
 import {
-  IsUUID, IsNumber, IsPositive, IsOptional, IsString, IsEnum, IsIn, Min, MaxLength, IsDateString, Matches,
+  ArrayMinSize, ArrayUnique, IsArray, IsUUID, IsNumber, IsPositive, IsOptional, IsString, IsEnum, IsIn, Min, MaxLength, IsDateString, Matches,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
@@ -133,4 +133,12 @@ export class SettleAdvanceCkDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+}
+
+export class SettleAdvanceCkBatchDto extends SettleAdvanceCkDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  advanceMovementIds: string[];
 }

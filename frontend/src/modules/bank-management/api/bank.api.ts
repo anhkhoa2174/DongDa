@@ -69,6 +69,13 @@ export interface InternalBankTransferResult {
   toMovement: BankMovementDto;
 }
 
+export interface SettleAdvanceBatchResult {
+  movements: BankMovementDto[];
+  count: number;
+  currencyCode: string;
+  totalAmount: number;
+}
+
 export interface DebtAccountDto {
   id: string;
   name: string;
@@ -118,6 +125,9 @@ export const bankApi = {
   settleAdvanceCk: (advanceId: string, payload: { source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
     runIdempotent(`BANK_ADVANCE_SETTLE:${advanceId}`, payload, (headers) =>
       httpClient.post<BankMovementDto>(`/bank/advance-ck/${advanceId}/settle`, payload, { headers }).then((r) => r.data)),
+  settleAdvanceCkBatch: (payload: { advanceMovementIds: string[]; source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT'; sourceBankAccountId?: string; note?: string }) =>
+    runIdempotent('BANK_ADVANCE_SETTLE_BATCH', payload, (headers) =>
+      httpClient.post<SettleAdvanceBatchResult>('/bank/advance-ck/settle-batch', payload, { headers }).then((r) => r.data)),
   debts: () => httpClient.get<DebtAccountDto[]>('/debts').then((r) => r.data),
   receive: (payload: { bankAccountId: string; debtAccountId: string; amount: number; bankReference?: string; description?: string }) =>
     httpClient.post('/bank/receive', payload).then((r) => r.data),

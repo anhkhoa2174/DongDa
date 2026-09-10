@@ -17,7 +17,7 @@ import {
 import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type Key } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
@@ -153,7 +153,13 @@ export function BankAccountsPage() {
   }, [pendingAdvances]);
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   // Hoàn ứng phải chọn nguồn đối ứng (quỹ tiền mặt CN / TK ngân hàng khác) -> mở form
-  const [settling, setSettling] = useState<BankMovementDto | null>(null);
+  const [selectedAdvanceIds, setSelectedAdvanceIds] = useState<Key[]>([]);
+  const [settling, setSettling] = useState<BankMovementDto[] | null>(null);
+  const selectedAdvances = useMemo(
+    () => pendingAdvances.filter((advance) => selectedAdvanceIds.includes(advance.id)),
+    [pendingAdvances, selectedAdvanceIds],
+  );
+  const selectedCurrency = selectedAdvances[0]?.currencyCode;
   const advanceCols: ColumnsType<BankMovementDto> = [
     { title: 'Ngày', dataIndex: 'businessDate', width: 100, render: (v: string) => dayjs(v).format('DD/MM/YYYY') },
     { title: 'Số phiếu', dataIndex: 'movementNo', width: 200 },
@@ -176,7 +182,7 @@ export function BankAccountsPage() {
     ...(canManage && advanceTab === 'ADVANCE_CK' ? [{
       title: '', width: 110,
       render: (_: unknown, r: BankMovementDto) => (
-        <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setSettling(r)}>Hoàn</Button>
+        <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => setSettling([r])}>Hoàn</Button>
       ),
     }] : []),
   ];
@@ -239,15 +245,30 @@ export function BankAccountsPage() {
               <Typography.Title level={4}>Tạm ứng chuyển khoản</Typography.Title>
               <Typography.Text type="secondary">Các khoản phát sinh khi nhận tiền mặt và chuyển khoản.</Typography.Text>
             </div>
-            <Segmented
-              value={advanceTab}
-              onChange={(value) => setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED' | 'VOIDED')}
-              options={[
-                { value: 'ADVANCE_CK', label: `Chưa hoàn (${pendingAdvances.length})` },
-                { value: 'SETTLED', label: 'Đã hoàn' },
-                { value: 'VOIDED', label: 'Đã hủy' },
-              ]}
-            />
+            <Space wrap>
+              {canManage && advanceTab === 'ADVANCE_CK' && (
+                <Button
+                  type="primary"
+                  icon={<CheckOutlined />}
+                  disabled={selectedAdvances.length === 0}
+                  onClick={() => setSettling(selectedAdvances)}
+                >
+                  Xem trước hoàn ({selectedAdvances.length})
+                </Button>
+              )}
+              <Segmented
+                value={advanceTab}
+                onChange={(value) => {
+                  setAdvanceTab(value as 'ADVANCE_CK' | 'SETTLED' | 'VOIDED');
+                  setSelectedAdvanceIds([]);
+                }}
+                options={[
+                  { value: 'ADVANCE_CK', label: `Chưa hoàn (${pendingAdvances.length})` },
+                  { value: 'SETTLED', label: 'Đã hoàn' },
+                  { value: 'VOIDED', label: 'Đã hủy' },
+                ]}
+              />
+            </Space>
           </div>
           <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols}
             dataSource={advanceTab === 'ADVANCE_CK'
@@ -256,6 +277,19 @@ export function BankAccountsPage() {
                 ? settledAdvances
                 : voidedAdvances}
             pagination={{ pageSize: 8, hideOnSinglePage: true }} scroll={{ x: 820 }}
+            rowSelection={canManage && advanceTab === 'ADVANCE_CK' ? {
+              selectedRowKeys: selectedAdvanceIds,
+              onChange: (keys, selectedRows) => {
+                const currency = selectedRows[0]?.currencyCode;
+                const sameCurrencyIds = new Set(selectedRows
+                  .filter((advance) => advance.currencyCode === currency)
+                  .map((advance) => advance.id));
+                setSelectedAdvanceIds(keys.filter((key) => sameCurrencyIds.has(String(key))));
+              },
+              getCheckboxProps: (record) => ({
+                disabled: Boolean(selectedCurrency && record.currencyCode !== selectedCurrency),
+              }),
+            } : undefined}
             locale={{
               emptyText: advanceTab === 'ADVANCE_CK'
                 ? 'Không có khoản tạm ứng nào đang chờ hoàn'
@@ -325,7 +359,17 @@ export function BankAccountsPage() {
       </Space>
 
       <CreateBankAccountModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      {settling && <SettleAdvanceModal advance={settling} accounts={allAccounts} open onClose={() => setSettling(null)} />}
+      {settling && (
+        <SettleAdvanceModal
+          advances={settling}
+          accounts={allAccounts}
+          open
+          onClose={() => {
+            setSettling(null);
+            setSelectedAdvanceIds([]);
+          }}
+        />
+      )}
       {internalTransferSource && (
         <InternalBankTransferModal
           accounts={allAccounts}

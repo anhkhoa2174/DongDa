@@ -1,12 +1,12 @@
 // Hoàn tạm ứng CK — bắt buộc chọn NGUỒN đối ứng (không tự sinh tiền):
 //   Quỹ chung: trừ tiền mặt tại Hội sở -> cộng lại TK đã ứng
 //   Tài khoản ngân hàng khác: CK nội bộ — trừ TK nguồn -> cộng TK đã ứng
-import { App, Form, Input, Modal, Segmented, Select, Typography } from 'antd';
+import { App, Descriptions, Form, Input, Modal, Segmented, Select, Table, Tag, Typography } from 'antd';
 import { useMemo } from 'react';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { formatBankAccountLabel, formatUsd, formatVnd } from '@/shared/utils/formatters';
 import type { BankAccountDto, BankMovementDto } from '../api/bank.api';
-import { useSettleAdvanceCk } from '../hooks/useBank';
+import { useSettleAdvanceCkBatch } from '../hooks/useBank';
 
 interface FormValues {
   source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
@@ -15,38 +15,37 @@ interface FormValues {
 }
 
 export function SettleAdvanceModal({
-  advance, accounts, open, onClose,
-}: { advance: BankMovementDto; accounts: BankAccountDto[]; open: boolean; onClose: () => void }) {
+  advances, accounts, open, onClose,
+}: { advances: BankMovementDto[]; accounts: BankAccountDto[]; open: boolean; onClose: () => void }) {
   const { message } = App.useApp();
   const [form] = Form.useForm<FormValues>();
-  const settle = useSettleAdvanceCk();
-  const target = accounts.find((a) => a.id === advance.bankAccountId);
-  const money = advance.currencyCode === 'VND' ? formatVnd : formatUsd;
+  const settle = useSettleAdvanceCkBatch();
+  const currencyCode = advances[0]?.currencyCode ?? 'VND';
+  const money = currencyCode === 'VND' ? formatVnd : formatUsd;
+  const totalAmount = advances.reduce((sum, advance) => sum + advance.amount, 0);
+  const targetIds = useMemo(() => new Set(advances.map((advance) => advance.bankAccountId)), [advances]);
+  const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
 
   const sourceOptions = useMemo(
     () => accounts
-      .filter((a) => a.id !== advance.bankAccountId && a.currencyCode === advance.currencyCode && a.status === 'ACTIVE')
+      .filter((a) => !targetIds.has(a.id) && a.currencyCode === currencyCode && a.status === 'ACTIVE')
       .map((a) => ({
         value: a.id,
         label: formatBankAccountLabel(a),
       })),
-    [accounts, advance],
+    [accounts, currencyCode, targetIds],
   );
 
   const submit = async () => {
     const values = await form.validateFields();
     try {
       const result = await settle.mutateAsync({
-        advanceId: advance.id,
+        advanceMovementIds: advances.map((advance) => advance.id),
         source: values.source,
         sourceBankAccountId: values.source === 'BANK_ACCOUNT' ? values.sourceBankAccountId : undefined,
         note: values.note?.trim() || undefined,
       });
-      const source = result.settlementSource;
-      const successMessage = source
-        ? `Đã hoàn ứng. ${source.label}: ${money(source.balanceBefore)} → ${money(source.balanceAfter)}`
-        : result.description ?? `Đã hoàn tạm ứng ${advance.movementNo}`;
-      message.success(successMessage, 8);
+      message.success(`Đã hoàn ${result.count} phiếu, tổng ${money(result.totalAmount)}`, 8);
       form.resetFields();
       onClose();
     } catch (error: unknown) {
@@ -56,21 +55,36 @@ export function SettleAdvanceModal({
 
   return (
     <Modal
-      title={`Hoàn tạm ứng ${advance.movementNo}`}
+      title="Kiểm tra trước khi hoàn"
       open={open}
-      okText="Hoàn ứng"
+      width={760}
+      okText={`Hoàn ${advances.length} phiếu`}
       cancelText="Hủy"
       confirmLoading={settle.isPending}
       onCancel={() => { form.resetFields(); onClose(); }}
       onOk={submit}
       destroyOnClose
     >
-      <Typography.Paragraph type="secondary" className="mb-3!">
-        Cộng lại <b>{money(advance.amount)}</b> vào TK {target ? formatBankAccountLabel(target) : '—'}.
-        Chọn nguồn tiền bị trừ đối ứng:
-      </Typography.Paragraph>
+      <Descriptions size="small" bordered column={{ xs: 1, sm: 3 }} className="mb-4!">
+        <Descriptions.Item label="Số phiếu"><b>{advances.length}</b></Descriptions.Item>
+        <Descriptions.Item label="Loại tiền"><Tag>{currencyCode}</Tag></Descriptions.Item>
+        <Descriptions.Item label="Tổng hoàn"><Typography.Text strong>{money(totalAmount)}</Typography.Text></Descriptions.Item>
+      </Descriptions>
+      <Table<BankMovementDto>
+        rowKey="id"
+        size="small"
+        pagination={false}
+        scroll={{ y: 240 }}
+        dataSource={advances}
+        columns={[
+          { title: 'Số phiếu', dataIndex: 'movementNo', ellipsis: true },
+          { title: 'Tài khoản nhận hoàn', dataIndex: 'bankAccountId', ellipsis: true,
+            render: (id: string) => accountById.has(id) ? formatBankAccountLabel(accountById.get(id)!) : id },
+          { title: 'Số tiền', dataIndex: 'amount', align: 'right', width: 150, render: (amount: number) => money(amount) },
+        ]}
+      />
       <Form form={form} layout="vertical" initialValues={{ source: 'HEAD_OFFICE_CASH' }}>
-        <Form.Item name="source" label="Nguồn hoàn ứng" rules={[{ required: true }]}>
+        <Form.Item name="source" label="Nguồn bị trừ" rules={[{ required: true }]} className="mt-4!">
           <Segmented
             block
             options={[
@@ -83,11 +97,11 @@ export function SettleAdvanceModal({
           {({ getFieldValue }) => getFieldValue('source') === 'BANK_ACCOUNT' ? (
             <Form.Item name="sourceBankAccountId" label="Tài khoản nguồn (bị trừ)"
               rules={[{ required: true, message: 'Chọn tài khoản nguồn' }]}>
-              <Select showSearch optionFilterProp="label" placeholder={`Cùng loại tiền ${advance.currencyCode}`} options={sourceOptions} />
+              <Select showSearch optionFilterProp="label" placeholder={`Cùng loại tiền ${currencyCode}`} options={sourceOptions} />
             </Form.Item>
           ) : (
             <Typography.Paragraph type="secondary" className="text-xs!">
-              Trừ tiền mặt {advance.currencyCode} tại Quỹ chung, ghi phiếu chi và bút toán sổ quỹ Hội sở.
+              Trừ tổng {money(totalAmount)} tiền mặt tại Quỹ chung, ghi phiếu chi và bút toán sổ quỹ Hội sở.
             </Typography.Paragraph>
           )}
         </Form.Item>

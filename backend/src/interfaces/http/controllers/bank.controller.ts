@@ -21,7 +21,7 @@ import {
 } from '../../../application/use-cases/bank/bank.use-cases';
 import {
   ReceiveFromProviderDto, CreateBankAccountDto, CreateBankMovementDto, CreateInternalBankTransferDto,
-  SettleAdvanceCkDto,
+  SettleAdvanceCkBatchDto, SettleAdvanceCkDto,
 } from '../../../application/dtos/bank/bank.dto';
 import { requireIdempotencyKey } from '../idempotency-key';
 
@@ -101,6 +101,18 @@ export class BankController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   receiveMoney(@Request() req: any, @Body() dto: ReceiveFromProviderDto) {
     return this.receive.execute(dto, req.user.id);
+  }
+
+  // Hoàn nhiều phiếu trong một transaction — KTTH/GĐ
+  @Post('advance-ck/settle-batch')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  settleAdvanceCkBatch(
+    @Request() req: any,
+    @Body() dto: SettleAdvanceCkBatchDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.settleAdvance.executeBatch(dto, req.user.id, requireIdempotencyKey(idempotencyKey));
   }
 
   // Hoàn lại tạm ứng CK cuối ngày bằng tài khoản chính — KTTH/GĐ

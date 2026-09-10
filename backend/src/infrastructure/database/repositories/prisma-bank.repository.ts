@@ -5,7 +5,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma.service';
 import {
   IBankRepository, ReceiveFromProviderInput, CreateBankAccountInput, CreateBankMovementInput,
-  InternalBankTransferInput,
+  InternalBankTransferInput, SettleAdvanceCkBatchInput, SettleAdvanceCkBatchResult, SettleAdvanceCkInput,
 } from '../../../domain/repositories/bank.repository';
 import {
   Bank, BankAccount, BankMovement, CurrencyCode, InternalBankTransferResult, isBankInflow,
@@ -524,19 +524,86 @@ export class PrismaBankRepository implements IBankRepository {
   // Hoàn lại tạm ứng CK cuối ngày — PHẢI có tài khoản đối ứng (không tự sinh tiền):
   //   HEAD_OFFICE_CASH: chi Quỹ chung (ghi cash_movements + ledger CREDIT) -> TK ngân hàng tăng
   //   BANK_ACCOUNT: chuyển khoản nội bộ — TK nguồn giảm (TRANSFER_OUT) -> TK đã ứng tăng
-  async settleAdvanceCk(input: import('../../../domain/repositories/bank.repository').SettleAdvanceCkInput): Promise<BankMovement> {
+  async settleAdvanceCk(input: SettleAdvanceCkInput): Promise<BankMovement> {
+    const movements = await this.settleAdvanceGroup(
+      `BANK_ADVANCE_SETTLE:${input.advanceMovementId}`,
+      input.idempotencyKey,
+      input,
+      [input],
+    );
+    return movements[0];
+  }
+
+  async settleAdvanceCkBatch(input: SettleAdvanceCkBatchInput): Promise<SettleAdvanceCkBatchResult> {
+    const ids = [...new Set(input.advanceMovementIds)].sort();
+    if (ids.length === 0 || ids.length !== input.advanceMovementIds.length) {
+      throw new BadRequestException('Danh sách phiếu hoàn không hợp lệ hoặc bị trùng');
+    }
+    if (ids.length > 100) {
+      throw new BadRequestException('Mỗi lần chỉ được hoàn tối đa 100 phiếu');
+    }
+    const movements = await this.settleAdvanceGroup(
+      'BANK_ADVANCE_SETTLE_BATCH',
+      input.idempotencyKey,
+      input,
+      ids.map((advanceMovementId) => ({
+        ...input,
+        advanceMovementId,
+      })),
+    );
+    const currencies = new Set(movements.map((movement) => movement.currencyCode));
+    if (currencies.size !== 1) {
+      throw new BadRequestException('Các phiếu hoàn trong một lần phải cùng loại tiền');
+    }
+    return {
+      movements,
+      count: movements.length,
+      currencyCode: movements[0].currencyCode,
+      totalAmount: movements.reduce((sum, movement) => sum + movement.amount, 0),
+    };
+  }
+
+  private async settleAdvanceGroup(
+    idempotencyScope: string,
+    idempotencyKey: string,
+    payload: unknown,
+    inputs: SettleAdvanceCkInput[],
+  ): Promise<BankMovement[]> {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
-    const idempotencyScope = `BANK_ADVANCE_SETTLE:${input.advanceMovementId}`;
     return this.prisma.$transaction(async (tx) => {
-      const replay = await claimFinancialRequest<BankMovement>(
+      const replay = await claimFinancialRequest<BankMovement[]>(
         tx,
         idempotencyScope,
-        input.idempotencyKey,
-        input,
+        idempotencyKey,
+        payload,
       );
       if (replay) return replay;
 
+      // Mọi thao tác hoàn đơn và hàng loạt đi qua cùng lock để tránh hai batch
+      // khóa chéo các tài khoản/quỹ theo tập phiếu khác nhau.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('BANK_ADVANCE_SETTLEMENT'))`;
+      const movements: BankMovement[] = [];
+      let currencyCode: string | undefined;
+      for (const input of inputs) {
+        const movement = await this.settleAdvanceCkInTx(tx, input, now, businessDate);
+        if (currencyCode && movement.currencyCode !== currencyCode) {
+          throw new BadRequestException('Các phiếu hoàn trong một lần phải cùng loại tiền');
+        }
+        currencyCode = movement.currencyCode;
+        movements.push(movement);
+      }
+      await completeFinancialRequest(tx, idempotencyScope, idempotencyKey, movements);
+      return movements;
+    });
+  }
+
+  private async settleAdvanceCkInTx(
+    tx: any,
+    input: SettleAdvanceCkInput,
+    now: Date,
+    businessDate: Date,
+  ): Promise<BankMovement> {
       const advance = await tx.bank_balance_movements.findUnique({ where: { id: input.advanceMovementId } });
       if (!advance || advance.movement_type !== 'ADVANCE_CK') {
         throw new BadRequestException('Không tìm thấy phiếu tạm ứng CK hợp lệ');
@@ -750,9 +817,7 @@ export class PrismaBankRepository implements IBankRepository {
           balanceAfter: sourceBalanceAfter,
         },
       };
-      await completeFinancialRequest(tx, idempotencyScope, input.idempotencyKey, result);
       return result;
-    });
   }
 
   // Tỷ giá quy đổi VND cho bút toán tiền mặt: VND = 1, ngoại tệ lấy FX_BUY active (fallback 1)

@@ -58,6 +58,22 @@ export interface SettleAdvanceCkInput {
   note?: string;
 }
 
+export interface SettleAdvanceCkBatchInput {
+  idempotencyKey: string;
+  advanceMovementIds: string[];
+  source: 'HEAD_OFFICE_CASH' | 'BANK_ACCOUNT';
+  sourceBankAccountId?: string;
+  settledByUserId: string;
+  note?: string;
+}
+
+export interface SettleAdvanceCkBatchResult {
+  movements: BankMovement[];
+  count: number;
+  currencyCode: CurrencyCode;
+  totalAmount: number;
+}
+
 export interface ListAdvancesFilter {
   bankAccountId?: string;
   branchId?: string;
@@ -79,5 +95,6 @@ export interface IBankRepository {
   // Ghi nhận tiền WU/MG về: NH tăng + công nợ giảm (1 transaction)
   receiveFromProvider(input: ReceiveFromProviderInput): Promise<BankMovement>;
   settleAdvanceCk(input: SettleAdvanceCkInput): Promise<BankMovement>;
+  settleAdvanceCkBatch(input: SettleAdvanceCkBatchInput): Promise<SettleAdvanceCkBatchResult>;
   listAdvances(filter?: ListAdvancesFilter): Promise<BankMovement[]>;
 }

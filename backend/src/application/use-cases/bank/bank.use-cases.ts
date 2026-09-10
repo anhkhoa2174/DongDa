@@ -10,7 +10,7 @@ import { Bank, BankAccount, BankMovement, CurrencyCode, InternalBankTransferResu
 import { UserRole, GLOBAL_ROLES } from '../../../domain/entities/user.entity';
 import type {
   CreateBankAccountDto, CreateBankMovementDto, CreateInternalBankTransferDto,
-  ReceiveFromProviderDto, SettleAdvanceCkDto,
+  ReceiveFromProviderDto, SettleAdvanceCkBatchDto, SettleAdvanceCkDto,
 } from '../../dtos/bank/bank.dto';
 import { toVietnamBusinessDate } from '../../../infrastructure/database/business-date';
 
@@ -152,6 +152,24 @@ export class SettleAdvanceCkUseCase {
     return this.bankRepo.settleAdvanceCk({
       idempotencyKey,
       advanceMovementId,
+      source: dto.source,
+      sourceBankAccountId: dto.sourceBankAccountId,
+      note: dto.note?.trim() || undefined,
+      settledByUserId,
+    });
+  }
+
+  async executeBatch(
+    dto: SettleAdvanceCkBatchDto,
+    settledByUserId: string,
+    idempotencyKey: string,
+  ) {
+    if (dto.source === 'BANK_ACCOUNT' && !dto.sourceBankAccountId) {
+      throw new BadRequestException('Hoàn bằng chuyển khoản nội bộ phải chọn tài khoản nguồn');
+    }
+    return this.bankRepo.settleAdvanceCkBatch({
+      idempotencyKey,
+      advanceMovementIds: dto.advanceMovementIds,
       source: dto.source,
       sourceBankAccountId: dto.sourceBankAccountId,
       note: dto.note?.trim() || undefined,

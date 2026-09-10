@@ -65,6 +65,13 @@ export function useSettleAdvanceCk() {
     onSuccess: invalidate,
   });
 }
+export function useSettleAdvanceCkBatch() {
+  const invalidate = useInvalidateBank();
+  return useMutation({
+    mutationFn: bankApi.settleAdvanceCkBatch,
+    onSuccess: invalidate,
+  });
+}
 export function useReceiveMoney() {
   const qc = useQueryClient();
   return useMutation({

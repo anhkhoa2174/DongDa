@@ -1,6 +1,7 @@
 import { ForbiddenException, BadRequestException } from '@nestjs/common';
 import {
   InternalBankTransferUseCase, ListBankUseCase, RecordBankMovementUseCase, ManageBankAccountUseCase,
+  SettleAdvanceCkUseCase,
 } from './bank.use-cases';
 import { UserRole } from '../../../domain/entities/user.entity';
 
@@ -23,6 +24,8 @@ function makeRepo() {
     createMovement: jest.fn().mockResolvedValue({ id: 'mv-1' }),
     transferInternal: jest.fn().mockResolvedValue({ transferReference: 'CKNB-1' }),
     receiveFromProvider: jest.fn(),
+    settleAdvanceCk: jest.fn(),
+    settleAdvanceCkBatch: jest.fn().mockResolvedValue({ movements: [], count: 2, currencyCode: 'VND', totalAmount: 300 }),
   };
 }
 
@@ -116,5 +119,40 @@ describe('Bank use-cases — đọc toàn công ty, ghi theo phân quyền', () 
     const uc = new ManageBankAccountUseCase(repo as any);
     await expect(uc.deactivate('acc-1')).rejects.toBeInstanceOf(BadRequestException);
     expect(repo.deactivateAccount).toHaveBeenCalledWith('acc-1');
+  });
+
+  it('hoàn nhiều phiếu bằng một request và giữ nguyên idempotency key', async () => {
+    const repo = makeRepo();
+    const uc = new SettleAdvanceCkUseCase(repo as any);
+    await uc.executeBatch({
+      advanceMovementIds: [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+      ],
+      source: 'HEAD_OFFICE_CASH',
+      note: '  Hoàn cuối ngày  ',
+    }, 'admin', 'batch-key-1');
+
+    expect(repo.settleAdvanceCkBatch).toHaveBeenCalledWith({
+      advanceMovementIds: [
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+      ],
+      source: 'HEAD_OFFICE_CASH',
+      sourceBankAccountId: undefined,
+      note: 'Hoàn cuối ngày',
+      settledByUserId: 'admin',
+      idempotencyKey: 'batch-key-1',
+    });
+  });
+
+  it('hoàn hàng loạt từ ngân hàng bắt buộc chọn tài khoản nguồn', async () => {
+    const repo = makeRepo();
+    const uc = new SettleAdvanceCkUseCase(repo as any);
+    await expect(uc.executeBatch({
+      advanceMovementIds: ['00000000-0000-4000-8000-000000000001'],
+      source: 'BANK_ACCOUNT',
+    }, 'admin', 'batch-key-2')).rejects.toBeInstanceOf(BadRequestException);
+    expect(repo.settleAdvanceCkBatch).not.toHaveBeenCalled();
   });
 });
