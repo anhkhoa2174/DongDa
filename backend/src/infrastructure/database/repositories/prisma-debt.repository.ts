@@ -279,10 +279,9 @@ export class PrismaDebtRepository implements IDebtRepository {
       const sameGroup = accounts.every((account) => (
         account.provider_code === first.provider_code
         && account.currency_code === first.currency_code
-        && account.business_date.getTime() === first.business_date.getTime()
       ));
       if (!sameGroup) {
-        throw new BadRequestException('Chỉ được xử lý tổng các khoản cùng ngày, đối tác và loại tiền');
+        throw new BadRequestException('Chỉ được xử lý tổng các khoản cùng đối tác và loại tiền');
       }
       if (first.currency_code !== 'USD' && first.currency_code !== 'VND') {
         throw new BadRequestException('Xử lý tổng hiện chỉ áp dụng cho công nợ USD hoặc VND');
@@ -457,7 +456,7 @@ export class PrismaDebtRepository implements IDebtRepository {
 
       await this.notifications.notifyUsers({
         title: 'Đã tất toán công nợ tổng',
-        body: `${first.provider_code} ngày ${first.business_date.toISOString().slice(0, 10)}: ${accounts.length} chi nhánh, ${totalOutstanding.toLocaleString('en-US')} ${first.currency_code}.`,
+        body: `${first.provider_code} kỳ ${formatDebtPeriod(accounts.map((account) => account.business_date))}: ${accounts.length} khoản, ${totalOutstanding.toLocaleString('en-US')} ${first.currency_code}.`,
         sourceType: 'DEBT_SETTLED',
         sourceId: first.id,
       }, {
@@ -588,6 +587,13 @@ export class PrismaDebtRepository implements IDebtRepository {
       branchIds: [debtAccount.branch_id],
     }, tx);
   }
+}
+
+function formatDebtPeriod(dates: Date[]): string {
+  const keys = dates.map((date) => date.toISOString().slice(0, 10)).sort();
+  const from = keys[0];
+  const to = keys[keys.length - 1];
+  return from === to ? from : `${from} - ${to}`;
 }
 
 function toAccount(row: any): DebtAccount {

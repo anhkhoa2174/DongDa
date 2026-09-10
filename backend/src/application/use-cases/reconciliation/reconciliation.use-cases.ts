@@ -47,7 +47,17 @@ export class RunReconciliationUseCase {
     if (actor.role !== UserRole.STAFF) {
       throw new BadRequestException(`GĐ/KTTH tạo bản ${dto.provider} cuối từ các bản chi nhánh đã gửi`);
     }
-    const businessDate = toVietnamBusinessDate(new Date(`${dto.businessDate}T00:00:00+07:00`));
+    const dateFromText = dto.dateFrom ?? dto.businessDate;
+    const dateToText = dto.dateTo ?? dto.businessDate;
+    if (!dateFromText || !dateToText) {
+      throw new BadRequestException('Phải chọn đầy đủ khoảng ngày đối chiếu');
+    }
+    const dateFrom = toVietnamBusinessDate(new Date(`${dateFromText}T00:00:00+07:00`));
+    const dateTo = toVietnamBusinessDate(new Date(`${dateToText}T00:00:00+07:00`));
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('Ngày bắt đầu không được sau ngày kết thúc');
+    }
+    const businessDate = dateTo;
     const scope: 'BRANCH' = 'BRANCH';
     const rows = dto.rows.map((row) => ({
       ...row,
@@ -65,20 +75,16 @@ export class RunReconciliationUseCase {
     if (currencies.size !== 1) {
       throw new BadRequestException('Mỗi lần đối chiếu chỉ được dùng một loại tiền');
     }
-    const rowKeys = rows.map((row) => `${row.code}::${row.currencyCode}`);
-    const duplicateKeys = [...new Set(rowKeys.filter((key, index) => rowKeys.indexOf(key) !== index))];
-    if (duplicateKeys.length > 0) {
-      throw new BadRequestException(
-        `Journal có MTCN/Reference bị trùng: ${duplicateKeys.map((key) => key.split('::')[0]).join(', ')}`,
-      );
-    }
     const currencyCode = rows[0].currencyCode;
-    const system = (await this.repo.listSystemTxByProvider(dto.provider, businessDate, branchId))
+    const system = (await this.repo.listSystemTxByProvider(dto.provider, dateFrom, dateTo, branchId))
       .filter((item) => item.currencyCode === currencyCode);
+    assertUniqueCompletedReferences(system, dto.provider as 'WU' | 'MG');
     const result = reconcile(system, rows);
     const run = await this.repo.saveRun({
       provider: dto.provider,
       businessDate,
+      dateFrom,
+      dateTo,
       scope,
       branchId,
       currencyCode,
@@ -118,7 +124,7 @@ export class SubmitBranchRunUseCase {
     const submitted = await this.repo.submitBranchRun(provider, runId, actor.id);
     await this.notifications.notifyUsers({
       title: `Bản đối chiếu ${provider} chờ tổng hợp`,
-      body: `${submitted.branchCode ?? 'Chi nhánh'} đã gửi ${submitted.runNo}, ngày ${submitted.businessDate.toISOString().slice(0, 10)}, ${submitted.currencyCode}.`,
+      body: `${submitted.branchCode ?? 'Chi nhánh'} đã gửi ${submitted.runNo}, kỳ ${periodLabel(submitted.dateFrom, submitted.dateTo)}, ${submitted.currencyCode}.`,
       sourceType: `${provider}_BRANCH_RECON_SUBMITTED`,
       sourceId: submitted.id,
     }, { roles: ['ADMIN', 'MANAGER'] });
@@ -149,57 +155,75 @@ export class CreateProviderFinalRunUseCase {
     }
     const first = sources[0];
     if (!first) throw new BadRequestException('Chọn ít nhất một bản đối chiếu chi nhánh');
-    const dateKey = first.summary.businessDate.toISOString().slice(0, 10);
+    const dateFromKey = first.summary.dateFrom.toISOString().slice(0, 10);
+    const dateToKey = first.summary.dateTo.toISOString().slice(0, 10);
     const currencyCode = first.summary.currencyCode as 'USD' | 'VND';
     if (sources.some((source) =>
-      source.summary.businessDate.toISOString().slice(0, 10) !== dateKey
+      source.summary.dateFrom.toISOString().slice(0, 10) !== dateFromKey
+      || source.summary.dateTo.toISOString().slice(0, 10) !== dateToKey
       || source.summary.currencyCode !== currencyCode
       || !source.summary.submittedAt)) {
-      throw new BadRequestException('Các bản được chọn phải cùng ngày, cùng loại tiền và đã được gửi');
+      throw new BadRequestException('Các bản được chọn phải cùng khoảng ngày, cùng loại tiền và đã được gửi');
     }
     const branchIds = sources.map((source) => source.summary.branchId).filter((id): id is string => Boolean(id));
     if (new Set(branchIds).size !== branchIds.length) {
-      throw new BadRequestException('Mỗi chi nhánh chỉ được chọn một bản cho cùng ngày và loại tiền');
+      throw new BadRequestException('Mỗi chi nhánh chỉ được chọn một bản cho cùng khoảng ngày và loại tiền');
     }
     const rows = sources.flatMap((source) => source.rows.map((row) => ({
       ...row,
       code: normalizeReconciliationCode(row.code),
       customerName: row.customerName ?? undefined,
     })));
-    const waitingRuns = (await this.repo.listSubmittedBranchRuns(provider))
-      .filter((run) => run.businessDate.toISOString().slice(0, 10) === dateKey
-        && run.currencyCode === currencyCode);
-    const omittedRun = waitingRuns.find((run) => !uniqueIds.includes(run.id));
-    if (omittedRun) {
-      throw new BadRequestException(
-        `Phải chọn đủ các bản chi nhánh đang chờ của ngày ${dateKey}, còn thiếu ${omittedRun.branchName ?? omittedRun.branchCode ?? omittedRun.id}`,
-      );
-    }
-
-    const allSystem = (await this.repo.listSystemTxByProvider(provider, first.summary.businessDate))
+    const allSystem = (await this.repo.listSystemTxByProvider(
+      provider,
+      first.summary.dateFrom,
+      first.summary.dateTo,
+    ))
       .filter((item) => item.currencyCode === currencyCode);
-    const requiredBranchIds = [...new Set(allSystem.map((item) => item.branchId))];
-    const missingBranchId = requiredBranchIds.find((branchId) => !branchIds.includes(branchId));
-    if (missingBranchId) {
-      throw new BadRequestException('Còn chi nhánh có giao dịch hệ thống nhưng chưa gửi bản đối chiếu');
-    }
     const system = allSystem.filter((item) => branchIds.includes(item.branchId));
-    const result = reconcile(system, rows);
+    assertUniqueCompletedReferences(system, provider);
+    // Final là đối chiếu toàn công ty. MTCN/Reference đã duy nhất trên các giao
+    // dịch COMPLETED, nên Journal của một chi nhánh có thể ghép đúng giao dịch
+    // thuộc chi nhánh khác; công nợ vẫn được ghi về chi nhánh của giao dịch gốc.
+    const result = reconcile(system, rows, { matchByBranch: false });
     const matchedTransactionIds = new Set(result.items
       .filter((item) => item.status === 'MATCHED' && item.transactionId)
       .map((item) => item.transactionId));
-    const canPost = result.totalCount > 0
-      && result.matchRate >= 1
-      && Math.abs(result.varianceTotal) < 0.01
-      && matchedTransactionIds.size === system.length
-      && matchedTransactionIds.size === rows.length;
+    const hasMatchedTransactions = matchedTransactionIds.size > 0;
     return this.repo.saveRun({
-      provider, businessDate: first.summary.businessDate, scope: 'COMPANY', currencyCode,
-      result, createdByUserId: actor.id, stage: 'FINAL', postFinancial: canPost,
+      provider, businessDate: first.summary.dateTo,
+      dateFrom: first.summary.dateFrom, dateTo: first.summary.dateTo,
+      scope: 'COMPANY', currencyCode,
+      result, createdByUserId: actor.id, stage: 'FINAL', postFinancial: hasMatchedTransactions,
       // Bản chi nhánh chỉ được dùng cho một lần đối chiếu Final. Nếu Final lệch,
       // chi nhánh sửa giao dịch rồi tạo và gửi một bản đối chiếu chi nhánh mới.
       sourceRunIds: uniqueIds,
     });
+  }
+}
+
+function periodLabel(dateFrom: Date, dateTo: Date): string {
+  const from = dateFrom.toISOString().slice(0, 10);
+  const to = dateTo.toISOString().slice(0, 10);
+  return from === to ? from : `${from} - ${to}`;
+}
+
+function assertUniqueCompletedReferences(
+  transactions: Array<{ code: string; currencyCode: string }>,
+  provider: 'WU' | 'MG',
+): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const transaction of transactions) {
+    const code = normalizeReconciliationCode(transaction.code);
+    const key = `${code}::${transaction.currencyCode}`;
+    if (seen.has(key)) duplicates.add(code);
+    seen.add(key);
+  }
+  if (duplicates.size > 0) {
+    throw new BadRequestException(
+      `Dữ liệu hệ thống có ${provider === 'WU' ? 'MTCN' : 'Reference Number'} COMPLETED bị trùng: ${[...duplicates].join(', ')}. Cần xử lý dữ liệu trước khi đối chiếu.`,
+    );
   }
 }
 

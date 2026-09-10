@@ -1,0 +1,2 @@
+ALTER TYPE reconciliation_item_status
+ADD VALUE IF NOT EXISTS 'DUPLICATE_IN_JOURNAL';

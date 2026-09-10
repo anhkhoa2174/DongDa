@@ -6,6 +6,8 @@ import type { SystemTxn, ReconItem, ReconResult, FundReconItem } from '../entiti
 export interface SaveRunInput {
   provider: string; // WU | MG
   businessDate: Date;
+  dateFrom?: Date;
+  dateTo?: Date;
   scope: 'COMPANY' | 'BRANCH';
   branchId?: string;
   currencyCode: 'USD' | 'VND';
@@ -26,6 +28,8 @@ export interface ReconRunSummary {
   branchCode: string | null;
   currencyCode: string;
   businessDate: Date;
+  dateFrom: Date;
+  dateTo: Date;
   status: string;
   stage: 'BRANCH' | 'FINAL';
   systemTotal: number;
@@ -34,6 +38,7 @@ export interface ReconRunSummary {
   matchRate: number;
   matchedCount: number;
   totalCount: number;
+  reconciledDebtCount?: number;
   createdAt: Date;
   submittedAt?: Date | null;
   branchName?: string | null;
@@ -68,7 +73,7 @@ export interface SavePendingJournalInput {
 
 export interface IReconciliationRepository {
   // Lấy GD hệ thống theo provider (WU/MG) để đối chiếu
-  listSystemTxByProvider(provider: string, businessDate: Date, branchId?: string): Promise<SystemTxn[]>;
+  listSystemTxByProvider(provider: string, dateFrom: Date, dateTo: Date, branchId?: string): Promise<SystemTxn[]>;
   saveRun(input: SaveRunInput): Promise<ReconRunSummary>;
   // branchId: lọc theo chi nhánh (GĐ/KTTH chọn xem riêng từng chi nhánh; STAFF bị ép theo chi nhánh của mình)
   listRuns(branchId?: string, provider?: 'WU' | 'MG'): Promise<ReconRunSummary[]>;

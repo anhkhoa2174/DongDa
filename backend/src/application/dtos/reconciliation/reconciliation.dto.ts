@@ -29,8 +29,17 @@ export class RunReconciliationDto {
   @IsEnum(['WU', 'MG'] as any, { message: 'provider phải WU/MG' })
   provider: string;
 
+  @IsOptional()
   @IsDateString()
-  businessDate: string;
+  businessDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 
   @IsOptional()
   @IsUUID()

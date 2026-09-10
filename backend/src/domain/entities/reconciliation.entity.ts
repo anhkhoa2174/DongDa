@@ -9,6 +9,7 @@ export enum ReconItemStatus {
   MISSING_IN_SYSTEM = 'MISSING_IN_SYSTEM', // Journal có, hệ thống không
   MISSING_IN_JOURNAL = 'MISSING_IN_JOURNAL', // hệ thống có, Journal không
   AMOUNT_VARIANCE = 'AMOUNT_VARIANCE', // khớp mã, lệch số tiền
+  DUPLICATE_IN_JOURNAL = 'DUPLICATE_IN_JOURNAL', // cùng mã + loại tiền xuất hiện nhiều lần trong Journal
 }
 
 // F9.1 — Đối chiếu quỹ: tồn hệ thống (ledger) vs tồn thực tế (kiểm quỹ gần nhất)
@@ -77,10 +78,19 @@ export function isValidReconciliationCode(code: string, provider: 'WU' | 'MG'): 
 }
 
 // Thuật toán đối chiếu thuần (không phụ thuộc DB)
-export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResult {
+export interface ReconcileOptions {
+  matchByBranch?: boolean;
+}
+
+export function reconcile(
+  system: SystemTxn[],
+  journal: JournalRow[],
+  options: ReconcileOptions = {},
+): ReconResult {
   const items: ReconItem[] = [];
+  const matchByBranch = options.matchByBranch ?? true;
   const key = (code: string, currency: string, branchId?: string | null) =>
-    `${branchId ?? ''}::${normalizeReconciliationCode(code)}::${currency}`;
+    `${matchByBranch ? (branchId ?? '') : 'COMPANY'}::${normalizeReconciliationCode(code)}::${currency}`;
   const sysByCode = new Map<string, SystemTxn[]>();
   for (const txn of system) {
     const matchKey = key(txn.code, txn.currencyCode, txn.branchId);
@@ -89,11 +99,22 @@ export function reconcile(system: SystemTxn[], journal: JournalRow[]): ReconResu
     sysByCode.set(matchKey, candidates);
   }
   const matchedTransactionIds = new Set<string>();
+  const seenJournalKeys = new Set<string>();
 
   for (const jr of journal) {
     const currencyCode = jr.currencyCode ?? 'USD';
     const code = normalizeReconciliationCode(jr.code);
     const matchKey = key(code, currencyCode, jr.branchId);
+    if (seenJournalKeys.has(matchKey)) {
+      items.push({
+        status: ReconItemStatus.DUPLICATE_IN_JOURNAL, code,
+        branchId: jr.branchId ?? null, currencyCode, customerName: jr.customerName ?? null,
+        systemAmount: 0, journalAmount: jr.amount, varianceAmount: jr.amount,
+        note: 'MTCN/Reference và loại tiền bị lặp trong Journal',
+      });
+      continue;
+    }
+    seenJournalKeys.add(matchKey);
     const sys = sysByCode.get(matchKey)?.shift();
     if (!sys) {
       items.push({

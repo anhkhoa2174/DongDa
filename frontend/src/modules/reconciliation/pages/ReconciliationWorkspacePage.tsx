@@ -25,16 +25,25 @@ import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePi
 
 const money = (n: number) => formatNumber(n, 2);
 
+function runPeriodLabel(run: Pick<ReconRunDto, 'dateFrom' | 'dateTo' | 'businessDate'>) {
+  const from = dayjs(run.dateFrom ?? run.businessDate);
+  const to = dayjs(run.dateTo ?? run.businessDate);
+  return from.isSame(to, 'day')
+    ? from.format('DD/MM/YYYY')
+    : `${from.format('DD/MM/YYYY')} - ${to.format('DD/MM/YYYY')}`;
+}
+
 const ITEM_STATUS: Record<string, { color: string; label: string }> = {
   MATCHED: { color: 'green', label: 'Khớp' },
   AMOUNT_VARIANCE: { color: 'orange', label: 'Lệch số tiền' },
   MISSING_IN_SYSTEM: { color: 'red', label: 'Thiếu ở hệ thống' },
   MISSING_IN_JOURNAL: { color: 'volcano', label: 'Thiếu ở Journal' },
+  DUPLICATE_IN_JOURNAL: { color: 'magenta', label: 'Trùng trong Journal' },
 };
 
 interface ReconciliationFormValues {
   provider: 'WU' | 'MG';
-  businessDate: Dayjs;
+  businessPeriod: [Dayjs, Dayjs];
   branchId?: string;
   rows: JournalRowInput[];
 }
@@ -130,7 +139,8 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
       for (const [cur, curRows] of byCurrency) {
         const res = await run.mutateAsync({
           provider,
-          businessDate: v.businessDate.format('YYYY-MM-DD'),
+          dateFrom: v.businessPeriod[0].format('YYYY-MM-DD'),
+          dateTo: v.businessPeriod[1].format('YYYY-MM-DD'),
           branchId,
           rows: curRows,
         });
@@ -149,7 +159,15 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
       const finalRun = await createFinal.mutateAsync(selectedBranchRunIds);
       setSelectedBranchRunIds([]);
       setSelectedRun(finalRun.id);
-      message.success(`Đã tạo bản đối chiếu ${provider} cuối ${finalRun.runNo}`);
+      const reconciledCount = finalRun.reconciledDebtCount ?? finalRun.matchedCount;
+      if (finalRun.totalCount > 0 && finalRun.matchedCount === finalRun.totalCount && finalRun.matchRate >= 1) {
+        message.success(`Đã chốt ${finalRun.runNo}; ${reconciledCount} công nợ đã chuyển sang chờ thanh toán`);
+      } else {
+        message.warning(
+          `Đã đối chiếu ${finalRun.runNo}: ${reconciledCount} công nợ khớp đã chuyển sang chờ thanh toán; ${finalRun.totalCount - finalRun.matchedCount} dòng còn lệch/thiếu.`,
+          8,
+        );
+      }
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Tạo bản đối chiếu cuối thất bại'));
     }
@@ -162,7 +180,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
         <div className="min-w-0">
           <Typography.Text className="block! font-semibold!" ellipsis={{ tooltip: row.runNo }}>{row.runNo}</Typography.Text>
           <Typography.Text type="secondary" className="text-xs!">
-            {dayjs(row.businessDate).format('DD/MM/YYYY')} · {row.currencyCode}
+            {runPeriodLabel(row)} · {row.currencyCode}
           </Typography.Text>
         </div>
       ),
@@ -198,7 +216,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
     { title: provider === 'WU' ? 'MSKH / MTCN' : 'Reference', dataIndex: 'code', width: 150, ellipsis: true },
     { title: 'Khách hàng', dataIndex: 'customerName', ellipsis: true, responsive: ['lg'],
       render: (v) => v || <Typography.Text type="secondary">—</Typography.Text> },
-    { title: 'Kết quả', dataIndex: 'status', width: 126,
+    { title: 'Kết quả', dataIndex: 'status', width: 160,
       render: (s) => <Tag color={ITEM_STATUS[s]?.color}>{ITEM_STATUS[s]?.label ?? s}</Tag> },
     { title: 'Hệ thống', dataIndex: 'systemAmount', width: 118, align: 'right', render: money },
     { title: 'Journal', dataIndex: 'journalAmount', width: 118, align: 'right', render: money },
@@ -232,10 +250,10 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
         metrics={isBranchUser ? [
           { label: 'Dòng đã nhập', value: String(journalRows.filter((row) => row?.code).length), note: 'Journal đang chuẩn bị', icon: <UploadOutlined /> },
           { label: 'Bản đã gửi', value: String(visibleRuns.length), note: `Lịch sử ${provider}`, icon: <HistoryOutlined /> },
-          { label: 'Lần gần nhất', value: latestRun ? `${latestRun.matchedCount}/${latestRun.totalCount}` : '—', note: latestRun ? dayjs(latestRun.businessDate).format('DD/MM/YYYY') : 'Chưa đối chiếu', icon: <CheckCircleOutlined /> },
+          { label: 'Lần gần nhất', value: latestRun ? `${latestRun.matchedCount}/${latestRun.totalCount}` : '—', note: latestRun ? runPeriodLabel(latestRun) : 'Chưa đối chiếu', icon: <CheckCircleOutlined /> },
         ] : [
           { label: 'Chờ tổng hợp', value: String(submittedBranchRuns.length), note: `Bản ${provider} từ chi nhánh`, icon: <ClockCircleOutlined /> },
-          { label: 'Đang chọn', value: String(selectedBranchRunIds.length), note: 'Cùng ngày và loại tiền', icon: <ApartmentOutlined /> },
+          { label: 'Đang chọn', value: String(selectedBranchRunIds.length), note: 'Cùng khoảng ngày và loại tiền', icon: <ApartmentOutlined /> },
           { label: 'Bản cuối', value: String(visibleRuns.length), note: 'Đã tạo trên hệ thống', icon: <CheckCircleOutlined /> },
         ]}
       />
@@ -255,7 +273,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                   loading={createFinal.isPending}
                   onClick={onCreateFinal}
                 >
-                  Chốt bản cuối ({selectedBranchRunIds.length})
+                  Đối chiếu Final ({selectedBranchRunIds.length})
                 </Button>
               ) : null}
             >
@@ -271,10 +289,11 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                   getCheckboxProps: (record) => {
                     if (!canRun) return { disabled: true };
                     if (!selectionAnchor || selectedBranchRunIds.includes(record.id)) return { disabled: false };
-                    const sameDate = dayjs(record.businessDate).isSame(dayjs(selectionAnchor.businessDate), 'day');
+                    const samePeriod = dayjs(record.dateFrom ?? record.businessDate).isSame(dayjs(selectionAnchor.dateFrom ?? selectionAnchor.businessDate), 'day')
+                      && dayjs(record.dateTo ?? record.businessDate).isSame(dayjs(selectionAnchor.dateTo ?? selectionAnchor.businessDate), 'day');
                     const sameCurrency = record.currencyCode === selectionAnchor.currencyCode;
                     const duplicateBranch = selectedBranchRuns.some((item) => item.branchId === record.branchId);
-                    return { disabled: !sameDate || !sameCurrency || duplicateBranch };
+                    return { disabled: !samePeriod || !sameCurrency || duplicateBranch };
                   },
                 }}
                 rowClassName={(record) => record.id === selectedRun ? 'reconciliation-row--active' : ''}
@@ -285,7 +304,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                     render: (_, row) => (
                       <div className="min-w-0">
                         <Typography.Text className="block! font-semibold!" ellipsis={{ tooltip: row.branchName }}>{row.branchName ?? row.branchCode ?? '—'}</Typography.Text>
-                        <Typography.Text type="secondary" className="text-xs!">{dayjs(row.businessDate).format('DD/MM/YYYY')} · {row.currencyCode}</Typography.Text>
+                        <Typography.Text type="secondary" className="text-xs!">{runPeriodLabel(row)} · {row.currencyCode}</Typography.Text>
                       </div>
                     ),
                   },
@@ -300,7 +319,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                 <div className="reconciliation-selection-summary">
                   <Typography.Text type="secondary">Phạm vi đang chọn</Typography.Text>
                   <Space size={4} wrap>
-                    <Tag>{dayjs(selectionAnchor.businessDate).format('DD/MM/YYYY')}</Tag>
+                    <Tag>{runPeriodLabel(selectionAnchor)}</Tag>
                     <Tag>{selectionAnchor.currencyCode}</Tag>
                     <Tag color="gold">{selectedBranchRunIds.length} chi nhánh</Tag>
                   </Space>
@@ -313,12 +332,18 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
               size="small"
               className="polished-card reconciliation-panel"
             >
-              <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider, businessDate: dayjs(), rows: [{ currencyCode: 'USD' }] }}>
+              <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider, businessPeriod: [dayjs(), dayjs()], rows: [{ currencyCode: 'USD' }] }}>
                 <Form.Item name="provider" hidden><Input /></Form.Item>
                 <Row gutter={12}>
                   <Col xs={24} md={10}>
-                    <Form.Item name="businessDate" label="Ngày nghiệp vụ" rules={[{ required: true }]}>
-                      <DatePicker className="w-full" format={DATE_INPUT_FORMAT} placeholder={DATE_INPUT_PLACEHOLDER} />
+                    <Form.Item name="businessPeriod" label="Khoảng ngày giao dịch" rules={[{ required: true, message: 'Chọn khoảng ngày đối chiếu' }]}>
+                      <DatePicker.RangePicker
+                        className="w-full"
+                        format={DATE_INPUT_FORMAT}
+                        placeholder={[DATE_INPUT_PLACEHOLDER, DATE_INPUT_PLACEHOLDER]}
+                        disabledDate={(date) => date.isAfter(dayjs(), 'day')}
+                        allowClear={false}
+                      />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={14}>

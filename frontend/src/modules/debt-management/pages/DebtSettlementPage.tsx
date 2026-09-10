@@ -50,6 +50,14 @@ const STATUS: Record<DebtStatus, { color: string; label: string }> = {
 
 const toDateLabel = (value: string) => new Date(value).toLocaleDateString('vi-VN', { timeZone: 'UTC' });
 
+const settlementPeriodLabel = (accounts: DebtAccountSummaryDto[]) => {
+  const dates = accounts.map((account) => account.businessDate).sort();
+  if (dates.length === 0) return '-';
+  const from = toDateLabel(dates[0]);
+  const to = toDateLabel(dates[dates.length - 1]);
+  return from === to ? from : `${from} - ${to}`;
+};
+
 function getApiErrorMessage(error: unknown) {
   const response = (error as { response?: { data?: { message?: unknown } } })?.response;
   return typeof response?.data?.message === 'string' ? response.data.message : null;
@@ -102,10 +110,15 @@ export function DebtSettlementPage() {
   const assignedSettlementBankIds = [...new Set(
     (settleGroup?.accounts ?? []).map((account) => account.settlementBankAccountId).filter((id): id is string => Boolean(id)),
   )];
+  const canSettleWuByBank = settleGroup?.providerCode !== 'WU'
+    || (assignedSettlementBankIds.length === 1
+      && settleGroup.accounts.every((account) => Boolean(account.settlementBankAccountId)));
   const bankRate = activeRates.find((rate) => (
     rate.rateType === 'BANK_RATE' && rate.fromCurrency === 'USD' && rate.toCurrency === 'VND'
   ));
   const matchingBankAccounts = bankAccounts.filter((account) => (
+    canSettleWuByBank
+    &&
     account.currencyCode === settlementCurrency
     && (assignedSettlementBankIds.length === 0 || assignedSettlementBankIds.includes(account.id))
   ));
@@ -148,12 +161,14 @@ export function DebtSettlementPage() {
 
   const openSettlement = (group: DebtSettlementGroup) => {
     const bankIds = [...new Set(group.accounts.map((account) => account.settlementBankAccountId).filter((id): id is string => Boolean(id)))];
+    const canUseBank = group.providerCode !== 'WU'
+      || (bankIds.length === 1 && group.accounts.every((account) => Boolean(account.settlementBankAccountId)));
     setSettlementCurrency(group.currencyCode);
     setSettleGroup(group);
     settleForm.resetFields();
     settleForm.setFieldsValue({
-      settlementSource: 'BANK',
-      bankAccountId: bankIds.length === 1 ? bankIds[0] : undefined,
+      settlementSource: canUseBank ? 'BANK' : 'CASH',
+      bankAccountId: canUseBank && bankIds.length === 1 ? bankIds[0] : undefined,
       amount: group.totalOutstanding,
       description: DEFAULT_SETTLEMENT_DESCRIPTION,
     });
@@ -172,15 +187,11 @@ export function DebtSettlementPage() {
       return;
     }
     const first = accounts[0];
-    const sameGroup = accounts.every((debt) => debt.businessDate.slice(0, 10) === first.businessDate.slice(0, 10)
-      && debt.providerCode === first.providerCode && debt.currencyCode === first.currencyCode);
+    const sameGroup = accounts.every((debt) => (
+      debt.providerCode === first.providerCode && debt.currencyCode === first.currencyCode
+    ));
     if (!sameGroup) {
-      message.warning('Chỉ chọn các công nợ cùng ngày, đối tác và loại tiền');
-      return;
-    }
-    const bankIds = [...new Set(accounts.map((debt) => debt.settlementBankAccountId).filter((id): id is string => Boolean(id)))];
-    if (first.providerCode === 'WU' && (bankIds.length !== 1 || accounts.some((debt) => !debt.settlementBankAccountId))) {
-      message.warning('Các công nợ WU được chọn phải cùng ngân hàng thanh toán');
+      message.warning('Chỉ chọn các công nợ cùng đối tác và loại tiền');
       return;
     }
     openSettlement({
@@ -396,7 +407,7 @@ export function DebtSettlementPage() {
           <>
             <Card size="small" className="mb-4">
               <Row gutter={[12, 8]}>
-                <Col span={12}><Typography.Text type="secondary">Ngày công nợ</Typography.Text><div className="font-semibold">{toDateLabel(settleGroup.businessDate)}</div></Col>
+                <Col span={12}><Typography.Text type="secondary">Kỳ công nợ</Typography.Text><div className="font-semibold">{settlementPeriodLabel(settleGroup.accounts)}</div></Col>
                 <Col span={12}><Typography.Text type="secondary">Đối tác</Typography.Text><div className="font-semibold">{settleGroup.providerCode}</div></Col>
                 <Col span={12}><Typography.Text type="secondary">Số giao dịch</Typography.Text><div className="font-semibold">{settleGroup.accounts.length} khoản</div></Col>
                 <Col span={12}><Typography.Text type="secondary">Tổng chính xác</Typography.Text><div className="font-semibold text-red-600">{formatCurrency(settleGroup.totalOutstanding, settleGroup.currencyCode)}</div></Col>
@@ -421,7 +432,9 @@ export function DebtSettlementPage() {
                     showIcon
                     message={matchingBankAccounts.length > 0
                       ? `Tiền ${settleGroup.currencyCode} nhận vào một lần và phân bổ tất toán ${settleGroup.accounts.length} chi nhánh.`
-                      : `Chưa có tài khoản ngân hàng ${settleGroup.currencyCode} đang hoạt động. Có thể chuyển sang nguồn Tiền mặt (Quỹ).`}
+                      : !canSettleWuByBank
+                        ? 'Các công nợ WU không cùng tài khoản ngân hàng đã gắn. Hãy chọn nguồn Tiền mặt hoặc thanh toán riêng theo từng ngân hàng.'
+                        : `Chưa có tài khoản ngân hàng ${settleGroup.currencyCode} đang hoạt động. Có thể chuyển sang nguồn Tiền mặt (Quỹ).`}
                   />
                   <Form.Item name="bankAccountId" label="Tài khoản ngân hàng nhận" rules={[{ required: true, message: 'Chọn tài khoản ngân hàng' }]}>
                     <Select

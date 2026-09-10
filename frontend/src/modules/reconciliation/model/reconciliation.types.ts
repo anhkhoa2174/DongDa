@@ -6,6 +6,7 @@ export type ReconciliationResult =
   | 'CUSTOMER_MISMATCH'
   | 'MISSING_IN_SYSTEM'
   | 'MISSING_IN_JOURNAL'
+  | 'DUPLICATE_IN_JOURNAL'
   | 'POTENTIAL_DUPLICATE_CUSTOMER';
 
 export type JournalUpload = {

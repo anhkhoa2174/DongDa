@@ -1106,6 +1106,8 @@ model reconciliation_runs {
   scope                                                journal_scope
   branch_id                                            String?                        @db.Uuid
   business_date                                        DateTime                       @db.Date
+  period_from                                          DateTime                       @db.Date
+  period_to                                            DateTime                       @db.Date
   status                                               reconciliation_status          @default(DRAFT)
   stage                                                reconciliation_stage           @default(BRANCH)
   system_total_amount                                  Decimal                        @default(0) @db.Decimal(20, 2)
@@ -1131,6 +1133,7 @@ model reconciliation_runs {
   debt_accounts                                        debt_accounts[]
 
   @@index([provider, business_date, status], map: "idx_reconciliation_runs_provider_date")
+  @@index([provider, period_from, period_to, currency_code, stage], map: "idx_reconciliation_runs_period")
 }
 
 model reconciliation_final_sources {
@@ -1578,6 +1581,7 @@ enum reconciliation_item_status {
   MISSING_IN_SYSTEM
   MISSING_IN_JOURNAL
   AMOUNT_VARIANCE
+  DUPLICATE_IN_JOURNAL
   BRANCH_VARIANCE
   MANUAL_MATCHED
   JOURNAL_ONLY

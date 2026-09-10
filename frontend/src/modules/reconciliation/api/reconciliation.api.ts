@@ -9,6 +9,8 @@ export interface ReconRunDto {
   branchCode: string | null;
   currencyCode: string;
   businessDate: string;
+  dateFrom: string;
+  dateTo: string;
   status: string;
   stage: 'BRANCH' | 'FINAL';
   systemTotal: number;
@@ -17,6 +19,7 @@ export interface ReconRunDto {
   matchRate: number;
   matchedCount: number;
   totalCount: number;
+  reconciledDebtCount?: number;
   createdAt: string;
   submittedAt?: string | null;
   branchName?: string | null;
@@ -44,7 +47,8 @@ export interface JournalRowInput {
 
 export interface RunReconInput {
   provider: string;
-  businessDate: string;
+  dateFrom: string;
+  dateTo: string;
   branchId?: string;
   rows: JournalRowInput[];
 }

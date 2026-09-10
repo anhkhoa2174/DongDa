@@ -232,7 +232,7 @@ export class PrismaReportsRepository implements IReportsRepository {
       this.prisma.reconciliation_items.findMany({
         where: {
           resolved_at: null,
-          status: { in: ['MISSING_IN_SYSTEM', 'MISSING_IN_JOURNAL', 'AMOUNT_VARIANCE', 'BRANCH_VARIANCE'] },
+          status: { in: ['MISSING_IN_SYSTEM', 'MISSING_IN_JOURNAL', 'AMOUNT_VARIANCE', 'BRANCH_VARIANCE', 'DUPLICATE_IN_JOURNAL'] },
         },
         select: { variance_amount: true },
       }),
@@ -355,7 +355,7 @@ export class PrismaReportsRepository implements IReportsRepository {
       this.prisma.reconciliation_items.findMany({
         where: {
           resolved_at: null,
-          status: { in: ['MISSING_IN_SYSTEM', 'MISSING_IN_JOURNAL', 'AMOUNT_VARIANCE', 'BRANCH_VARIANCE'] },
+          status: { in: ['MISSING_IN_SYSTEM', 'MISSING_IN_JOURNAL', 'AMOUNT_VARIANCE', 'BRANCH_VARIANCE', 'DUPLICATE_IN_JOURNAL'] },
         },
         select: { branch_id: true, variance_amount: true },
       }),
