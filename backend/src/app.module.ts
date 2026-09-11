@@ -79,6 +79,7 @@ import { RejectExchangeRateUseCase } from './application/use-cases/exchange-rate
 import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/list-exchange-rates.use-case';
 import { ParseExchangeRateImageUseCase } from './application/use-cases/exchange-rate/parse-exchange-rate-image.use-case';
 import { GeminiExchangeRateParserService } from './infrastructure/ai/gemini-exchange-rate-parser.service';
+import { GeminiJournalParserService } from './infrastructure/ai/gemini-journal-parser.service';
 
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
 import {
@@ -115,6 +116,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
     { provide: 'IExchangeRateImageParser', useClass: GeminiExchangeRateParserService },
+    { provide: 'IJournalPdfParser', useClass: GeminiJournalParserService },
     { provide: 'IDebtRepository', useClass: PrismaDebtRepository },
     { provide: 'IBranchRepository', useClass: PrismaBranchRepository },
     { provide: 'IFundRepository', useClass: PrismaFundRepository },
