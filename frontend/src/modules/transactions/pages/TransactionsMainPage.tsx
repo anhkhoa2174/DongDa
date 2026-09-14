@@ -266,6 +266,7 @@ export function TransactionsMainPage() {
         type: `Tỷ giá WU: ${formatExchangeRate(transaction.wuRate)} VND/USD`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
+        customerReference: `MTCN: ${transaction.mtcn}`,
         amountLabel: formatCustomerPayout(transaction.receivedUsd, transaction.receivedVnd),
         valueDetail: formatAppliedRate(transaction.appliedRate),
         vndAmount: transaction.transactionValueVnd,
@@ -295,6 +296,7 @@ export function TransactionsMainPage() {
         type: `MG trả ${transaction.payoutCurrency}`,
         customerName: transaction.customerName ?? '',
         customerPhone: transaction.customerPhone ?? '',
+        customerReference: `Reference: ${transaction.referenceNo}`,
         amountLabel: formatCustomerPayout(transaction.receivedUsd, transaction.receivedVnd),
         valueDetail: formatAppliedRate(transaction.appliedRate),
         vndAmount: transaction.transactionValueVnd,
@@ -469,7 +471,9 @@ export function TransactionsMainPage() {
       render: (value: string, record) => (
         <div>
           <Typography.Text strong className="block!">{value || 'Chưa nhập'}</Typography.Text>
-          {record.customerPhone && <Typography.Text type="secondary">{record.customerPhone}</Typography.Text>}
+          {record.customerReference && (
+            <Typography.Text type="secondary">{record.customerReference}</Typography.Text>
+          )}
         </div>
       ),
     },
