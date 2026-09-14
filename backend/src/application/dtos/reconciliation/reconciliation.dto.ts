@@ -45,8 +45,11 @@ export class RunReconciliationDto {
   @IsUUID()
   branchId?: string;
 
+  @IsOptional()
+  @IsEnum(['USD', 'VND'] as any, { message: 'currencyCode phải là USD hoặc VND' })
+  currencyCode?: 'USD' | 'VND';
+
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => JournalRowDto)
   rows: JournalRowDto[];

@@ -72,10 +72,16 @@ export class RunReconciliationUseCase {
       );
     }
     const currencies = new Set(rows.map((row) => row.currencyCode));
-    if (currencies.size !== 1) {
+    if (currencies.size > 1) {
       throw new BadRequestException('Mỗi lần đối chiếu chỉ được dùng một loại tiền');
     }
-    const currencyCode = rows[0].currencyCode;
+    const currencyCode = rows[0]?.currencyCode ?? dto.currencyCode;
+    if (!currencyCode) {
+      throw new BadRequestException('Journal không có dòng phải chọn loại tiền USD hoặc VND');
+    }
+    if (dto.currencyCode && dto.currencyCode !== currencyCode) {
+      throw new BadRequestException('Loại tiền đối chiếu không khớp các dòng Journal');
+    }
     const system = (await this.repo.listSystemTxByProvider(dto.provider, dateFrom, dateTo, branchId))
       .filter((item) => item.currencyCode === currencyCode);
     assertUniqueCompletedReferences(system, dto.provider as 'WU' | 'MG');

@@ -127,6 +127,49 @@ describe('RunReconciliationUseCase', () => {
       rows: [{ code: '1234567890', amount: 100, currencyCode: 'USD' }],
     }, admin)).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('cho phép STAFF đối chiếu Journal rỗng khi đã chọn loại tiền', async () => {
+    const repo = makeRepo();
+    repo.listSystemTxByProvider.mockResolvedValue([{
+      code: '1234567890',
+      transactionId: 'tx-1',
+      branchId: BRANCH_A,
+      amount: 100,
+      currencyCode: 'USD',
+    }]);
+    const useCase = new RunReconciliationUseCase(repo as any);
+
+    await useCase.execute({
+      provider: 'WU',
+      businessDate: '2026-08-01',
+      currencyCode: 'USD',
+      rows: [],
+    }, staffA);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      currencyCode: 'USD',
+      result: expect.objectContaining({
+        matchedCount: 0,
+        totalCount: 1,
+        items: [expect.objectContaining({
+          transactionId: 'tx-1',
+          status: 'MISSING_IN_JOURNAL',
+        })],
+      }),
+    }));
+  });
+
+  it('từ chối Journal rỗng nếu không xác định loại tiền', async () => {
+    const repo = makeRepo();
+    const useCase = new RunReconciliationUseCase(repo as any);
+
+    await expect(useCase.execute({
+      provider: 'WU',
+      businessDate: '2026-08-01',
+      rows: [],
+    }, staffA)).rejects.toThrow('Journal không có dòng phải chọn loại tiền USD hoặc VND');
+    expect(repo.saveRun).not.toHaveBeenCalled();
+  });
 });
 
 describe('CreateProviderFinalRunUseCase', () => {

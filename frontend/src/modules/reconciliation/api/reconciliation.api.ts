@@ -50,6 +50,7 @@ export interface RunReconInput {
   dateFrom: string;
   dateTo: string;
   branchId?: string;
+  currencyCode?: 'USD' | 'VND';
   rows: JournalRowInput[];
 }
 

@@ -45,6 +45,7 @@ interface ReconciliationFormValues {
   provider: 'WU' | 'MG';
   businessPeriod: [Dayjs, Dayjs];
   branchId?: string;
+  emptyCurrency: 'USD' | 'VND';
   rows: JournalRowInput[];
 }
 
@@ -97,7 +98,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
       });
       const isPdf = /\.pdf$/i.test(file.name);
       if (res.rows.length === 0) {
-        message.warning('File không có dòng hợp lệ nào');
+        message.info('File không có dòng giao dịch. Có thể tiếp tục đối chiếu Journal rỗng.');
       } else {
         message.success(`Đọc ${res.rows.length} dòng từ "${res.fileName}"${res.errors.length ? `, ${res.errors.length} dòng lỗi` : ''}`);
       }
@@ -123,11 +124,13 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
         // Có chi nhánh ở đầu form -> mọi dòng thuộc chi nhánh đó, bỏ chọn theo dòng.
         branchId: branchId ?? row.branchId,
       }));
-    if (rows.length === 0) return message.warning('Thêm ít nhất 1 dòng Journal');
     if (!branchId) return message.warning('Phải xác định chi nhánh đối chiếu');
     // Journal WU/MG có thể lẫn USD và VND, nhưng mỗi lần đối chiếu chỉ 1 loại tiền
     // -> tự gom theo loại tiền và chạy lần lượt từng loại.
     const byCurrency = new Map<string, JournalRowInput[]>();
+    if (rows.length === 0) {
+      byCurrency.set(v.emptyCurrency ?? 'USD', []);
+    }
     for (const r of rows) {
       const cur = r.currencyCode ?? 'USD';
       if (!byCurrency.has(cur)) byCurrency.set(cur, []);
@@ -142,6 +145,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
           dateFrom: v.businessPeriod[0].format('YYYY-MM-DD'),
           dateTo: v.businessPeriod[1].format('YYYY-MM-DD'),
           branchId,
+          currencyCode: cur as 'USD' | 'VND',
           rows: curRows,
         });
         lastRunId = res.id;
@@ -332,7 +336,7 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
               size="small"
               className="polished-card reconciliation-panel"
             >
-              <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider, businessPeriod: [dayjs(), dayjs()], rows: [{ currencyCode: 'USD' }] }}>
+              <Form form={form} layout="vertical" onFinish={onRun} initialValues={{ provider, businessPeriod: [dayjs(), dayjs()], emptyCurrency: 'USD', rows: [] }}>
                 <Form.Item name="provider" hidden><Input /></Form.Item>
                 <Row gutter={12}>
                   <Col xs={24} md={10}>
@@ -374,6 +378,21 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
                     <Button icon={<UploadOutlined />} loading={parse.isPending}>Chọn file</Button>
                   </Upload>
                 </div>
+
+                {journalRows.length === 0 && (
+                  <Form.Item
+                    name="emptyCurrency"
+                    label="Loại tiền của Journal rỗng"
+                    rules={[{ required: true, message: 'Chọn loại tiền đối chiếu' }]}
+                  >
+                    <Select
+                      options={[
+                        { value: 'USD', label: 'USD' },
+                        { value: 'VND', label: 'VND' },
+                      ]}
+                    />
+                  </Form.Item>
+                )}
 
                 <Form.List name="rows">
                   {(fields, { add, remove }) => (
