@@ -97,9 +97,19 @@ export class LoginUseCase {
       type: 'access',
     });
 
+    // Refresh token cũng cần sessionId — nếu không, refresh-token.use-case.ts không biết
+    // session nào để kiểm tra khi cấp access token mới, và enforcement session sẽ im lặng
+    // ngừng hoạt động sau lần refresh đầu tiên (JwtStrategy bỏ qua session check khi JWT
+    // không có sessionId, để tương thích ngược với token cũ trước tính năng này).
+    const refreshTokenWithSession = this.jwtService.signRefresh({
+      sub: user.id,
+      sessionId: session.id,
+      type: 'refresh',
+    });
+
     return {
       accessToken,
-      refreshToken,
+      refreshToken: refreshTokenWithSession,
       sessionId: session.id,
       user: {
         id: user.id,
