@@ -43,6 +43,7 @@ model Branch {
   reconciliation_items                                          reconciliation_items[]
   reconciliation_runs                                           reconciliation_runs[]
   shifts                                                        shifts[]
+  auth_sessions                                                 auth_sessions[]
 
   @@unique([company_id, code], map: "uq_branches_company_code")
   @@index([company_id], map: "idx_branches_company_id")
@@ -108,6 +109,7 @@ model User {
   shifts_shifts_opened_by_user_idTousers                                           shifts[]                     @relation("shifts_opened_by_user_idTousers")
   shifts_shifts_reviewed_by_user_idTousers                                         shifts[]                     @relation("shifts_reviewed_by_user_idTousers")
   user_roles                                                                       user_roles[]
+  auth_sessions                                                                    auth_sessions[]
   employees                                                                        employees                    @relation(fields: [employee_id], references: [id], onUpdate: NoAction)
 
   @@index([employee_id], map: "idx_users_employee_id")
@@ -438,6 +440,26 @@ model cash_counts {
   shifts                                       shifts?            @relation(fields: [shift_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@index([branch_id, shift_id], map: "idx_cash_counts_branch_shift")
+}
+
+model auth_sessions {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id             String         @db.Uuid
+  branch_id           String?        @db.Uuid
+  role                String         @db.VarChar(20)
+  status              session_status @default(ACTIVE)
+  refresh_token_hash  String
+  device_ip           String?
+  user_agent          String?
+  last_heartbeat_at   DateTime       @default(now()) @db.Timestamptz(6)
+  created_at          DateTime       @default(now()) @db.Timestamptz(6)
+  expires_at          DateTime       @db.Timestamptz(6)
+
+  users               User           @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  branches            Branch?        @relation(fields: [branch_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([branch_id, role, status])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1638,6 +1660,12 @@ enum user_status {
   INACTIVE
   LOCKED
   SUSPENDED
+}
+
+enum session_status {
+  ACTIVE
+  EXPIRED
+  REVOKED
 }
 
 enum workflow_status {
