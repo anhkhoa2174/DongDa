@@ -110,6 +110,17 @@ export async function logoutWithApi() {
   await httpClient.post('/auth/logout');
 }
 
+type HeartbeatResponse = {
+  sessionId: string;
+  isStale: boolean;
+  expiresAt: string;
+};
+
+export async function heartbeatWithApi() {
+  const { data } = await httpClient.post<HeartbeatResponse>('/auth/heartbeat');
+  return data;
+}
+
 export async function changePasswordWithApi(input: { currentPassword: string; newPassword: string }) {
   await httpClient.patch('/auth/change-password', input);
 }

@@ -6,6 +6,7 @@ import { App, Button, Form, Input, Typography } from 'antd';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import { loginWithApi } from '../api/auth.api';
 import { loginSchema, type LoginFormValues } from '../schemas/login.schema';
 import { useAuthStore } from '../model/auth.store';
@@ -37,8 +38,10 @@ export function LoginPage() {
         refreshToken: result.refreshToken,
       });
       navigate(from, { replace: true });
-    } catch {
-      await message.error('Tên đăng nhập hoặc mật khẩu không đúng');
+    } catch (error: unknown) {
+      // Backend có thể trả 409 với message cụ thể (vd chi nhánh đang bị khoá bởi
+      // nhân viên khác) — hiện đúng message đó thay vì nuốt thành "sai mật khẩu".
+      await message.error(getApiErrorMessage(error, 'Tên đăng nhập hoặc mật khẩu không đúng'));
     }
   });
 

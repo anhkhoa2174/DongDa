@@ -11,11 +11,14 @@ import { PassportModule } from '@nestjs/passport';
 
 import { PrismaService } from './infrastructure/database/prisma.service';
 import { PrismaUserRepository } from './infrastructure/database/repositories/prisma-user.repository';
+import { PrismaAuthSessionRepository } from './infrastructure/database/repositories/prisma-auth-session.repository';
 
 import { LoginUseCase } from './application/use-cases/auth/login.use-case';
 import { CreateUserUseCase } from './application/use-cases/auth/create-user.use-case';
 import { ChangePasswordUseCase } from './application/use-cases/auth/change-password.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/auth/refresh-token.use-case';
+import { HeartbeatUseCase } from './application/use-cases/auth/heartbeat.use-case';
+import { ForceLogoutStaffUseCase } from './application/use-cases/auth/force-logout-staff.use-case';
 
 import { AuthController, UserController } from './interfaces/http/controllers/auth.controller';
 import { ExchangeRateController } from './interfaces/http/controllers/exchange-rate.controller';
@@ -66,6 +69,7 @@ import { HashService } from './infrastructure/config/hash.service';
 import { NotificationController } from './interfaces/http/controllers/notification.controller';
 import { NotificationService } from './infrastructure/notifications/notification.service';
 import { AdvanceReminderService } from './infrastructure/notifications/advance-reminder.service';
+import { SessionCleanupService } from './infrastructure/services/session-cleanup.service';
 import { DomesticTransferController } from './interfaces/http/controllers/domestic-transfer.controller';
 import { PrismaDomesticTransferRepository } from './infrastructure/database/repositories/prisma-domestic-transfer.repository';
 import { CreateDomesticTransferUseCase, ListDomesticTransferBankAccountsUseCase, ListDomesticTransferUseCase } from './application/use-cases/domestic-transfer/domestic-transfer.use-cases';
@@ -111,9 +115,11 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     PrismaService,
     NotificationService,
     AdvanceReminderService,
+    SessionCleanupService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
+    { provide: 'IAuthSessionRepository', useClass: PrismaAuthSessionRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
     { provide: 'IExchangeRateImageParser', useClass: GeminiExchangeRateParserService },
     { provide: 'IJournalPdfParser', useClass: GeminiJournalParserService },
@@ -159,10 +165,24 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
       inject: [JwtService, ConfigService],
     },
 
+    // AUTH_SESSION_HEARTBEAT_TIMEOUT_SEC: ngưỡng idle (giây) trước khi HeartbeatUseCase
+    // tự revoke session — token thuần (không phải interface), theo cùng pattern useFactory
+    // với IJwtService để application layer không phụ thuộc ConfigService.
+    {
+      provide: 'AUTH_SESSION_HEARTBEAT_TIMEOUT_SEC',
+      useFactory: (config: ConfigService) => {
+        const raw = config.get<string>('AUTH_SESSION_HEARTBEAT_TIMEOUT_SEC');
+        return raw ? parseInt(raw, 10) : 300; // mặc định 5 phút
+      },
+      inject: [ConfigService],
+    },
+
     LoginUseCase,
     CreateUserUseCase,
     ChangePasswordUseCase,
     RefreshTokenUseCase,
+    HeartbeatUseCase,
+    ForceLogoutStaffUseCase,
 
     CreateExchangeRateUseCase,
     ApproveExchangeRateUseCase,
