@@ -25,11 +25,29 @@ const managerUser = {
   branchName: 'Chi nhánh 1',
 };
 
+const managerHoUser = {
+  ...adminUser,
+  id: 'mgr-ho',
+  username: 'manager-ho',
+  role: UserRole.MANAGER,
+  branchId: null,
+  branchName: undefined,
+};
+
 const staffUser = {
   ...adminUser,
   id: 'staff-1',
   username: 'staff1',
   role: UserRole.STAFF,
+  branchId: 'branch-1',
+  branchName: 'Chi nhánh 1',
+};
+
+const auditorUser = {
+  ...adminUser,
+  id: 'aud-1',
+  username: 'auditor1',
+  role: UserRole.AUDITOR,
   branchId: 'branch-1',
   branchName: 'Chi nhánh 1',
 };
@@ -113,11 +131,33 @@ describe('ForceLogoutStaffUseCase', () => {
     expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
   });
 
+  it('MANAGER with no branchId (Hội sở-level, global scope) can force-logout a Staff session on any branch', async () => {
+    const { useCase, userRepo, authSessionRepo } = buildUseCase();
+    userRepo.findById.mockResolvedValue(managerHoUser);
+    const session = buildSession({ id: 'sess-ho', userId: 'staff-target', branchId: 'branch-1' });
+    authSessionRepo.findById.mockResolvedValue(session);
+    authSessionRepo.revokeById.mockResolvedValue(undefined);
+
+    const result = await useCase.execute('mgr-ho', 'sess-ho');
+
+    expect(result.revokedSessionId).toBe('sess-ho');
+    expect(authSessionRepo.revokeById).toHaveBeenCalledWith('sess-ho');
+  });
+
   it('STAFF cannot force-logout anyone', async () => {
     const { useCase, userRepo, authSessionRepo } = buildUseCase();
     userRepo.findById.mockResolvedValue(staffUser);
 
     await expect(useCase.execute('staff-1', 'sess-4')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(authSessionRepo.findById).not.toHaveBeenCalled();
+    expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
+  });
+
+  it('AUDITOR cannot force-logout anyone', async () => {
+    const { useCase, userRepo, authSessionRepo } = buildUseCase();
+    userRepo.findById.mockResolvedValue(auditorUser);
+
+    await expect(useCase.execute('aud-1', 'sess-5')).rejects.toBeInstanceOf(ForbiddenException);
     expect(authSessionRepo.findById).not.toHaveBeenCalled();
     expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
   });
