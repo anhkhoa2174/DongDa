@@ -71,22 +71,37 @@ export interface ParseJournalResult {
   summary: { total: number; parsed: number; failed: number };
 }
 
-export interface FundReconItemDto {
-  branchId: string;
-  branchCode: string;
+export interface FundReconLineDto {
   currencyCode: string;
   systemBalance: number;
-  physicalActual: number | null;
+  physicalActual: number;
   variance: number;
-  status: 'MATCH' | 'OVERAGE' | 'SHORTAGE' | 'NO_COUNT';
-  countedAt: string | null;
+  status: 'MATCH' | 'OVERAGE' | 'SHORTAGE';
+}
+
+export interface FundReconSheetDto {
+  id: string;
+  countType: 'OPENING' | 'CLOSING';
+  branchId: string;
+  branchCode: string;
+  branchName: string;
+  shiftId: string | null;
+  shiftCode: string | null;
+  businessDate: string;
+  countedAt: string;
+  countedByName: string;
+  note: string | null;
+  status: 'MATCH' | 'VARIANCE';
+  matchedCount: number;
+  varianceCount: number;
+  lines: FundReconLineDto[];
 }
 
 export const reconApi = {
   runs: (branchId?: string, provider?: 'WU' | 'MG') =>
     httpClient.get<ReconRunDto[]>('/reconciliation/runs', { params: { branchId, provider } }).then((r) => r.data),
   fundReconciliation: (branchId?: string) =>
-    httpClient.get<FundReconItemDto[]>('/reconciliation/fund', { params: branchId ? { branchId } : {} }).then((r) => r.data),
+    httpClient.get<FundReconSheetDto[]>('/reconciliation/fund', { params: branchId ? { branchId } : {} }).then((r) => r.data),
   items: (runId: string) =>
     httpClient.get<ReconItemDto[]>(`/reconciliation/runs/${runId}/items`).then((r) => r.data),
   run: (input: RunReconInput) =>

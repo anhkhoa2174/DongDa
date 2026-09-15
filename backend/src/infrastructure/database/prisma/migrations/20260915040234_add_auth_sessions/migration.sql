@@ -1,18 +1,6 @@
 -- CreateEnum
 CREATE TYPE "session_status" AS ENUM ('ACTIVE', 'EXPIRED', 'REVOKED');
 
--- DropIndex
-DROP INDEX "idx_mg_reference_no";
-
--- DropIndex
-DROP INDEX "idx_reconciliation_items_code";
-
--- DropIndex
-DROP INDEX "idx_reconciliation_runs_wu_review_queue";
-
--- DropIndex
-DROP INDEX "idx_wu_mtcn";
-
 -- CreateTable
 CREATE TABLE "auth_sessions" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),

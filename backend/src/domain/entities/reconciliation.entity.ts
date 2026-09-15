@@ -12,18 +12,33 @@ export enum ReconItemStatus {
   DUPLICATE_IN_JOURNAL = 'DUPLICATE_IN_JOURNAL', // cùng mã + loại tiền xuất hiện nhiều lần trong Journal
 }
 
-// F9.1 — Đối chiếu quỹ: tồn hệ thống (ledger) vs tồn thực tế (kiểm quỹ gần nhất)
-export type FundReconStatus = 'MATCH' | 'OVERAGE' | 'SHORTAGE' | 'NO_COUNT';
+// F9.1 — Phiếu kiểm quỹ gần nhất của từng chi nhánh.
+export type FundReconStatus = 'MATCH' | 'OVERAGE' | 'SHORTAGE';
 
-export interface FundReconItem {
+export interface FundReconLine {
+  currencyCode: string;
+  systemBalance: number;
+  physicalActual: number;
+  variance: number;
+  status: FundReconStatus;
+}
+
+export interface FundReconSheet {
+  id: string;
+  countType: 'OPENING' | 'CLOSING';
   branchId: string;
   branchCode: string;
-  currencyCode: string;
-  systemBalance: number; // tồn hệ thống hiện tại (từ ledger)
-  physicalActual: number | null; // tồn thực tế lần kiểm quỹ gần nhất (null nếu chưa kiểm)
-  variance: number; // physicalActual - systemBalance (0 nếu chưa kiểm)
-  status: FundReconStatus;
-  countedAt: Date | null;
+  branchName: string;
+  shiftId: string | null;
+  shiftCode: string | null;
+  businessDate: Date;
+  countedAt: Date;
+  countedByName: string;
+  note: string | null;
+  status: 'MATCH' | 'VARIANCE';
+  matchedCount: number;
+  varianceCount: number;
+  lines: FundReconLine[];
 }
 
 export interface SystemTxn {

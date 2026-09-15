@@ -1,7 +1,7 @@
 // Repository Interface: Đối chiếu (Port)
 // Layer: Domain
 
-import type { SystemTxn, ReconItem, ReconResult, FundReconItem } from '../entities/reconciliation.entity';
+import type { SystemTxn, ReconItem, ReconResult, FundReconSheet } from '../entities/reconciliation.entity';
 
 export interface SaveRunInput {
   provider: string; // WU | MG
@@ -83,7 +83,7 @@ export interface IReconciliationRepository {
   listSubmittedBranchRuns(provider: 'WU' | 'MG', branchId?: string): Promise<ReconRunSummary[]>;
   getBranchRunsForFinal(provider: 'WU' | 'MG', runIds: string[]): Promise<BranchRunForFinal[]>;
   // F9.1 — đối chiếu quỹ hệ thống vs kiểm quỹ thực tế gần nhất
-  fundReconciliation(branchId?: string): Promise<FundReconItem[]>;
+  fundReconciliation(branchId?: string): Promise<FundReconSheet[]>;
   // STAFF upload journal chờ KTTH duyệt
   savePendingJournal(input: SavePendingJournalInput): Promise<PendingJournalSummary>;
   // KTTH duyệt (đã chạy đối chiếu) hoặc từ chối Journal chờ duyệt
