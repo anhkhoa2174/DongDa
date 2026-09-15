@@ -1,4 +1,5 @@
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { LoginUseCase } from './login.use-case';
 
@@ -158,6 +159,26 @@ describe('LoginUseCase', () => {
 
     expect(authSessionRepo.countActiveStaffByBranch).not.toHaveBeenCalled();
     expect(result.sessionId).toBe('sess-manager');
+  });
+
+  it('translates a DB unique-constraint violation (race condition) into the same ConflictException as the pre-check', async () => {
+    const { useCase, userRepo, hashService, authSessionRepo } = buildUseCase();
+    userRepo.findByUsername.mockResolvedValue(staffUser);
+    hashService.compare.mockResolvedValue(true);
+    // Pre-check passes (simulates the race window: another login's insert
+    // hasn't landed yet when this count query ran).
+    authSessionRepo.countActiveStaffByBranch.mockResolvedValue(0);
+    authSessionRepo.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '5.0.0',
+      }),
+    );
+
+    await expect(useCase.execute(loginDto)).rejects.toBeInstanceOf(ConflictException);
+    await expect(useCase.execute(loginDto)).rejects.toThrow(
+      'Chi nhánh này đang có nhân viên khác đăng nhập. Vui lòng chờ họ đăng xuất hoặc liên hệ KTTH/GĐ để cưỡng chế đăng xuất.',
+    );
   });
 
   it('rejects login with UnauthorizedException and the same message when user is missing', async () => {

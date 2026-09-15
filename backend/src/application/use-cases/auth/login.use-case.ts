@@ -3,6 +3,7 @@
 // Dependency: IUserRepository, IJwtService (injected — không import NestJS trực tiếp)
 
 import { Injectable, UnauthorizedException, ConflictException, Inject } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { IUserRepository } from '../../../domain/repositories/user.repository';
 import type { IAuthSessionRepository } from '../../../domain/repositories/auth-session.repository';
 import { UserRole } from '../../../domain/entities/user.entity';
@@ -57,19 +58,35 @@ export class LoginUseCase {
       type: 'refresh',
     });
 
-    // Tạo auth_sessions record để khoá chi nhánh + cho phép cưỡng chế đăng xuất sau này
-    const session = await this.authSessionRepo.create({
-      userId: user.id,
-      branchId: user.branchId ?? null,
-      role: user.role,
-      refreshTokenHash: refreshToken, // JWT refresh token đã ký, không phải secret hash riêng
-      // 12h — absolute safety-cap cho session (đủ dài cho 1 ca làm việc), tách biệt
-      // khỏi JWT access-token TTL. Tín hiệu "session còn sống" thực sự khi vận hành
-      // bình thường là heartbeat staleness (Task 5 HeartbeatUseCase, timeout mặc định
-      // 5 phút) — field này chỉ chặn trường hợp không ai đóng session và heartbeat
-      // cũng không bắt được.
-      expiresAt: new Date(Date.now() + 12 * 3600 * 1000),
-    });
+    // Tạo auth_sessions record để khoá chi nhánh + cho phép cưỡng chế đăng xuất sau này.
+    // Check-then-act race: count check ở trên và create() ở đây là 2 DB call tách rời,
+    // không serialize — 2 login đồng thời cùng chi nhánh có thể cùng pass count check
+    // trước khi 1 trong 2 insert xong. Backstop thực sự là partial unique index
+    // auth_sessions_one_active_staff_per_branch (branch_id, role) WHERE status='ACTIVE'
+    // AND role='STAFF' (migration add_auth_sessions_branch_lock_unique) — bắt lỗi P2002
+    // ở đây và trả về CÙNG message với pre-check để 2 nhánh không phân biệt được với caller.
+    let session;
+    try {
+      session = await this.authSessionRepo.create({
+        userId: user.id,
+        branchId: user.branchId ?? null,
+        role: user.role,
+        refreshTokenHash: refreshToken, // JWT refresh token đã ký, không phải secret hash riêng
+        // 12h — absolute safety-cap cho session (đủ dài cho 1 ca làm việc), tách biệt
+        // khỏi JWT access-token TTL. Tín hiệu "session còn sống" thực sự khi vận hành
+        // bình thường là heartbeat staleness (Task 5 HeartbeatUseCase, timeout mặc định
+        // 5 phút) — field này chỉ chặn trường hợp không ai đóng session và heartbeat
+        // cũng không bắt được.
+        expiresAt: new Date(Date.now() + 12 * 3600 * 1000),
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException(
+          'Chi nhánh này đang có nhân viên khác đăng nhập. Vui lòng chờ họ đăng xuất hoặc liên hệ KTTH/GĐ để cưỡng chế đăng xuất.',
+        );
+      }
+      throw error;
+    }
 
     // Access token: chứa role + branchId + sessionId để guard check không phải query DB
     const accessToken = this.jwtService.signAccess({

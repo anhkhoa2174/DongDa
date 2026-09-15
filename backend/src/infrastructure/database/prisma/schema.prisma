@@ -442,6 +442,13 @@ model cash_counts {
   @@index([branch_id, shift_id], map: "idx_cash_counts_branch_shift")
 }
 
+/// DB-level enforcement of "only 1 active STAFF session per branch" lives in a
+/// partial unique index (see migration 20260915071557_add_auth_sessions_branch_lock_unique):
+///   CREATE UNIQUE INDEX auth_sessions_one_active_staff_per_branch
+///   ON auth_sessions (branch_id, role) WHERE status = 'ACTIVE' AND role = 'STAFF';
+/// Prisma's @@unique cannot express a WHERE clause, so it is not represented here —
+/// do NOT add a plain @@unique([branch_id, role]); that would incorrectly block
+/// ADMIN/MANAGER/AUDITOR and would block multiple REVOKED/EXPIRED historical rows.
 model auth_sessions {
   id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id             String         @db.Uuid
