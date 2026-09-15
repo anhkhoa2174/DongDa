@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
 import { IUserRepository } from '../../../domain/repositories/user.repository';
+import type { IAuthSessionRepository } from '../../../domain/repositories/auth-session.repository';
 import { LoginDto, ChangePasswordDto, RefreshTokenDto } from '../../../application/dtos/auth/auth.dto';
 import { CreateUserDto, UpdateUserDto } from '../../../application/dtos/auth/user.dto';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
@@ -26,6 +27,7 @@ export class AuthController {
     private readonly changePasswordUseCase: ChangePasswordUseCase,
     private readonly refreshTokenUseCase: RefreshTokenUseCase,
     private readonly notifications: NotificationService,
+    @Inject('IAuthSessionRepository') private readonly authSessionRepo: IAuthSessionRepository,
   ) {}
 
   // POST /auth/login
@@ -42,13 +44,14 @@ export class AuthController {
     return this.refreshTokenUseCase.execute(dto.refreshToken);
   }
 
-  // POST /auth/logout — client xóa token; server có thể blacklist nếu cần
+  // POST /auth/logout — thu hồi session ngay để giải phóng slot chi nhánh (không chờ heartbeat timeout)
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
-  async logout() {
-    // Stateless JWT: client tự xóa token
-    // TODO: implement token blacklist nếu cần force logout
+  async logout(@Request() req: any) {
+    if (req.user.sessionId) {
+      await this.authSessionRepo.revokeById(req.user.sessionId);
+    }
   }
 
   // GET /auth/me

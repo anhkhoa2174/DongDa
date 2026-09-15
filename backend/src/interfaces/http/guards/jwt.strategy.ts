@@ -5,11 +5,13 @@ import { Injectable, UnauthorizedException, Inject } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { IUserRepository } from '../../../domain/repositories/user.repository';
+import type { IAuthSessionRepository } from '../../../domain/repositories/auth-session.repository';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     @Inject('IUserRepository') private readonly userRepo: IUserRepository,
+    @Inject('IAuthSessionRepository') private readonly authSessionRepo: IAuthSessionRepository,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -22,6 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     sub: string;
     role: string;
     branchId: string | null;
+    sessionId?: string;
     type?: 'access' | 'refresh';
   }) {
     // Reject refresh token nếu dùng làm access token (security: C2)
@@ -33,8 +36,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Phiên đăng nhập không hợp lệ');
     }
+
+    // Session validation: chỉ áp dụng nếu token có sessionId (backward-compat với token cũ, nếu có)
+    if (payload.sessionId) {
+      const session = await this.authSessionRepo.findById(payload.sessionId);
+      if (!session || session.isExpired()) {
+        throw new UnauthorizedException('Phiên đăng nhập đã hết hạn hoặc bị thu hồi');
+      }
+    }
+
     // Trả về user object — gắn vào req.user
     const { password: _, ...safe } = user;
-    return safe;
+    return { ...safe, sessionId: payload.sessionId };
   }
 }
