@@ -1,5 +1,5 @@
 import {
-  normalizeReconciliationCode, reconcile, ReconItemStatus,
+  isFullyMatchedReconciliation, normalizeReconciliationCode, reconcile, ReconItemStatus,
 } from './reconciliation.entity';
 
 describe('reconcile', () => {
@@ -123,5 +123,26 @@ describe('reconcile', () => {
   it('normalizes formatted WU/MG references before matching', () => {
     expect(normalizeReconciliationCode('633-775-1692')).toBe('6337751692');
     expect(normalizeReconciliationCode('ab-12 cd34')).toBe('AB12CD34');
+  });
+
+  it('treats an empty Journal and an empty system period as fully matched', () => {
+    const result = reconcile([], [], { matchByBranch: false });
+
+    expect(result).toEqual(expect.objectContaining({
+      totalCount: 0,
+      matchedCount: 0,
+      matchRate: 1,
+      varianceTotal: 0,
+    }));
+    expect(isFullyMatchedReconciliation(result)).toBe(true);
+  });
+
+  it('does not treat an empty Journal as matched when the system has transactions', () => {
+    const result = reconcile([
+      { code: '1234567890', transactionId: 'tx-1', branchId: 'A', amount: 100, currencyCode: 'USD' },
+    ], [], { matchByBranch: false });
+
+    expect(result.items[0].status).toBe(ReconItemStatus.MISSING_IN_JOURNAL);
+    expect(isFullyMatchedReconciliation(result)).toBe(false);
   });
 });

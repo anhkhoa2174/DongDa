@@ -180,31 +180,56 @@ export class CreateProviderFinalRunUseCase {
       code: normalizeReconciliationCode(row.code),
       customerName: row.customerName ?? undefined,
     })));
-    const allSystem = (await this.repo.listSystemTxByProvider(
+    const providerSystem = await this.repo.listSystemTxByProvider(
       provider,
       first.summary.dateFrom,
       first.summary.dateTo,
-    ))
-      .filter((item) => item.currencyCode === currencyCode);
-    const system = allSystem.filter((item) => branchIds.includes(item.branchId));
+    );
+    const selectedBranchSystem = providerSystem.filter((item) => branchIds.includes(item.branchId));
+    const system = selectedBranchSystem.filter((item) => item.currencyCode === currencyCode);
     assertUniqueCompletedReferences(system, provider);
     // Final là đối chiếu toàn công ty. MTCN/Reference đã duy nhất trên các giao
     // dịch COMPLETED, nên Journal của một chi nhánh có thể ghép đúng giao dịch
     // thuộc chi nhánh khác; công nợ vẫn được ghi về chi nhánh của giao dịch gốc.
     const result = reconcile(system, rows, { matchByBranch: false });
+    annotatePaidCurrencyMismatches(result, selectedBranchSystem);
     const matchedTransactionIds = new Set(result.items
       .filter((item) => item.status === 'MATCHED' && item.transactionId)
       .map((item) => item.transactionId));
     const hasMatchedTransactions = matchedTransactionIds.size > 0;
+    const hasNoActivity = result.totalCount === 0;
     return this.repo.saveRun({
       provider, businessDate: first.summary.dateTo,
       dateFrom: first.summary.dateFrom, dateTo: first.summary.dateTo,
       scope: 'COMPANY', currencyCode,
-      result, createdByUserId: actor.id, stage: 'FINAL', postFinancial: hasMatchedTransactions,
+      result, createdByUserId: actor.id, stage: 'FINAL',
+      // Final rỗng hợp lệ vẫn được chốt nhưng không tạo hay cập nhật công nợ.
+      postFinancial: hasMatchedTransactions || hasNoActivity,
       // Bản chi nhánh chỉ được dùng cho một lần đối chiếu Final. Nếu Final lệch,
       // chi nhánh sửa giao dịch rồi tạo và gửi một bản đối chiếu chi nhánh mới.
       sourceRunIds: uniqueIds,
     });
+  }
+}
+
+function annotatePaidCurrencyMismatches(
+  result: ReturnType<typeof reconcile>,
+  system: Array<{ code: string; currencyCode: string }>,
+): void {
+  const systemCurrencyByCode = new Map<string, Set<string>>();
+  for (const transaction of system) {
+    const code = normalizeReconciliationCode(transaction.code);
+    const currencies = systemCurrencyByCode.get(code) ?? new Set<string>();
+    currencies.add(transaction.currencyCode);
+    systemCurrencyByCode.set(code, currencies);
+  }
+  for (const item of result.items) {
+    if (item.status !== 'MISSING_IN_SYSTEM') continue;
+    const otherCurrencies = [...(systemCurrencyByCode.get(normalizeReconciliationCode(item.code)) ?? [])]
+      .filter((currency) => currency !== item.currencyCode);
+    if (otherCurrencies.length > 0) {
+      item.note = `Sai Paid Currency: Journal ${item.currencyCode}, giao dịch ${otherCurrencies.join('/')}`;
+    }
   }
 }
 

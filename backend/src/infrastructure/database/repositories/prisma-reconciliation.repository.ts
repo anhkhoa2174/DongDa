@@ -7,7 +7,8 @@ import {
   IReconciliationRepository, SaveRunInput, ReconRunSummary,
 } from '../../../domain/repositories/reconciliation.repository';
 import {
-  SystemTxn, ReconItem, ReconItemStatus, FundReconSheet, FundReconStatus, normalizeReconciliationCode,
+  SystemTxn, ReconItem, ReconItemStatus, FundReconSheet, FundReconStatus,
+  isFullyMatchedReconciliation, normalizeReconciliationCode,
 } from '../../../domain/entities/reconciliation.entity';
 import { NotificationService } from '../../notifications/notification.service';
 
@@ -63,13 +64,8 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
 
     // Các dòng có mặt trong Journal (khớp / lệch / thiếu-hệ-thống)
     const journalItems = result.items.filter((i) => i.status !== 'MISSING_IN_JOURNAL');
-    const matchedTransactionIds = new Set(result.items
-      .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
-      .map((item) => item.transactionId));
-    const fullyMatched = result.totalCount > 0
-      && result.items.every((item) => item.status === ReconItemStatus.MATCHED)
-      && Math.abs(result.varianceTotal) < 0.01
-      && matchedTransactionIds.size === result.items.length;
+    // Journal rỗng và hệ thống cũng không phát sinh là một kết quả đối chiếu hợp lệ.
+    const fullyMatched = isFullyMatchedReconciliation(result);
     const status = fullyMatched ? 'MATCHED' : 'PENDING_REVIEW';
     let reconciledDebtCount = 0;
 
@@ -90,7 +86,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         },
       }) : null;
       if (posted) throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
-      if (stage === 'FINAL' && postFinancial) {
+      if (stage === 'FINAL') {
         if (!input.sourceRunIds?.length) {
           throw new BadRequestException('Bản đối chiếu tổng phải có các bản chi nhánh nguồn');
         }
@@ -534,7 +530,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
       .map((item) => item.transactionId as string))];
     if (transactionIds.length === 0) {
-      throw new BadRequestException('Bản đối chiếu không có giao dịch khớp để xác nhận công nợ');
+      return 0;
     }
 
     const accountRefs = await tx.debt_accounts.findMany({

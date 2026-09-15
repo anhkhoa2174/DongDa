@@ -81,6 +81,15 @@ export interface ReconResult {
   matchRate: number; // 0..1
 }
 
+export function isFullyMatchedReconciliation(result: ReconResult): boolean {
+  const matchedTransactionIds = new Set(result.items
+    .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
+    .map((item) => item.transactionId));
+  return result.items.every((item) => item.status === ReconItemStatus.MATCHED)
+    && Math.abs(result.varianceTotal) < 0.01
+    && matchedTransactionIds.size === result.items.length;
+}
+
 const EPS = 0.01;
 
 export function normalizeReconciliationCode(code: string): string {

@@ -164,7 +164,9 @@ export function ReconciliationWorkspacePage({ provider }: { provider: 'WU' | 'MG
       setSelectedBranchRunIds([]);
       setSelectedRun(finalRun.id);
       const reconciledCount = finalRun.reconciledDebtCount ?? finalRun.matchedCount;
-      if (finalRun.totalCount > 0 && finalRun.matchedCount === finalRun.totalCount && finalRun.matchRate >= 1) {
+      if (finalRun.status === 'MATCHED' && finalRun.totalCount === 0) {
+        message.success(`Đã chốt ${finalRun.runNo}: không phát sinh giao dịch trong kỳ`);
+      } else if (finalRun.totalCount > 0 && finalRun.matchedCount === finalRun.totalCount && finalRun.matchRate >= 1) {
         message.success(`Đã chốt ${finalRun.runNo}; ${reconciledCount} công nợ đã chuyển sang chờ thanh toán`);
       } else {
         message.warning(

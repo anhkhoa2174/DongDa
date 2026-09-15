@@ -203,6 +203,73 @@ describe('CreateProviderFinalRunUseCase', () => {
     }));
   });
 
+  it.each([1, 2, 3, 4, 5])('đối chiếu Final WU chính xác khi chọn %i chi nhánh', async (branchCount) => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const sources = Array.from({ length: branchCount }, (_, index) => {
+      const branchId = `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`;
+      const code = String(1_000_000_000 + index);
+      return branchRun(`run-${index + 1}`, branchId, 'WU', businessDate, code, 100 + index);
+    });
+    repo.getBranchRunsForFinal.mockResolvedValue(sources);
+    repo.listSystemTxByProvider.mockResolvedValue(sources.map((source, index) => ({
+      code: source.rows[0].code,
+      amount: source.rows[0].amount,
+      currencyCode: 'USD',
+      branchId: source.summary.branchId,
+      transactionId: `tx-${index + 1}`,
+    })));
+
+    const useCase = new CreateProviderFinalRunUseCase(repo as any);
+    await useCase.execute('WU', sources.map((source) => source.summary.id), admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: true,
+      sourceRunIds: sources.map((source) => source.summary.id),
+      result: expect.objectContaining({
+        matchedCount: branchCount,
+        totalCount: branchCount,
+        matchRate: 1,
+      }),
+    }));
+  });
+
+  it('không sinh dòng giả cho các chi nhánh không có cả giao dịch lẫn Journal', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const sources = Array.from({ length: 5 }, (_, index) => {
+      const branchId = `00000000-0000-0000-0000-${String(index + 1).padStart(12, '0')}`;
+      const source = branchRun(`run-${index + 1}`, branchId, 'WU', businessDate, String(2_000_000_000 + index));
+      if (index >= 2) {
+        source.rows = [];
+        source.summary.systemTotal = 0;
+        source.summary.journalTotal = 0;
+        source.summary.matchedCount = 0;
+        source.summary.totalCount = 0;
+      }
+      return source;
+    });
+    repo.getBranchRunsForFinal.mockResolvedValue(sources);
+    repo.listSystemTxByProvider.mockResolvedValue(sources.slice(0, 2).map((source, index) => ({
+      code: source.rows[0].code,
+      amount: source.rows[0].amount,
+      currencyCode: 'USD',
+      branchId: source.summary.branchId,
+      transactionId: `tx-${index + 1}`,
+    })));
+
+    await new CreateProviderFinalRunUseCase(repo as any).execute(
+      'WU',
+      sources.map((source) => source.summary.id),
+      admin,
+    );
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: true,
+      result: expect.objectContaining({ matchedCount: 2, totalCount: 2, matchRate: 1 }),
+    }));
+  });
+
   it('chỉ Final các bản được tick và giữ bản chi nhánh chưa chọn ở hàng chờ', async () => {
     const repo = makeRepo();
     const businessDate = new Date('2026-08-01T00:00:00.000Z');
@@ -229,6 +296,29 @@ describe('CreateProviderFinalRunUseCase', () => {
     }));
   });
 
+  it('chốt Final WU không phát sinh khi bản chi nhánh và hệ thống đều không có dòng', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-14T00:00:00.000Z');
+    const source = branchRun('run-empty', BRANCH_A, 'WU', businessDate, '1234567890');
+    source.rows = [];
+    source.summary.systemTotal = 0;
+    source.summary.journalTotal = 0;
+    source.summary.matchedCount = 0;
+    source.summary.totalCount = 0;
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSystemTxByProvider.mockResolvedValue([]);
+
+    const useCase = new CreateProviderFinalRunUseCase(repo as any);
+    await useCase.execute('WU', ['run-empty'], admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      stage: 'FINAL',
+      postFinancial: true,
+      sourceRunIds: ['run-empty'],
+      result: expect.objectContaining({ totalCount: 0, matchedCount: 0, matchRate: 1 }),
+    }));
+  });
+
   it('posts matched debts even when Final still has discrepancies', async () => {
     const repo = makeRepo();
     const businessDate = new Date('2026-08-01T00:00:00.000Z');
@@ -244,6 +334,88 @@ describe('CreateProviderFinalRunUseCase', () => {
     await useCase.execute('WU', ['run-a'], admin);
     expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
       stage: 'FINAL', postFinancial: true, sourceRunIds: ['run-a'],
+    }));
+  });
+
+  it('không chốt công nợ khi Final chỉ có Journal mà không có giao dịch hệ thống', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const source = branchRun('run-journal-only', BRANCH_A, 'WU', businessDate, '1234567890');
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSystemTxByProvider.mockResolvedValue([]);
+
+    await new CreateProviderFinalRunUseCase(repo as any).execute('WU', [source.summary.id], admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: false,
+      result: expect.objectContaining({
+        matchedCount: 0,
+        items: [expect.objectContaining({ status: 'MISSING_IN_SYSTEM' })],
+      }),
+    }));
+  });
+
+  it('không chốt công nợ khi Final chỉ có giao dịch hệ thống mà Journal rỗng', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const source = branchRun('run-system-only', BRANCH_A, 'WU', businessDate, '1234567890');
+    source.rows = [];
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSystemTxByProvider.mockResolvedValue([{
+      code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1',
+    }]);
+
+    await new CreateProviderFinalRunUseCase(repo as any).execute('WU', [source.summary.id], admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: false,
+      result: expect.objectContaining({
+        matchedCount: 0,
+        items: [expect.objectContaining({ status: 'MISSING_IN_JOURNAL', transactionId: 'tx-1' })],
+      }),
+    }));
+  });
+
+  it('ghi rõ sai Paid Currency và không chốt công nợ', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const source = branchRun('run-wrong-paid', BRANCH_A, 'WU', businessDate, '1234567890');
+    source.summary.currencyCode = 'VND';
+    source.rows = [{ code: '1234567890', amount: 2_600_000, currencyCode: 'VND', branchId: BRANCH_A }];
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSystemTxByProvider.mockResolvedValue([{
+      code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1',
+    }]);
+
+    await new CreateProviderFinalRunUseCase(repo as any).execute('WU', [source.summary.id], admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: false,
+      result: expect.objectContaining({
+        items: [expect.objectContaining({
+          status: 'MISSING_IN_SYSTEM',
+          note: 'Sai Paid Currency: Journal VND, giao dịch USD',
+        })],
+      }),
+    }));
+  });
+
+  it('không chốt công nợ khi cùng Paid Currency nhưng sai số tiền', async () => {
+    const repo = makeRepo();
+    const businessDate = new Date('2026-09-15T00:00:00.000Z');
+    const source = branchRun('run-wrong-amount', BRANCH_A, 'WU', businessDate, '1234567890', 99);
+    repo.getBranchRunsForFinal.mockResolvedValue([source]);
+    repo.listSystemTxByProvider.mockResolvedValue([{
+      code: '1234567890', amount: 100, currencyCode: 'USD', branchId: BRANCH_A, transactionId: 'tx-1',
+    }]);
+
+    await new CreateProviderFinalRunUseCase(repo as any).execute('WU', [source.summary.id], admin);
+
+    expect(repo.saveRun).toHaveBeenCalledWith(expect.objectContaining({
+      postFinancial: false,
+      result: expect.objectContaining({
+        items: [expect.objectContaining({ status: 'AMOUNT_VARIANCE', varianceAmount: 1 })],
+      }),
     }));
   });
 
