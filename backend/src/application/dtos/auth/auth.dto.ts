@@ -18,6 +18,7 @@ export class LoginDto {
 export class LoginResponseDto {
   accessToken: string;
   refreshToken: string;
+  sessionId: string;
   user: {
     id: string;
     username: string;
