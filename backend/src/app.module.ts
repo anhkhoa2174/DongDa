@@ -18,6 +18,7 @@ import { CreateUserUseCase } from './application/use-cases/auth/create-user.use-
 import { ChangePasswordUseCase } from './application/use-cases/auth/change-password.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/auth/refresh-token.use-case';
 import { HeartbeatUseCase } from './application/use-cases/auth/heartbeat.use-case';
+import { ForceLogoutStaffUseCase } from './application/use-cases/auth/force-logout-staff.use-case';
 
 import { AuthController, UserController } from './interfaces/http/controllers/auth.controller';
 import { ExchangeRateController } from './interfaces/http/controllers/exchange-rate.controller';
@@ -179,6 +180,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     ChangePasswordUseCase,
     RefreshTokenUseCase,
     HeartbeatUseCase,
+    ForceLogoutStaffUseCase,
 
     CreateExchangeRateUseCase,
     ApproveExchangeRateUseCase,

@@ -10,6 +10,8 @@ import { LoginUseCase } from '../../../application/use-cases/auth/login.use-case
 import { CreateUserUseCase } from '../../../application/use-cases/auth/create-user.use-case';
 import { ChangePasswordUseCase } from '../../../application/use-cases/auth/change-password.use-case';
 import { RefreshTokenUseCase } from '../../../application/use-cases/auth/refresh-token.use-case';
+import { HeartbeatUseCase } from '../../../application/use-cases/auth/heartbeat.use-case';
+import { ForceLogoutStaffUseCase } from '../../../application/use-cases/auth/force-logout-staff.use-case';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard, Roles } from '../guards/roles.guard';
 import { UserRole } from '../../../domain/entities/user.entity';
@@ -28,6 +30,8 @@ export class AuthController {
     private readonly refreshTokenUseCase: RefreshTokenUseCase,
     private readonly notifications: NotificationService,
     @Inject('IAuthSessionRepository') private readonly authSessionRepo: IAuthSessionRepository,
+    private readonly heartbeatUseCase: HeartbeatUseCase,
+    private readonly forceLogoutStaffUseCase: ForceLogoutStaffUseCase,
   ) {}
 
   // POST /auth/login
@@ -52,6 +56,36 @@ export class AuthController {
     if (req.user.sessionId) {
       await this.authSessionRepo.revokeById(req.user.sessionId);
     }
+  }
+
+  // POST /auth/heartbeat — client gọi định kỳ để giữ phiên sống, giải phóng slot chi nhánh nếu bị treo
+  @Post('heartbeat')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async heartbeat(@Request() req: any) {
+    if (!req.user.sessionId) {
+      throw new BadRequestException('Token không có thông tin phiên đăng nhập');
+    }
+    const result = await this.heartbeatUseCase.execute(req.user.sessionId);
+    return {
+      sessionId: result.sessionId,
+      isStale: result.isStale,
+      expiresAt: result.expiresAt.toISOString(),
+    };
+  }
+
+  // POST /auth/staff/:sessionId/force-logout — GĐ/KTTH cưỡng chế đăng xuất 1 phiên Staff bị treo
+  @Post('staff/:sessionId/force-logout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async forceLogoutStaff(@Request() req: any, @Param('sessionId') sessionId: string) {
+    const result = await this.forceLogoutStaffUseCase.execute(req.user.id, sessionId);
+    return {
+      revokedSessionId: result.revokedSessionId,
+      userId: result.userId,
+      branchId: result.branchId,
+    };
   }
 
   // GET /auth/me
