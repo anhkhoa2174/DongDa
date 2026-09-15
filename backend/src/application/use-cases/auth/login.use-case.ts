@@ -63,7 +63,12 @@ export class LoginUseCase {
       branchId: user.branchId ?? null,
       role: user.role,
       refreshTokenHash: refreshToken, // JWT refresh token đã ký, không phải secret hash riêng
-      expiresAt: new Date(Date.now() + 3600 * 1000), // 1h — xem báo cáo Task 4 về lựa chọn này
+      // 12h — absolute safety-cap cho session (đủ dài cho 1 ca làm việc), tách biệt
+      // khỏi JWT access-token TTL. Tín hiệu "session còn sống" thực sự khi vận hành
+      // bình thường là heartbeat staleness (Task 5 HeartbeatUseCase, timeout mặc định
+      // 5 phút) — field này chỉ chặn trường hợp không ai đóng session và heartbeat
+      // cũng không bắt được.
+      expiresAt: new Date(Date.now() + 12 * 3600 * 1000),
     });
 
     // Access token: chứa role + branchId + sessionId để guard check không phải query DB
