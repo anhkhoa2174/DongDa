@@ -11,6 +11,7 @@ import { PassportModule } from '@nestjs/passport';
 
 import { PrismaService } from './infrastructure/database/prisma.service';
 import { PrismaUserRepository } from './infrastructure/database/repositories/prisma-user.repository';
+import { PrismaAuthSessionRepository } from './infrastructure/database/repositories/prisma-auth-session.repository';
 
 import { LoginUseCase } from './application/use-cases/auth/login.use-case';
 import { CreateUserUseCase } from './application/use-cases/auth/create-user.use-case';
@@ -114,6 +115,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
+    { provide: 'IAuthSessionRepository', useClass: PrismaAuthSessionRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
     { provide: 'IExchangeRateImageParser', useClass: GeminiExchangeRateParserService },
     { provide: 'IJournalPdfParser', useClass: GeminiJournalParserService },
