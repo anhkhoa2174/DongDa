@@ -42,7 +42,9 @@ export class RefreshTokenUseCase {
     // Token cũ (không có sessionId, từ trước tính năng này) bỏ qua bước này — tương thích ngược.
     if (payload.sessionId) {
       const session = await this.authSessionRepo.findById(payload.sessionId);
-      if (!session || session.isExpired()) {
+      // session.userId phải khớp sub của chính token — phòng thủ theo chiều sâu:
+      // không cho 1 token gắn nhầm/cố tình vào session của người khác.
+      if (!session || session.userId !== payload.sub || session.isExpired()) {
         throw new UnauthorizedException('Phiên đăng nhập đã hết hạn hoặc bị thu hồi');
       }
     }

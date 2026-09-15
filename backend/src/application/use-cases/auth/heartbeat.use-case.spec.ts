@@ -51,7 +51,9 @@ describe('HeartbeatUseCase', () => {
     expect(result.sessionId).toBe('sess-1');
     expect(result.expiresAt).toBe(updatedSession.expiresAt);
     expect(authSessionRepo.updateHeartbeat).toHaveBeenCalledWith('sess-1');
-    expect(authSessionRepo.revokeExpiredSessions).toHaveBeenCalled();
+    // Dọn session hết hạn là việc của cron SessionCleanupService, không phải của
+    // mỗi request heartbeat.
+    expect(authSessionRepo.revokeExpiredSessions).not.toHaveBeenCalled();
   });
 
   it('throws UnauthorizedException if the session is expired (expiresAt in the past)', async () => {

@@ -23,8 +23,13 @@ export class AuthSessionEntity {
     Object.assign(this, data);
   }
 
+  // Bất kỳ status nào khác ACTIVE đều coi như hết hiệu lực — không chỉ REVOKED.
+  // Cron dọn session (SessionCleanupService) đánh dấu session chết heartbeat là
+  // 'EXPIRED' trong khi expires_at vẫn còn tới 12h; nếu chỉ check 'REVOKED' thì
+  // JwtStrategy/RefreshTokenUseCase vẫn honor token cũ của người đã bị đá ra,
+  // dẫn tới 2 STAFF cùng được uỷ quyền trên 1 chi nhánh.
   isExpired(): boolean {
-    return this.status === 'REVOKED' || new Date() > this.expiresAt;
+    return this.status !== 'ACTIVE' || new Date() > this.expiresAt;
   }
 
   isHeartbeatStale(timeoutSeconds: number): boolean {

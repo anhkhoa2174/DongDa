@@ -116,6 +116,19 @@ describe('RefreshTokenUseCase', () => {
     expect(jwtService.signRefresh).not.toHaveBeenCalled();
   });
 
+  it("rejects the refresh if session.userId does not match the token's sub", async () => {
+    const { useCase, userRepo, jwtService, authSessionRepo } = buildUseCase();
+    jwtService.verifyRefresh.mockReturnValue({ sub: 'u1', sessionId: 's1', type: 'refresh' });
+    userRepo.findById.mockResolvedValue(activeUser);
+    authSessionRepo.findById.mockResolvedValue(buildSession({ userId: 'someone-else' }));
+
+    await expect(useCase.execute('some-refresh-token')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+    expect(jwtService.signAccess).not.toHaveBeenCalled();
+    expect(jwtService.signRefresh).not.toHaveBeenCalled();
+  });
+
   it('rejects the refresh if the session no longer exists', async () => {
     const { useCase, userRepo, jwtService, authSessionRepo } = buildUseCase();
     jwtService.verifyRefresh.mockReturnValue({ sub: 'u1', sessionId: 's1', type: 'refresh' });

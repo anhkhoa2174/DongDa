@@ -40,7 +40,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Session validation: chỉ áp dụng nếu token có sessionId (backward-compat với token cũ, nếu có)
     if (payload.sessionId) {
       const session = await this.authSessionRepo.findById(payload.sessionId);
-      if (!session || session.isExpired()) {
+      // session.userId phải khớp sub của chính token — phòng thủ theo chiều sâu:
+      // không cho 1 token gắn nhầm/cố tình vào session của người khác.
+      if (!session || session.userId !== payload.sub || session.isExpired()) {
         throw new UnauthorizedException('Phiên đăng nhập đã hết hạn hoặc bị thu hồi');
       }
     }

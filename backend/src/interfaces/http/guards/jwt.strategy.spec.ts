@@ -59,6 +59,18 @@ describe('JwtStrategy.validate', () => {
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
+  it("rejects when session.userId does not match the token's sub", async () => {
+    const userRepo = { findById: jest.fn().mockResolvedValue(activeUser) };
+    const authSessionRepo = {
+      findById: jest.fn().mockResolvedValue(makeSession({ userId: 'someone-else' })),
+    };
+    const strategy = new JwtStrategy(userRepo as any, authSessionRepo as any);
+
+    await expect(
+      strategy.validate({ sub: 'u1', role: 'STAFF', branchId: 'b1', sessionId: 's1', type: 'access' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('rejects when the session does not exist', async () => {
     const userRepo = { findById: jest.fn().mockResolvedValue(activeUser) };
     const authSessionRepo = { findById: jest.fn().mockResolvedValue(null) };

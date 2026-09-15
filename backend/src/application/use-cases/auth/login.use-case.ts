@@ -52,12 +52,6 @@ export class LoginUseCase {
       }
     }
 
-    // Refresh token: chỉ chứa sub + type, ký bằng secret KHÁC
-    const refreshToken = this.jwtService.signRefresh({
-      sub: user.id,
-      type: 'refresh',
-    });
-
     // Tạo auth_sessions record để khoá chi nhánh + cho phép cưỡng chế đăng xuất sau này.
     // Check-then-act race: count check ở trên và create() ở đây là 2 DB call tách rời,
     // không serialize — 2 login đồng thời cùng chi nhánh có thể cùng pass count check
@@ -71,7 +65,14 @@ export class LoginUseCase {
         userId: user.id,
         branchId: user.branchId ?? null,
         role: user.role,
-        refreshTokenHash: refreshToken, // JWT refresh token đã ký, không phải secret hash riêng
+        // KHÔNG lưu refresh token thật vào đây. Trước đây field này chứa 1 JWT refresh
+        // đã ký KHÔNG có claim sessionId — tức là 1 credential sống, và vì thiếu
+        // sessionId nó đi đúng nhánh bỏ qua kiểm tra session trong refresh-token.use-case.ts:
+        // ai đọc được DB (backup, log, SQL injection) có thể cấp access token mới vĩnh viễn,
+        // miễn nhiễm force-logout. Field này write-only (không chỗ nào đọc/so sánh để xác
+        // thực) nên ghi 1 placeholder không phải JWT hợp lệ — verifyRefresh() sẽ ném lỗi
+        // ngay nếu có ai thử dùng nó ở /auth/refresh.
+        refreshTokenHash: 'session-created',
         // 12h — absolute safety-cap cho session (đủ dài cho 1 ca làm việc), tách biệt
         // khỏi JWT access-token TTL. Tín hiệu "session còn sống" thực sự khi vận hành
         // bình thường là heartbeat staleness (Task 5 HeartbeatUseCase, timeout mặc định

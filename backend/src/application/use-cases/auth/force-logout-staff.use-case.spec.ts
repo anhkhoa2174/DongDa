@@ -52,12 +52,14 @@ const auditorUser = {
   branchName: 'Chi nhánh 1',
 };
 
-function buildSession(overrides: Partial<{ id: string; userId: string; branchId: string | null }> = {}) {
+function buildSession(
+  overrides: Partial<{ id: string; userId: string; branchId: string | null; role: UserRole }> = {},
+) {
   return {
     id: overrides.id ?? 'sess-1',
     userId: overrides.userId ?? 'staff-target',
-    branchId: overrides.branchId ?? 'branch-1',
-    role: UserRole.STAFF,
+    branchId: overrides.branchId !== undefined ? overrides.branchId : 'branch-1',
+    role: overrides.role ?? UserRole.STAFF,
     status: 'ACTIVE' as const,
     refreshTokenHash: 'hashed-refresh',
     lastHeartbeatAt: new Date(),
@@ -159,6 +161,36 @@ describe('ForceLogoutStaffUseCase', () => {
 
     await expect(useCase.execute('aud-1', 'sess-5')).rejects.toBeInstanceOf(ForbiddenException);
     expect(authSessionRepo.findById).not.toHaveBeenCalled();
+    expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
+  });
+
+  it('rejects force-logout of a non-STAFF target session (e.g. another MANAGER)', async () => {
+    const { useCase, userRepo, authSessionRepo } = buildUseCase();
+    userRepo.findById.mockResolvedValue(adminUser);
+    const session = buildSession({
+      id: 'sess-mgr',
+      userId: 'mgr-target',
+      branchId: 'branch-1',
+      role: UserRole.MANAGER,
+    });
+    authSessionRepo.findById.mockResolvedValue(session);
+
+    await expect(useCase.execute('admin-1', 'sess-mgr')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
+  });
+
+  it('a Hội sở MANAGER (branchId null) cannot force-logout an ADMIN session via the branch-bypass path', async () => {
+    const { useCase, userRepo, authSessionRepo } = buildUseCase();
+    userRepo.findById.mockResolvedValue(managerHoUser);
+    const session = buildSession({
+      id: 'sess-admin',
+      userId: 'admin-target',
+      branchId: null,
+      role: UserRole.ADMIN,
+    });
+    authSessionRepo.findById.mockResolvedValue(session);
+
+    await expect(useCase.execute('mgr-ho', 'sess-admin')).rejects.toBeInstanceOf(ForbiddenException);
     expect(authSessionRepo.revokeById).not.toHaveBeenCalled();
   });
 

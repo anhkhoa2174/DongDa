@@ -22,8 +22,9 @@ export class HeartbeatUseCase {
   ) {}
 
   async execute(sessionId: string): Promise<HeartbeatResult> {
-    await this.authSessionRepo.revokeExpiredSessions();
-
+    // Không gọi revokeExpiredSessions() ở đây: SessionCleanupService đã chạy đúng
+    // việc dọn này bằng cron mỗi 60s, độc lập với hoạt động của user. Gọi thêm mỗi
+    // request heartbeat (≈2 phút/user) chỉ là write amplification, không thêm tính đúng.
     const session = await this.authSessionRepo.findById(sessionId);
     if (!session) throw new NotFoundException('Không tìm thấy phiên đăng nhập');
 

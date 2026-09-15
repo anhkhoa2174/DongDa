@@ -111,11 +111,43 @@ describe('LoginUseCase', () => {
         userId: 'user-1',
         branchId: 'branch-1',
         role: UserRole.STAFF,
-        refreshTokenHash: 'signed-refresh-token',
       }),
     );
     expect(jwtService.signAccess).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: 'sess-1' }),
+    );
+  });
+
+  it('never persists a usable refresh token into auth_sessions.refresh_token_hash', async () => {
+    const { useCase, userRepo, hashService, authSessionRepo, jwtService } = buildUseCase();
+    userRepo.findByUsername.mockResolvedValue(staffUser);
+    hashService.compare.mockResolvedValue(true);
+    authSessionRepo.countActiveStaffByBranch.mockResolvedValue(0);
+    authSessionRepo.create.mockResolvedValue({
+      id: 'sess-1',
+      userId: 'user-1',
+      branchId: 'branch-1',
+      role: UserRole.STAFF,
+      status: 'ACTIVE',
+      refreshTokenHash: 'session-created',
+      lastHeartbeatAt: new Date(),
+      expiresAt: new Date(),
+    });
+
+    const result = await useCase.execute(loginDto);
+
+    const stored = authSessionRepo.create.mock.calls[0][0].refreshTokenHash;
+    // Placeholder trơ, không phải JWT (không có 3 phần ngăn bởi dấu chấm) → không thể
+    // đem đi /auth/refresh: verifyRefresh() sẽ ném lỗi ngay.
+    expect(stored).toBe('session-created');
+    expect(stored.split('.')).toHaveLength(1);
+    expect(stored).not.toBe(result.refreshToken);
+
+    // Chỉ ký ĐÚNG 1 refresh token — token trả về client, và nó phải mang sessionId
+    // (không còn token "không sessionId" nào được ký để đem đi lưu DB).
+    expect(jwtService.signRefresh).toHaveBeenCalledTimes(1);
+    expect(jwtService.signRefresh).toHaveBeenCalledWith(
+      expect.objectContaining({ sub: 'user-1', sessionId: 'sess-1', type: 'refresh' }),
     );
   });
 

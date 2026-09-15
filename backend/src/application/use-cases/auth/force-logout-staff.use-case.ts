@@ -34,6 +34,14 @@ export class ForceLogoutStaffUseCase {
     const targetSession = await this.authSessionRepo.findById(targetSessionId);
     if (!targetSession) throw new NotFoundException('Không tìm thấy phiên đăng nhập');
 
+    // Endpoint này chỉ để giải phóng slot đăng nhập bị kẹt của STAFF, không phải
+    // công cụ chấm dứt phiên bất kỳ. Nếu không chặn: MANAGER chi nhánh có thể đá
+    // MANAGER/AUDITOR cùng chi nhánh, và MANAGER cấp Hội sở (branchId null — vốn
+    // bỏ qua check chi nhánh) có thể thu hồi mọi phiên trong hệ thống, kể cả ADMIN.
+    if (targetSession.role !== UserRole.STAFF) {
+      throw new ForbiddenException('Chỉ có thể cưỡng chế đăng xuất phiên của nhân viên (STAFF)');
+    }
+
     // MANAGER gắn 1 chi nhánh cụ thể chỉ được cưỡng chế trong chi nhánh mình.
     // MANAGER không có branchId (KTTH cấp Hội sở) coi như có phạm vi toàn hệ thống.
     if (requester.role === UserRole.MANAGER && requester.branchId) {

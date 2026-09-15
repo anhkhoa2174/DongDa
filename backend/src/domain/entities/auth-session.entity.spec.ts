@@ -20,6 +20,20 @@ describe('AuthSessionEntity', () => {
     expect(session.isExpired()).toBe(true);
   });
 
+  it('isExpired returns true if status is EXPIRED even when expiresAt is still in the future', () => {
+    const session = new AuthSessionEntity({
+      id: 'sess-1',
+      userId: 'user-1',
+      branchId: 'branch-1',
+      role: UserRole.STAFF,
+      status: 'EXPIRED',
+      refreshTokenHash: 'hash',
+      lastHeartbeatAt: now,
+      expiresAt: futureDate,
+    });
+    expect(session.isExpired()).toBe(true);
+  });
+
   it('isExpired returns true if expiresAt has passed', () => {
     const session = new AuthSessionEntity({
       id: 'sess-1',
