@@ -69,6 +69,7 @@ import { HashService } from './infrastructure/config/hash.service';
 import { NotificationController } from './interfaces/http/controllers/notification.controller';
 import { NotificationService } from './infrastructure/notifications/notification.service';
 import { AdvanceReminderService } from './infrastructure/notifications/advance-reminder.service';
+import { SessionCleanupService } from './infrastructure/services/session-cleanup.service';
 import { DomesticTransferController } from './interfaces/http/controllers/domestic-transfer.controller';
 import { PrismaDomesticTransferRepository } from './infrastructure/database/repositories/prisma-domestic-transfer.repository';
 import { CreateDomesticTransferUseCase, ListDomesticTransferBankAccountsUseCase, ListDomesticTransferUseCase } from './application/use-cases/domestic-transfer/domestic-transfer.use-cases';
@@ -114,6 +115,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     PrismaService,
     NotificationService,
     AdvanceReminderService,
+    SessionCleanupService,
 
     // Bind interface token → concrete implementation
     { provide: 'IUserRepository', useClass: PrismaUserRepository },

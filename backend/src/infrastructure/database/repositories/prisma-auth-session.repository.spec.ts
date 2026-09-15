@@ -157,4 +157,32 @@ describe('PrismaAuthSessionRepository', () => {
 
     expect(result).toBeNull();
   });
+
+  it('revokeStaleHeartbeatSessions() only revokes ACTIVE sessions with a stale last_heartbeat_at', async () => {
+    const { repo, prisma } = buildRepo();
+    const stale = await repo.create({
+      userId: 'user-1',
+      branchId: 'branch-1',
+      role: UserRole.STAFF,
+      refreshTokenHash: 'hash-1',
+      expiresAt: future,
+    });
+    const fresh = await repo.create({
+      userId: 'user-2',
+      branchId: 'branch-1',
+      role: UserRole.STAFF,
+      refreshTokenHash: 'hash-2',
+      expiresAt: future,
+    });
+    const staleRow = prisma.__rows.find((r: any) => r.id === stale.id);
+    staleRow.last_heartbeat_at = new Date(Date.now() - 10 * 60 * 1000); // 10 phút trước
+
+    const count = await repo.revokeStaleHeartbeatSessions(300); // ngưỡng 5 phút
+
+    expect(count).toBe(1);
+    const staleFound = await repo.findById(stale.id);
+    const freshFound = await repo.findById(fresh.id);
+    expect(staleFound?.status).toBe('EXPIRED');
+    expect(freshFound?.status).toBe('ACTIVE');
+  });
 });

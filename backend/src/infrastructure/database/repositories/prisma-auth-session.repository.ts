@@ -86,6 +86,15 @@ export class PrismaAuthSessionRepository implements IAuthSessionRepository {
     return result.count;
   }
 
+  async revokeStaleHeartbeatSessions(timeoutSeconds: number): Promise<number> {
+    const cutoff = new Date(Date.now() - timeoutSeconds * 1000);
+    const result = await this.prisma.auth_sessions.updateMany({
+      where: { status: 'ACTIVE', last_heartbeat_at: { lt: cutoff } },
+      data: { status: 'EXPIRED' },
+    });
+    return result.count;
+  }
+
   async countActiveStaffByBranch(branchId: string): Promise<number> {
     return this.prisma.auth_sessions.count({
       where: {

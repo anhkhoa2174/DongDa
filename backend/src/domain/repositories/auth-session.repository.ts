@@ -22,5 +22,6 @@ export interface IAuthSessionRepository {
   revokeById(sessionId: string): Promise<void>;
   revokeByUserId(userId: string): Promise<number>;
   revokeExpiredSessions(): Promise<number>;
+  revokeStaleHeartbeatSessions(timeoutSeconds: number): Promise<number>;
   countActiveStaffByBranch(branchId: string): Promise<number>;
 }
