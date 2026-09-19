@@ -68,6 +68,9 @@ export type BranchActivityDto = {
 export const branchMonitoringApi = {
   createBranch: (payload: CreateBranchPayload) =>
     httpClient.post<CreatedBranchDto>('/branches', payload).then((response) => response.data),
+  // Không xóa — vô hiệu hóa (ẩn khỏi listBranches(), giữ nguyên dữ liệu/lịch sử tham chiếu).
+  deactivateBranch: (branchId: string) =>
+    httpClient.patch(`/branches/${branchId}/deactivate`).then((response) => response.data),
   listBranches: () => httpClient.get<MonitoringBranchDto[]>('/branch-monitoring/branches').then((response) => response.data),
   getFunds: (branchId: string) =>
     httpClient.get<BranchFundsDto>(`/branch-monitoring/${branchId}/funds`).then((response) => response.data),

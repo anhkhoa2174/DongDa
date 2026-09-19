@@ -4,6 +4,7 @@ import {
   BarChartOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
+  DeleteOutlined,
   DollarOutlined,
   FieldTimeOutlined,
   LineChartOutlined,
@@ -11,9 +12,8 @@ import {
   TeamOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { Alert, App, Button, Card, Col, Empty, Form, Input, Modal, Row, Segmented, Select, Space, Steps, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Col, Empty, Form, Input, Modal, Popconfirm, Row, Segmented, Select, Space, Steps, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
-import axios from 'axios';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -31,6 +31,7 @@ import { FundBalanceTable } from '@/shared/components/FundBalanceTable';
 import { OperationalOverviewCard } from '@/shared/components/OperationalOverviewCard';
 import { SectionCardTitle } from '@/shared/components/SectionCardTitle';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
+import { getApiErrorMessage } from '@/shared/utils/errors';
 import {
   formatExchangeRate,
   formatDateTime,
@@ -38,7 +39,7 @@ import {
   formatVnd,
 } from '@/shared/utils/formatters';
 import type { BranchFundStatus, CreateBranchPayload, FundCurrencyBalanceDto, MonitoringPeriod } from '../api/branchMonitoring.api';
-import { useBranchActivity, useBranchFunds, useCreateBranch, useMonitoringBranches } from '../hooks/useBranchMonitoring';
+import { useBranchActivity, useBranchFunds, useCreateBranch, useDeactivateBranch, useMonitoringBranches } from '../hooks/useBranchMonitoring';
 
 const periodOptions = [
   { label: 'Ngày', value: 'day' },
@@ -51,14 +52,6 @@ const statusMeta: Record<BranchFundStatus, { label: string; color: string }> = {
   LOW_CASH: { label: 'Thiếu quỹ', color: 'gold' },
   NEEDS_RECONCILIATION: { label: 'Cần kiểm quỹ', color: 'red' },
 };
-
-function getErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message;
-    return Array.isArray(message) ? message.join(', ') : message || 'Không thể tạo chi nhánh';
-  }
-  return 'Không thể tạo chi nhánh';
-}
 
 function BranchShiftRow({ label, value }: { label: string; value: string }) {
   return (
@@ -82,6 +75,7 @@ export function BranchMonitoringPage() {
   const { data: funds, isLoading: isFundsLoading, isError: isFundsError } = useBranchFunds(branchId);
   const { data: activity, isLoading: isActivityLoading, isError: isActivityError } = useBranchActivity(branchId, period, anchorDate);
   const createBranch = useCreateBranch();
+  const deactivateBranch = useDeactivateBranch();
 
   useEffect(() => {
     if (!branchId && branches[0]) setBranchId(branches[0].id);
@@ -112,7 +106,17 @@ export function BranchMonitoringPage() {
       branchForm.resetFields();
       navigate(`/fund-transfer?destinationBranchId=${encodeURIComponent(created.id)}&origin=branch-creation`);
     } catch (error) {
-      if (!('errorFields' in (error as object))) message.error(getErrorMessage(error));
+      if (!('errorFields' in (error as object))) message.error(getApiErrorMessage(error, 'Không thể tạo chi nhánh'));
+    }
+  };
+
+  const deactivateSelectedBranch = async () => {
+    try {
+      await deactivateBranch.mutateAsync(branchId);
+      message.success('Đã vô hiệu hóa chi nhánh');
+      setBranchId('');
+    } catch (error) {
+      message.error(getApiErrorMessage(error, 'Không thể vô hiệu hóa chi nhánh'));
     }
   };
 
@@ -150,15 +154,31 @@ export function BranchMonitoringPage() {
           <div className="branch-monitor-toolbar">
             <div className="branch-monitor-toolbar__field branch-monitor-toolbar__field--branch">
               <Typography.Text>Chi nhánh theo dõi</Typography.Text>
-              <Select
-                value={branchId || undefined}
-                loading={isBranchesLoading}
-                placeholder="Chọn chi nhánh"
-                options={branchOptions}
-                onChange={setBranchId}
-                showSearch
-                optionFilterProp="label"
-              />
+              <Space.Compact className="w-full">
+                <Select
+                  value={branchId || undefined}
+                  loading={isBranchesLoading}
+                  placeholder="Chọn chi nhánh"
+                  options={branchOptions}
+                  onChange={setBranchId}
+                  showSearch
+                  optionFilterProp="label"
+                  className="w-full"
+                />
+                {role === 'director' && (
+                  <Popconfirm
+                    title="Vô hiệu hóa chi nhánh này?"
+                    description="Chi nhánh sẽ bị ẩn khỏi hệ thống, dữ liệu cũ vẫn được giữ nguyên."
+                    okText="Vô hiệu hóa"
+                    okButtonProps={{ danger: true }}
+                    cancelText="Hủy"
+                    disabled={!selectedBranch}
+                    onConfirm={deactivateSelectedBranch}
+                  >
+                    <Button danger icon={<DeleteOutlined />} disabled={!selectedBranch} loading={deactivateBranch.isPending} />
+                  </Popconfirm>
+                )}
+              </Space.Compact>
             </div>
             <div className="branch-monitor-toolbar__field">
               <Typography.Text>Khoảng thời gian</Typography.Text>

@@ -1,7 +1,9 @@
 // Prisma Branch Repository
 // Layer: Infrastructure
 
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException, ConflictException, Injectable, NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import {
@@ -80,6 +82,17 @@ export class PrismaBranchRepository implements IBranchRepository {
       }
       throw error;
     }
+  }
+
+  async deactivate(id: string): Promise<BranchRef> {
+    const branch = await this.prisma.branch.findUnique({ where: { id } });
+    if (!branch) throw new NotFoundException('Không tìm thấy chi nhánh');
+    if (branch.type === 'HEAD_OFFICE') throw new BadRequestException('Không thể vô hiệu hóa Hội sở');
+    const updated = await this.prisma.branch.update({
+      where: { id },
+      data: { status: 'INACTIVE' },
+    });
+    return toBranchRef(updated);
   }
 }
 

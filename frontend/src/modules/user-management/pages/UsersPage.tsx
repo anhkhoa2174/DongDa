@@ -68,7 +68,9 @@ export function UsersPage() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  // Mặc định chỉ hiện tài khoản đang hoạt động — tài khoản đã vô hiệu hóa coi như đã "xóa"
+  // khỏi giao diện, GĐ vẫn có thể tự đổi bộ lọc để tra lại khi cần.
+  const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const { data: users = [], isLoading: usersLoading } = useManagedUsers();
   const { data: branches = [] } = useManagedBranches();
   const createUser = useCreateManagedUser();

@@ -20,6 +20,19 @@ export function useCreateBranch() {
   });
 }
 
+export function useDeactivateBranch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: branchMonitoringApi.deactivateBranch,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: KEY }),
+        queryClient.invalidateQueries({ queryKey: ['branches'] }),
+      ]);
+    },
+  });
+}
+
 export function useBranchFunds(branchId?: string) {
   return useQuery({
     queryKey: [...KEY, 'funds', branchId],

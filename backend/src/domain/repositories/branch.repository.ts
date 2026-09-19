@@ -20,4 +20,6 @@ export interface CreateBranchInput {
 export interface IBranchRepository {
   list(): Promise<BranchRef[]>;
   create(input: CreateBranchInput): Promise<BranchRef>;
+  // Không xóa — chỉ vô hiệu hóa (ẩn khỏi danh sách, giữ nguyên dữ liệu/lịch sử tham chiếu).
+  deactivate(id: string): Promise<BranchRef>;
 }
