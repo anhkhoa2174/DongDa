@@ -30,9 +30,9 @@ const EMPTY_ITEM: ConversionItem = {
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
     const message = error.response?.data?.message;
-    return Array.isArray(message) ? message.join(', ') : message || 'Không thể quy đổi Quỹ A';
+    return Array.isArray(message) ? message.join(', ') : message || 'Không thể mua/bán ngoại tệ';
   }
-  return 'Không thể quy đổi Quỹ A';
+  return 'Không thể mua/bán ngoại tệ';
 }
 
 export function CentralFundConversionPage() {
@@ -43,11 +43,20 @@ export function CentralFundConversionPage() {
   const { data: summary, isLoading } = useCentralFundSummary();
   const convert = useConvertCentralFundA();
   const watchedItems = Form.useWatch('items', form) ?? [];
-  const fundBalances = summary?.fundA ?? [];
+  const fundBalances = [
+    {
+      currency: 'USD',
+      name: getCurrencyMetadata('USD').name,
+      amount: summary?.usdCash ?? 0,
+      buyRate: summary?.paidBuyRate ?? 0,
+      vndValue: summary?.usdCashValueVnd ?? 0,
+    },
+    ...(summary?.fundA ?? []).filter((fund) => fund.currency !== 'USD'),
+  ];
   const availableFunds = fundBalances.filter((item) => item.amount > 0);
   const selectableCurrencies = direction === 'SELL'
     ? availableFunds.map((fund) => fund.currency)
-    : CURRENCIES.filter((currency) => currency.code !== 'VND' && currency.code !== 'USD')
+    : CURRENCIES.filter((currency) => currency.code !== 'VND')
       .map((currency) => currency.code);
   const selectedCurrencies = watchedItems.map((item) => item?.currencyCode).filter(Boolean);
 
@@ -96,8 +105,8 @@ export function CentralFundConversionPage() {
 
   return (
     <PageScaffold
-      title="Mua/Bán ngoại tệ Quỹ A"
-      description="Giao dịch nhiều loại ngoại tệ tại Hội sở bằng tỷ giá và mức khấu trừ nhập trực tiếp."
+      title="Mua/Bán ngoại tệ"
+      description="Giao dịch USD và các ngoại tệ khác tại Hội sở bằng tỷ giá và mức khấu trừ nhập trực tiếp."
       moduleName="fund-management"
       extra={(
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/fund-management/central-fund')}>
@@ -117,8 +126,8 @@ export function CentralFundConversionPage() {
                 form.resetFields();
               }}
               items={[
-                { key: 'SELL', label: 'Bán ngoại tệ Quỹ A' },
-                { key: 'BUY', label: 'Mua ngoại tệ Quỹ A' },
+                { key: 'SELL', label: 'Bán ngoại tệ' },
+                { key: 'BUY', label: 'Mua ngoại tệ' },
               ]}
             />
             <Form form={form} layout="vertical" initialValues={{ items: [EMPTY_ITEM] }} onFinish={submit}>
@@ -155,7 +164,7 @@ export function CentralFundConversionPage() {
                               <Form.Item
                                 {...field}
                                 name={[field.name, 'currencyCode']}
-                                label={direction === 'BUY' ? 'Ngoại tệ cần mua' : 'Ngoại tệ Quỹ A'}
+                                label={direction === 'BUY' ? 'Ngoại tệ cần mua' : 'Ngoại tệ hiện có'}
                                 className="mb-0"
                                 rules={[{ required: true, message: 'Chọn loại ngoại tệ' }]}
                               >

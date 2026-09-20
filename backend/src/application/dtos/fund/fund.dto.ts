@@ -88,7 +88,7 @@ export class CreateCentralFundMovementDto {
 }
 
 export class ConvertCentralFundItemDto {
-  @IsIn(CURRENCIES.filter((currency) => currency !== 'VND' && currency !== 'USD'))
+  @IsIn(CURRENCIES.filter((currency) => currency !== 'VND'))
   currencyCode: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })

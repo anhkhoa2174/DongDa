@@ -466,7 +466,7 @@ export class PrismaFundRepository implements IFundRepository {
     const now = new Date();
     const businessDate = toVietnamBusinessDate(now);
     const isBuy = input.direction === 'BUY';
-    const operationLabel = isBuy ? 'Mua ngoại tệ Quỹ A' : 'Bán ngoại tệ Quỹ A';
+    const operationLabel = isBuy ? 'Mua ngoại tệ' : 'Bán ngoại tệ';
     const voucherNo = `QDA-${isBuy ? 'MUA' : 'BAN'}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const idempotencyScope = `CENTRAL_FUND_CONVERSION_${input.direction}`;
 
@@ -501,12 +501,12 @@ export class PrismaFundRepository implements IFundRepository {
 
       for (const [index, item] of conversionItems.entries()) {
         const foreignAccount = await canonicalActiveFundAccount(tx, headOffice.id, item.currencyCode, isBuy);
-        if (!foreignAccount) throw new BadRequestException(`Quỹ A Hội sở chưa có sổ ${item.currencyCode}`);
+        if (!foreignAccount) throw new BadRequestException(`Quỹ Chung chưa có sổ ${item.currencyCode}`);
         await this.lockFundAccount(tx, foreignAccount.id);
         if (!isBuy) {
           const available = await this.balance(tx, foreignAccount.id);
           if (item.amount > available) {
-            throw new BadRequestException(`Quỹ A không đủ ${item.currencyCode} (còn ${available})`);
+            throw new BadRequestException(`Quỹ Chung không đủ ${item.currencyCode} (còn ${available})`);
           }
         }
 
@@ -569,7 +569,7 @@ export class PrismaFundRepository implements IFundRepository {
           throw new BadRequestException(`Quỹ tiền mặt VND không đủ (còn ${availableVnd} VND)`);
         }
       }
-      const vndAction = isBuy ? 'Chi VND mua ngoại tệ Quỹ A' : 'Thu VND từ bán ngoại tệ Quỹ A';
+      const vndAction = isBuy ? 'Chi VND mua ngoại tệ' : 'Thu VND từ bán ngoại tệ';
       const description = input.note ? `${vndAction} - ${input.note}` : vndAction;
       const vndMovement = await tx.cash_movements.create({
         data: {
