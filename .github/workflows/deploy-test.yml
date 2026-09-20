@@ -1,12 +1,12 @@
-# Deploy bản TEST (test.dongda.info.vn) khi push nhánh dev đang hoạt động.
+# Deploy bản TEST (test.dongda.info.vn) — CHỈ chạy khi bấm tay (Run workflow), KHÔNG
+# tự chạy khi push nữa (đổi theo yêu cầu 2026-09-20 — tránh mỗi lần push là tự đẩy
+# lên TEST ngay, kể cả code còn dở).
 # Trước đây bước này Claude tự SSH tay — không qua Actions nên lỗi không hiện ở đâu cả.
 # Từ giờ mọi lần cập nhật bản test đều chạy qua đây: build/migrate/healthcheck lỗi ở bước nào
-# thì step đó đỏ ngay trên tab Actions, kèm log đầy đủ, và GitHub tự gửi email cho người push khi fail.
+# thì step đó đỏ ngay trên tab Actions, kèm log đầy đủ, và GitHub tự gửi email cho người bấm chạy khi fail.
 name: Deploy DongDa (test)
 
 on:
-  push:
-    branches: [feat/test-flows-and-bugfix]
   workflow_dispatch: {}
 
 concurrency:
