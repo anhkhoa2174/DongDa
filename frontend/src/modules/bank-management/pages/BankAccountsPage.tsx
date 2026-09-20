@@ -14,7 +14,8 @@ import {
   StopOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { App, Button, Card, Col, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, DatePicker, Empty, Input, Popconfirm, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd';
+import type { Dayjs } from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useMemo, useState, type Key } from 'react';
@@ -142,9 +143,34 @@ export function BankAccountsPage() {
   const [internalTransferSource, setInternalTransferSource] = useState<BankAccountDto | null>(null);
   // Tạm ứng CK chỉ được sinh từ giao dịch "Nhận tiền mặt, chuyển khoản".
   const [advanceTab, setAdvanceTab] = useState<'ADVANCE_CK' | 'SETTLED' | 'VOIDED'>('ADVANCE_CK');
-  const { data: pendingAdvances = [] } = useAdvances({ status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter });
-  const { data: settledAdvances = [] } = useAdvances({ status: 'SETTLED', branchId: isBranchUser ? undefined : branchFilter }, advanceTab === 'SETTLED');
-  const { data: voidedAdvances = [] } = useAdvances({ status: 'VOIDED', branchId: isBranchUser ? undefined : branchFilter }, advanceTab === 'VOIDED');
+  // Lọc riêng cho bảng tạm ứng/hoàn ứng — theo ngân hàng (tài khoản) và theo khoảng ngày.
+  const [advanceBankAccountFilter, setAdvanceBankAccountFilter] = useState<string | undefined>(undefined);
+  const [advanceDateRange, setAdvanceDateRange] = useState<[Dayjs, Dayjs] | null>(null);
+  const { data: pendingAdvancesRaw = [] } = useAdvances({
+    status: 'ADVANCE_CK', branchId: isBranchUser ? undefined : branchFilter, bankAccountId: advanceBankAccountFilter,
+  });
+  const { data: settledAdvancesRaw = [] } = useAdvances({
+    status: 'SETTLED', branchId: isBranchUser ? undefined : branchFilter, bankAccountId: advanceBankAccountFilter,
+  }, advanceTab === 'SETTLED');
+  const { data: voidedAdvancesRaw = [] } = useAdvances({
+    status: 'VOIDED', branchId: isBranchUser ? undefined : branchFilter, bankAccountId: advanceBankAccountFilter,
+  }, advanceTab === 'VOIDED');
+  const filterByDate = (rows: BankMovementDto[], range: [Dayjs, Dayjs] | null) => (!range ? rows : rows.filter((row) => {
+    const businessDate = dayjs(row.businessDate);
+    return !businessDate.isBefore(range[0], 'day') && !businessDate.isAfter(range[1], 'day');
+  }));
+  const pendingAdvances = useMemo(
+    () => filterByDate(pendingAdvancesRaw, advanceDateRange),
+    [pendingAdvancesRaw, advanceDateRange],
+  );
+  const settledAdvances = useMemo(
+    () => filterByDate(settledAdvancesRaw, advanceDateRange),
+    [settledAdvancesRaw, advanceDateRange],
+  );
+  const voidedAdvances = useMemo(
+    () => filterByDate(voidedAdvancesRaw, advanceDateRange),
+    [voidedAdvancesRaw, advanceDateRange],
+  );
   // Tổng đang ứng theo tài khoản -> hiện trên thẻ TK để thấy ngay TK nào còn treo
   const pendingByAccount = useMemo(() => {
     const map = new Map<string, number>();
@@ -269,6 +295,22 @@ export function BankAccountsPage() {
                 ]}
               />
             </Space>
+          </div>
+          <div className="flex flex-wrap gap-3 border-b border-[#eceef1] bg-[#fafafa] px-[18px] py-3">
+            <Select
+              className="w-full sm:w-64"
+              allowClear
+              placeholder="Tất cả ngân hàng"
+              value={advanceBankAccountFilter}
+              onChange={(value) => setAdvanceBankAccountFilter(value || undefined)}
+              options={accounts.map((a) => ({ value: a.id, label: formatBankAccountLabel(a) }))}
+            />
+            <DatePicker.RangePicker
+              className="w-full sm:w-64"
+              format="DD/MM/YYYY"
+              value={advanceDateRange}
+              onChange={(range) => setAdvanceDateRange(range && range[0] && range[1] ? [range[0], range[1]] : null)}
+            />
           </div>
           <Table<BankMovementDto> rowKey="id" size="small" columns={advanceCols}
             dataSource={advanceTab === 'ADVANCE_CK'

@@ -37,7 +37,7 @@ export function FxWorkspacePage() {
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateFx();
   const [form] = Form.useForm();
-  const { user, branches, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
+  const { user, branches, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form, { includeHeadOffice: true });
   const { data: stock = [] } = useFxStock(isBranchUser ? user?.branchId : undefined);
 
   const resetTransactionForm = () => {
