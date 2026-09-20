@@ -73,8 +73,21 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
       // Mọi bản chi nhánh và bản tổng cùng nhóm dùng chung một lock. Nhờ vậy một
       // chi nhánh không thể gửi chen vào đúng lúc bản toàn công ty đang được chốt.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`RECON:${input.provider}:${periodKey}:${input.currencyCode}`}))`;
-      const posted = postFinancial && stage !== 'FINAL' ? await tx.reconciliation_runs.findFirst({
-        where: {
+      // Final khớp đúng cột unique index (provider, scope, branch_id, business_date,
+      // currency_code) WHERE posted_at IS NOT NULL — không lọc theo status vì Final có
+      // thể ghi công nợ (posted_at) trong lúc status vẫn PENDING_REVIEW (còn dòng lệch).
+      // Trước đây chỗ này bị `stage !== 'FINAL'` loại hẳn Final ra, nên bấm Final lại
+      // trúng ngày đã chốt là đâm thẳng vào tx.reconciliation_runs.create() và vỡ ra
+      // lỗi Postgres "Unique constraint failed" thô, không có thông báo cho người dùng.
+      const posted = postFinancial ? await tx.reconciliation_runs.findFirst({
+        where: stage === 'FINAL' ? {
+          provider: input.provider as any,
+          scope: input.scope,
+          branch_id: input.branchId ?? null,
+          business_date: dateTo,
+          currency_code: input.currencyCode,
+          posted_at: { not: null },
+        } : {
           provider: input.provider as any,
           scope: input.scope,
           branch_id: input.branchId ?? null,
@@ -85,7 +98,13 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
           posted_at: { not: null },
         },
       }) : null;
-      if (posted) throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
+      if (posted) {
+        throw new BadRequestException(
+          stage === 'FINAL'
+            ? 'Ngày này đã được đối chiếu Final và chốt công nợ rồi, không thể chốt lại.'
+            : 'Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế',
+        );
+      }
       if (stage === 'FINAL') {
         if (!input.sourceRunIds?.length) {
           throw new BadRequestException('Bản đối chiếu tổng phải có các bản chi nhánh nguồn');
