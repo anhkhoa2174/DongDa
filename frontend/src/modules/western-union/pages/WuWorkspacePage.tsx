@@ -1,9 +1,11 @@
 // Flow WU — Tạo giao dịch Western Union (nối API thật)
 import { App, Alert, AutoComplete, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Slider, Typography } from 'antd';
-import { DownloadOutlined, SendOutlined } from '@ant-design/icons';
+import { DownloadOutlined, EditOutlined, SendOutlined } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
@@ -22,7 +24,7 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useCreateWu, useWuRecentOptions } from '../hooks/useWu';
+import { useCreateWu, useWuRecentOptions, useWuTransactions } from '../hooks/useWu';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
 import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/transactions/utils/paidRateSlider';
 import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
@@ -31,6 +33,7 @@ import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
 import { wuApi } from '../api/wu.api';
 import type { CreateWuPayload } from '../api/wu.api';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
+import { transactionAdminApi } from '@/modules/transactions/api/transactionAdmin.api';
 import {
   countryOptions,
   employmentStatusSuggestions,
@@ -49,6 +52,11 @@ const WU_RATE_ACTIVE_COLOR = '#ff4d4f';
 
 export function WuWorkspacePage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const editTransactionId = searchParams.get('edit');
+  const isEditMode = Boolean(editTransactionId);
   const { data: activeRates = [] } = useActiveRates();
   const { data: bankAccounts = [] } = useBankAccounts();
   const create = useCreateWu();
@@ -59,6 +67,38 @@ export function WuWorkspacePage() {
   const previousWuUsd = useRef<number | undefined>(undefined);
   const manuallyEditedCountryFields = useRef(new Set<LinkedCountryField>());
   const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
+  const { data: editTransactions = [], isLoading: isLoadingEditTransaction } = useWuTransactions(
+    isBranchUser ? user?.branchId : undefined,
+  );
+  const editTransaction = editTransactions.find((transaction) => transaction.id === editTransactionId);
+  const canSubmit = canCreateTransaction;
+  const replace = useMutation({
+    mutationFn: async ({ payload, reason }: { payload: CreateWuPayload; reason: string }) => {
+      if (!editTransactionId) throw new Error('Không tìm thấy giao dịch cần sửa');
+      const request = {
+        action: 'REPLACE' as const,
+        reason,
+        proposedCorrection: `Sửa giao dịch WU ${editTransaction?.transactionNo ?? editTransactionId}`,
+        correctedData: payload as unknown as Record<string, unknown>,
+      };
+      return user?.role === 'branch'
+        ? transactionAdminApi.createAdjustmentRequest(editTransactionId, request)
+        : transactionAdminApi.replaceDirectly(editTransactionId, request);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['wu'] }),
+        queryClient.invalidateQueries({ queryKey: ['fund'] }),
+        queryClient.invalidateQueries({ queryKey: ['debts'] }),
+        queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] }),
+      ]);
+      void message.success(user?.role === 'branch'
+        ? 'Đã gửi yêu cầu sửa giao dịch WU để GĐ/KTTH duyệt'
+        : 'Đã đảo giao dịch cũ và tạo giao dịch WU đã sửa');
+      navigate('/transactions');
+    },
+    onError: (error: unknown) => void message.error(getApiErrorMessage(error, 'Không thể sửa giao dịch WU')),
+  });
 
   const resetTransactionForm = () => {
     manuallyEditedCountryFields.current.clear();
@@ -140,10 +180,53 @@ export function WuWorkspacePage() {
     : receivedVnd;
 
   useEffect(() => {
-    if (systemRate) {
+    if (!isEditMode && systemRate) {
       form.setFieldsValue({ appliedRate: systemRate });
     }
-  }, [form, systemRate]);
+  }, [form, isEditMode, systemRate]);
+
+  useEffect(() => {
+    if (!isEditMode || !editTransaction) return;
+    form.setFieldsValue({
+      branchId: editTransaction.branchId,
+      bankAccountId: editTransaction.bankAccountId,
+      mtcn: editTransaction.mtcn,
+      customerName: editTransaction.customerName ?? undefined,
+      customerPhone: editTransaction.customerPhone ?? undefined,
+      sendingCountry: editTransaction.sendingCountry ?? undefined,
+      senderState: editTransaction.senderState ?? undefined,
+      receiverDateOfBirth: toDayjs(editTransaction.receiverDateOfBirth),
+      currentAddress: editTransaction.currentAddress ?? undefined,
+      identityAddress: editTransaction.identityAddress ?? undefined,
+      identityDocumentType: editTransaction.identityDocumentType ?? undefined,
+      identityDocumentNumber: editTransaction.identityDocumentNumber ?? undefined,
+      identityPlaceOfIssue: editTransaction.identityPlaceOfIssue ?? undefined,
+      identityIssuingCountry: editTransaction.identityIssuingCountry ?? undefined,
+      identityIssueDate: toDayjs(editTransaction.identityIssueDate),
+      identityExpiryDate: toDayjs(editTransaction.identityExpiryDate),
+      hasVisa: editTransaction.hasVisa,
+      visaType: editTransaction.visaType as WuFormValues['visaType'],
+      visaNumber: editTransaction.visaNumber ?? undefined,
+      visaIssueDate: toDayjs(editTransaction.visaIssueDate),
+      visaExpiryDate: toDayjs(editTransaction.visaExpiryDate),
+      employmentStatus: editTransaction.employmentStatus ?? undefined,
+      countryOfBirth: editTransaction.countryOfBirth ?? undefined,
+      nationality: editTransaction.nationality ?? undefined,
+      senderRelationship: editTransaction.senderRelationship ?? undefined,
+      receivePurpose: editTransaction.receivePurpose ?? undefined,
+      senderName: editTransaction.senderName ?? undefined,
+      receivedDate: toDayjs(editTransaction.receivedDate),
+      wuUsdAmount: editTransaction.wuUsdAmount,
+      wuVndAmount: editTransaction.wuVndAmount,
+      receivedUsd: editTransaction.receivedUsd,
+      receivedVnd: editTransaction.receivedVnd,
+      appliedRate: editTransaction.appliedRate,
+      payoutCurrency: editTransaction.payoutCurrency,
+      paidCurrency: editTransaction.paidCurrency,
+    });
+    previousPayoutCurrency.current = editTransaction.payoutCurrency;
+    previousWuUsd.current = editTransaction.wuUsdAmount;
+  }, [editTransaction, form, isEditMode]);
 
   useEffect(() => {
     if (!wuUsd || !wuVnd || !transactionRate) return;
@@ -224,12 +307,16 @@ export function WuWorkspacePage() {
   });
 
   const onCreate = async (v: WuFormValues) => {
-    if (!canCreateTransaction) {
+    if (!canSubmit) {
       await message.error('Cần có quyền chi nhánh hoặc quyền GĐ/KTTH để tạo giao dịch WU');
       return;
     }
 
     try {
+      if (isEditMode) {
+        await replace.mutateAsync({ payload: toPayload(v), reason: v.reason });
+        return;
+      }
       await create.mutateAsync(toPayload(v));
       message.success('Đã tạo GD WU — quỹ giảm, công nợ WU tăng');
       resetTransactionForm();
@@ -259,15 +346,15 @@ export function WuWorkspacePage() {
   return (
     <TransactionCreatePage
       title="Giao dịch Western Union"
-      description="Tạo GD chi trả WU: nhập MSKH, số tiền WU, chọn tiền khách nhận và xác nhận lưu vào hệ thống."
+      description={isEditMode ? 'Sửa giao dịch bằng cách đảo giao dịch cũ và tạo revision mới để giữ nguyên lịch sử sổ.' : 'Tạo GD chi trả WU: nhập MSKH, số tiền WU, chọn tiền khách nhận và xác nhận lưu vào hệ thống.'}
       moduleName="western-union"
     >
       <Row justify="center">
         <Col xs={24} xl={18}>
-          <Card title="Tạo giao dịch WU" size="small">
+          <Card title={isEditMode ? `Sửa giao dịch WU ${editTransaction?.transactionNo ?? ''}` : 'Tạo giao dịch WU'} size="small" loading={isEditMode && isLoadingEditTransaction}>
             <Form form={form} layout="vertical" onFinish={onCreate}
               onKeyDownCapture={preventNumberInputEnter}
-              disabled={!canCreateTransaction}
+              disabled={!canSubmit || (isEditMode && !editTransaction)}
               initialValues={{
                 branchId: isBranchUser ? user?.branchId : undefined,
                 paidCurrency: 'USD',
@@ -286,7 +373,7 @@ export function WuWorkspacePage() {
               <Typography.Title level={5}>I. Thông tin chi trả</Typography.Title>
               <Row gutter={8}>
                 <Col xs={24} md={12}><Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
-                  <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
+                  <Select placeholder="Chọn chi nhánh" disabled={isBranchUser || isEditMode} options={branchOptions} />
                 </Form.Item></Col>
                 <Col xs={24} md={12}><Form.Item
                   name="mtcn"
@@ -464,21 +551,27 @@ export function WuWorkspacePage() {
                 <Alert type="warning" showIcon className="mb-3" message={`Chưa có tỷ giá ${fxRateType === 'FX_BUY' ? 'mua USD' : 'bán USD'} ACTIVE. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch.`} />
               )}
 
+              {isEditMode && (
+                <Form.Item name="reason" label="Lý do sửa giao dịch" rules={[{ required: true, whitespace: true, message: 'Nhập lý do sửa giao dịch' }]}>
+                  <Input.TextArea rows={3} maxLength={500} showCount placeholder="Mô tả thông tin sai và nội dung đã sửa" />
+                </Form.Item>
+              )}
+
               <Row gutter={8} className="mb-3">
                 <Col xs={24} md={12}>
-                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'MSB'} disabled={!canCreateTransaction || exportingBank !== null} onClick={() => onExport('MSB')} block>
+                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'MSB'} disabled={!canSubmit || exportingBank !== null} onClick={() => onExport('MSB')} block>
                     Xuất phiếu MSB
                   </Button>
                 </Col>
                 <Col xs={24} md={12}>
-                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'ACB'} disabled={!canCreateTransaction || exportingBank !== null} onClick={() => onExport('ACB')} block>
+                  <Button icon={<DownloadOutlined />} loading={exportingBank === 'ACB'} disabled={!canSubmit || exportingBank !== null} onClick={() => onExport('ACB')} block>
                     Xuất phiếu ACB
                   </Button>
                 </Col>
               </Row>
 
-              <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate || !fxUsdRate} block>
-                Tạo giao dịch
+              <Button type="primary" htmlType="submit" icon={isEditMode ? <EditOutlined /> : <SendOutlined />} loading={create.isPending || replace.isPending} disabled={!canSubmit || !systemRate || !fxUsdRate} block>
+                {isEditMode ? (user?.role === 'branch' ? 'Gửi yêu cầu sửa giao dịch' : 'Lưu giao dịch đã sửa') : 'Tạo giao dịch'}
               </Button>
             </Form>
           </Card>
@@ -524,6 +617,7 @@ interface WuFormValues {
   appliedRate: number;
   payoutCurrency: 'USD' | 'VND';
   paidCurrency: 'USD' | 'VND';
+  reason: string;
 }
 
 type LinkedCountryField = 'countryOfBirth' | 'nationality' | 'identityIssuingCountry';
@@ -567,6 +661,10 @@ function downloadBlob(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+function toDayjs(value?: string | null) {
+  return value ? dayjs(value) : undefined;
 }
 
 function getWuPayout(

@@ -480,7 +480,7 @@ Page Quỹ Chung, Theo dõi Chi nhánh của GĐ/KTTH và Quỹ Chi nhánh dành
 
 ### 7. Ngân hàng và công nợ
 
-**Nghiệp vụ:** giao dịch WU/MG tự động tạo đúng một debt, được ràng buộc duy nhất bằng `debt_accounts.transaction_id`. Debt mới luôn là `PENDING`; không có API tạo debt thủ công. Chỉ bản đối chiếu `FINAL` khớp hoàn toàn mới chuyển các debt của transaction tương ứng sang `RECONCILED`. Debt chỉ được thanh toán toàn bộ, không partial, sau đó chuyển `SETTLED`.
+**Nghiệp vụ:** giao dịch WU/MG tự động tạo đúng một debt, được ràng buộc duy nhất bằng `debt_accounts.transaction_id`. Debt mới luôn là `PENDING`; không có API tạo debt thủ công. Khi chốt bản đối chiếu `FINAL`, từng giao dịch `MATCHED` được chuyển debt tương ứng sang `RECONCILED`; các giao dịch còn lệch tiếp tục giữ `PENDING`. Debt chỉ được thanh toán toàn bộ, không partial, sau đó chuyển `SETTLED`.
 
 Màn hình hiển thị từng debt theo giao dịch. GĐ/KTTH lọc và tích chọn một hoặc nhiều debt `RECONCILED` cùng ngày, provider và loại tiền để thanh toán. Backend khóa tất cả khoản được chọn, tính lại số còn nợ, yêu cầu số tiền bằng chính xác tổng, ghi một biến động ngân hàng hoặc phiếu thu tiền mặt và phân bổ `SETTLEMENT` trong cùng database transaction. Nếu một khoản thay đổi, chưa đối chiếu hoặc tổng không khớp, toàn bộ thao tác rollback.
 
@@ -521,7 +521,42 @@ WU và MG dùng chung đối chiếu hai lớp:
 1. Staff chỉ chạy đối chiếu WU/MG tại chi nhánh của mình. Kết quả được lưu thành bản `BRANCH`, hiển thị song song giao dịch hệ thống và dòng Journal upload, tự động gửi GĐ/KTTH và chưa ghi công nợ thực tế.
 2. Hệ thống thông báo cho GĐ/KTTH và khóa không cho tạo trùng một bản khác cùng chi nhánh, ngày và loại tiền đang chờ tổng hợp.
 3. GĐ/KTTH chọn các bản đã gửi của nhiều chi nhánh có cùng ngày và loại tiền. Backend nạp lại giao dịch hệ thống tại thời điểm duyệt, chạy đối chiếu lần hai và lưu bản `FINAL` kèm liên kết tới từng bản nguồn.
-4. Chỉ bản `FINAL` khớp hoàn toàn mới chuyển debt tương ứng từ `PENDING` sang `RECONCILED`. Bản cuối còn lệch vẫn được lưu để kiểm tra nhưng không cho phép thanh toán.
+4. Bản `FINAL` có thể được chốt khi còn sai lệch. Chỉ debt của từng giao dịch `MATCHED` chuyển từ `PENDING` sang `RECONCILED`; các dòng lệch vẫn `PENDING` và chưa được thanh toán. Bản Final rỗng cũng hợp lệ nhưng không tạo hay cập nhật debt.
+
+#### 8.1. Luồng test mẫu nhiều chi nhánh
+
+Kịch bản dưới đây kiểm tra một kỳ WU ngày `18/09/2026`, loại tiền công nợ `USD`. Mỗi transaction có đúng một debt; sửa giao dịch tạo revision mới và hủy revision cũ, không overwrite lịch sử.
+
+| Chi nhánh | Giao dịch hệ thống vòng 1 | Journal vòng 1 | Kết quả Final 1 | Xử lý |
+| --- | ---: | ---: | --- | --- |
+| A | MTCN `1111111111`, `90 USD` | Cùng MTCN, `100 USD` | `AMOUNT_VARIANCE`, debt `PENDING` | Sửa giao dịch thành `100 USD` |
+| B | MTCN `2222222222`, `200 USD` | Cùng MTCN, `200 USD` | `MATCHED`, debt `RECONCILED` | Không được sửa/xóa nữa |
+| C | MTCN `3333333333`, `300 USD` | Không có dòng | `MISSING_IN_JOURNAL`, debt `PENDING` | Xóa giao dịch tạo nhầm |
+
+Trình tự kiểm thử:
+
+1. Staff A/B/C tạo ba giao dịch trong cùng ngày nghiệp vụ. Debt ban đầu của cả ba là `PENDING`.
+2. Staff từng chi nhánh chạy và gửi bản `BRANCH`. A lệch số tiền, B khớp, C có giao dịch nhưng Journal thiếu.
+3. GĐ/KTTH chọn đúng ba bản và tạo `FINAL 1`. Kết quả phải là `1/3` giao dịch khớp; chỉ debt B chuyển `RECONCILED`.
+4. Thử sửa B phải bị từ chối vì giao dịch đã đối chiếu. Thử dùng lại một bản BRANCH vòng 1 trong Final khác cũng phải bị từ chối vì bản nguồn chỉ được tiêu thụ một lần.
+5. Sửa A: giao dịch/debt cũ thành `VOIDED/CANCELLED`; revision mới là `COMPLETED/PENDING`, số tiền `100 USD` và vẫn giữ ngày nghiệp vụ `18/09/2026`.
+6. Xóa C: giao dịch thành `VOIDED`, debt thành `CANCELLED`; bút toán tài chính được đảo bởi luồng hủy thật.
+7. Staff A đối chiếu lại với dòng `100 USD`; Staff C gửi bản rỗng hợp lệ vì không còn giao dịch. GĐ/KTTH chọn hai bản mới để tạo `FINAL 2`.
+8. `FINAL 2` phải đạt `1/1`: debt revision mới của A chuyển `RECONCILED`; debt C vẫn `CANCELLED`; debt B vẫn `RECONCILED` và không bị ghi nhận lần hai.
+
+Trường hợp Journal được upload ở khác chi nhánh với giao dịch:
+
+- Lớp `BRANCH`: chi nhánh sở hữu giao dịch hiển thị `MISSING_IN_JOURNAL`; chi nhánh upload Journal hiển thị `MISSING_IN_SYSTEM`. Đây là kết quả đúng vì đối chiếu lớp đầu bị giới hạn theo chi nhánh của Staff.
+- Lớp `FINAL`: nếu GĐ/KTTH chọn cả hai bản trên, hệ thống ghép theo MTCN/Reference + loại tiền trên phạm vi công ty. Nếu số tiền khớp, debt của giao dịch gốc chuyển `RECONCILED` và vẫn thuộc chi nhánh sở hữu giao dịch.
+- Nếu Final chỉ chọn bản của chi nhánh upload sai, giao dịch thuộc chi nhánh không được chọn không nằm trong phạm vi đối chiếu. Dòng vẫn là `MISSING_IN_SYSTEM` và debt giao dịch gốc giữ `PENDING`.
+- Nếu chọn đủ hai bản nhưng số tiền khác nhau, Final ghi `AMOUNT_VARIANCE`; debt vẫn `PENDING` để sửa hoặc xóa giao dịch rồi thực hiện lại vòng BRANCH → FINAL.
+
+Bài test tự động tương ứng nằm tại `backend/src/application/use-cases/reconciliation/multi-branch-correction-flow.spec.ts` và chạy bằng:
+
+```bash
+cd backend
+npm test -- --runInBand multi-branch-correction-flow.spec.ts
+```
 
 Lịch sử MG đã ghi công nợ trước khi chuyển sang luồng hai lớp được giữ nguyên. Backend không cho tạo lại bản chi nhánh cùng provider, ngày và loại tiền đã có `posted_at`, tránh ghi công nợ hai lần.
 

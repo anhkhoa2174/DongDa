@@ -2,6 +2,7 @@ import {
   BankOutlined,
   CheckOutlined,
   CloseOutlined,
+  DeleteOutlined,
   EditOutlined,
   FieldTimeOutlined,
   FileDoneOutlined,
@@ -19,11 +20,9 @@ import {
   DatePicker,
   Form,
   Input,
-  InputNumber,
   Modal,
   Row,
   Select,
-  Segmented,
   Space,
   Statistic,
   Table,
@@ -44,10 +43,6 @@ import {
   formatExchangeRate,
   formatUsd,
   formatVnd,
-  numberInputFormatter,
-  numberInputParser,
-  usdInputFormatter,
-  usdInputParser,
 } from '@/shared/utils/formatters';
 import { isUiTestMode } from '@/shared/config/runtime';
 import { useAuthStore } from '@/modules/auth/model/auth.store';
@@ -72,10 +67,10 @@ const sourceMeta: Record<TransactionSource, { label: string; color: string }> = 
 const statusMeta: Record<TransactionStatus, { label: string; color: string }> = {
   COMPLETED: { label: 'Hoàn tất', color: 'green' },
   PENDING: { label: 'Chờ xử lý', color: 'gold' },
-  VOID: { label: 'Đã void', color: 'red' },
-  VOIDED: { label: 'Đã deactive', color: 'red' },
-  DEACTIVATED: { label: 'Đã deactive', color: 'red' },
-  ADJUSTED: { label: 'Đã điều chỉnh', color: 'blue' },
+  VOID: { label: 'Đã xóa', color: 'red' },
+  VOIDED: { label: 'Đã xóa', color: 'red' },
+  DEACTIVATED: { label: 'Đã xóa', color: 'red' },
+  ADJUSTED: { label: 'Đã sửa', color: 'blue' },
 };
 
 const debtStatusMeta: Record<NonNullable<AggregatedTransaction['debtStatus']>, { label: string; color: string }> = {
@@ -108,21 +103,11 @@ const createActions = [
   { key: 'DOMESTIC', label: 'Chuyển tiền', icon: <BankOutlined />, path: '/domestic-transfer/transactions' },
 ];
 
-type TransactionEditValues = {
-  customerName?: string;
-  customerPhone?: string;
-  reason: string;
-};
-
 type DeactivateValues = {
   action: 'VOID' | 'REPLACE';
   reason: string;
   proposedCorrection?: string;
-  wuUsdAmount?: number;
-  wuVndAmount?: number;
-  paidAmount?: number;
-  fxAmount?: number;
-  correctedData?: Record<string, number>;
+  correctedData?: Record<string, unknown>;
 };
 
 type ReviewValues = { reason: string };
@@ -150,17 +135,13 @@ export function TransactionsMainPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | TransactionStatus>('ALL');
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
-  const [editTarget, setEditTarget] = useState<AggregatedTransaction | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<AggregatedTransaction | null>(null);
   const [adjustmentListOpen, setAdjustmentListOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<{
     request: TransactionAdjustmentRequest;
     action: 'APPROVE' | 'REJECT';
   } | null>(null);
-  const [editForm] = Form.useForm<TransactionEditValues>();
   const [deactivateForm] = Form.useForm<DeactivateValues>();
-  const adjustmentAction = Form.useWatch('action', deactivateForm) ?? 'REPLACE';
-  const replacementFxAmount = Form.useWatch('fxAmount', deactivateForm) ?? 0;
   const [reviewForm] = Form.useForm<ReviewValues>();
   const isLoading = isWuLoading || isMgLoading || isFxLoading || isDomesticLoading;
   const canControlTransactions = isControlUser || isUiTestMode;
@@ -183,19 +164,6 @@ export function TransactionsMainPage() {
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] }),
     ]);
   };
-  const editMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: TransactionEditValues }) =>
-      transactionAdminApi.updateMetadata(id, values),
-    onSuccess: async () => {
-      await invalidateTransactionQueries();
-      setEditTarget(null);
-      editForm.resetFields();
-      void message.success('Đã cập nhật thông tin giao dịch và ghi Audit Log');
-    },
-    onError: (error: unknown) => {
-      void message.error(getApiErrorMessage(error, 'Không thể sửa giao dịch'));
-    },
-  });
   const adjustmentMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: DeactivateValues }) => {
       if (!isControlUser) return transactionAdminApi.createAdjustmentRequest(id, values);
@@ -217,12 +185,12 @@ export function TransactionsMainPage() {
         isControlUser
           ? variables.values.action === 'VOID'
             ? 'Đã hủy giao dịch và đảo quỹ/công nợ'
-            : 'Đã thay thế giao dịch và ghi lại quỹ/công nợ'
-          : 'Đã lập phiếu điều chỉnh và gửi duyệt',
+            : 'Đã sửa giao dịch, đảo sổ cũ và ghi lại quỹ/công nợ'
+          : 'Đã gửi yêu cầu sửa/xóa giao dịch để duyệt',
       );
     },
     onError: (error: unknown) => {
-      void message.error(getApiErrorMessage(error, 'Không thể lập phiếu điều chỉnh'));
+      void message.error(getApiErrorMessage(error, 'Không thể xử lý yêu cầu sửa/xóa giao dịch'));
     },
   });
   const reviewMutation = useMutation({
@@ -237,10 +205,10 @@ export function TransactionsMainPage() {
       await queryClient.invalidateQueries({ queryKey: ['notifications'] });
       setReviewTarget(null);
       reviewForm.resetFields();
-      void message.success(variables.action === 'APPROVE' ? 'Đã duyệt và ghi sổ phiếu điều chỉnh' : 'Đã từ chối phiếu điều chỉnh');
+      void message.success(variables.action === 'APPROVE' ? 'Đã duyệt yêu cầu và ghi sổ' : 'Đã từ chối yêu cầu');
     },
     onError: (error: unknown) => {
-      void message.error(getApiErrorMessage(error, 'Không thể xử lý phiếu điều chỉnh'));
+      void message.error(getApiErrorMessage(error, 'Không thể xử lý yêu cầu sửa/xóa'));
     },
   });
 
@@ -374,52 +342,40 @@ export function TransactionsMainPage() {
       .map((transaction) => transaction);
   }, [branchNameById, domesticTransfers, fxTransactions, mgTransactions, wuTransactions]);
 
-  const openEditModal = (transaction: AggregatedTransaction) => {
-    setEditTarget(transaction);
-    editForm.setFieldsValue({
-      customerName: transaction.customerName,
-      customerPhone: transaction.customerPhone,
-      reason: undefined,
-    });
+  const openTransactionEdit = (transaction: AggregatedTransaction) => {
+    if (transaction.source === 'WU') {
+      navigate(`/western-union/workspace?edit=${transaction.key}`);
+      return;
+    }
+    if (transaction.source === 'MG') {
+      navigate(`/moneygram/workspace?edit=${transaction.key}`);
+      return;
+    }
+    if (transaction.source === 'FX') {
+      navigate(`/foreign-exchange/workspace?edit=${transaction.key}`);
+      return;
+    }
+    void message.warning('Giao dịch chuyển tiền hiện chỉ hỗ trợ xóa và đảo bút toán');
   };
 
-  const submitEdit = (values: TransactionEditValues) => {
-    if (!editTarget) return;
-    editMutation.mutate({ id: editTarget.key, values });
-  };
-
-  const openDeactivateModal = (transaction: AggregatedTransaction) => {
+  const openTransactionAction = (transaction: AggregatedTransaction, action: 'VOID' | 'REPLACE') => {
     setDeactivateTarget(transaction);
     deactivateForm.setFieldsValue({
-      action: transaction.source === 'DOMESTIC' ? 'VOID' : 'REPLACE',
+      action,
       reason: undefined,
       proposedCorrection: undefined,
-      wuUsdAmount: transaction.financialData?.wuUsdAmount,
-      wuVndAmount: transaction.financialData?.wuVndAmount,
-      paidAmount: transaction.financialData?.paidAmount,
-      fxAmount: transaction.financialData?.fxAmount,
     });
   };
 
   const submitDeactivate = (values: DeactivateValues) => {
     if (!deactivateTarget) return;
-    let correctedData: Record<string, number> | undefined;
-    if (values.action === 'REPLACE') {
-      if (deactivateTarget.source === 'WU') {
-        correctedData = { wuUsdAmount: Number(values.wuUsdAmount), wuVndAmount: Number(values.wuVndAmount) };
-      } else if (deactivateTarget.source === 'MG') {
-        correctedData = { paidAmount: Number(values.paidAmount) };
-      } else if (deactivateTarget.source === 'FX') {
-        correctedData = { fxAmount: Number(values.fxAmount) };
-      }
-    }
     adjustmentMutation.mutate({
       id: deactivateTarget.key,
       values: {
         action: values.action,
         reason: values.reason,
         proposedCorrection: values.proposedCorrection,
-        correctedData,
+        correctedData: values.correctedData,
       },
     });
   };
@@ -543,14 +499,21 @@ export function TransactionsMainPage() {
 
         return (
           <Space size={4}>
-            {canControlTransactions && (
-              <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+            {canRequestAdjustment && (
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                disabled={record.source === 'DOMESTIC'}
+                title={record.source === 'DOMESTIC' ? 'Giao dịch chuyển tiền có bút toán ngân hàng/ứng chuyển khoản nên hiện chỉ cho phép xóa an toàn' : 'Sửa giao dịch'}
+                onClick={() => openTransactionEdit(record)}
+              >
                 Sửa
               </Button>
             )}
             {canRequestAdjustment && (
-              <Button type="text" size="small" icon={<FileDoneOutlined />} onClick={() => openDeactivateModal(record)}>
-                Điều chỉnh
+              <Button danger type="text" size="small" icon={<DeleteOutlined />} onClick={() => openTransactionAction(record, 'VOID')}>
+                Xóa
               </Button>
             )}
           </Space>
@@ -565,7 +528,7 @@ export function TransactionsMainPage() {
       width: 120,
       render: (_, request) => (
         <Tag color={request.payload?.action === 'REPLACE' ? 'blue' : 'red'}>
-          {request.payload?.action === 'REPLACE' ? 'Thay thế' : 'Hủy GD'}
+          {request.payload?.action === 'REPLACE' ? 'Sửa giao dịch' : 'Xóa giao dịch'}
         </Tag>
       ),
     },
@@ -675,7 +638,7 @@ export function TransactionsMainPage() {
         {isControlUser && (
           <div className="flex justify-end">
             <Button icon={<FileDoneOutlined />} onClick={() => setAdjustmentListOpen(true)}>
-              Phiếu điều chỉnh
+              Yêu cầu sửa / xóa
               {pendingAdjustmentCount > 0 && <Tag color="gold" className="ml-1! mr-0!">{pendingAdjustmentCount} chờ duyệt</Tag>}
             </Button>
           </div>
@@ -814,53 +777,7 @@ export function TransactionsMainPage() {
       </div>
 
       <Modal
-        title={`Sửa giao dịch ${editTarget?.code ?? ''}`}
-        open={Boolean(editTarget)}
-        onCancel={() => setEditTarget(null)}
-        footer={null}
-        width={720}
-        destroyOnClose
-      >
-        <Form<TransactionEditValues> form={editForm} layout="vertical" onFinish={submitEdit}>
-          <Alert
-            className="mb-4"
-            type="info"
-            showIcon
-            message="Chỉ sửa thông tin khách hàng"
-            description="Chi nhánh, loại giao dịch, số tiền và tỷ giá đã phát sinh quỹ/công nợ nên không thể sửa trực tiếp. Nếu sai dữ liệu tài chính, hãy deactive giao dịch và tạo giao dịch thay thế."
-          />
-          <Row gutter={12}>
-            <Col xs={24} md={12}>
-              <Form.Item name="customerName" label="Khách hàng">
-                <Input maxLength={255} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="customerPhone" label="Số điện thoại">
-                <Input maxLength={30} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Chi nhánh"><Input value={editTarget?.branch} readOnly /></Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Giá trị giao dịch"><Input value={editTarget?.amountLabel} readOnly /></Form.Item>
-            </Col>
-            <Col xs={24}>
-              <Form.Item name="reason" label="Lý do sửa" rules={[{ required: true, whitespace: true, message: 'Nhập lý do sửa để ghi Audit Log' }]}>
-                <Input.TextArea rows={3} maxLength={500} showCount />
-              </Form.Item>
-            </Col>
-          </Row>
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setEditTarget(null)}>Hủy</Button>
-            <Button type="primary" htmlType="submit" loading={editMutation.isPending}>Lưu thay đổi</Button>
-          </div>
-        </Form>
-      </Modal>
-
-      <Modal
-        title={`${isControlUser ? (adjustmentAction === 'VOID' ? 'Hủy giao dịch' : 'Thay thế giao dịch') : 'Lập phiếu điều chỉnh'} ${deactivateTarget?.code ?? ''}`}
+        title={`Xóa giao dịch ${deactivateTarget?.code ?? ''}`}
         open={Boolean(deactivateTarget)}
         onCancel={() => setDeactivateTarget(null)}
         footer={null}
@@ -869,102 +786,33 @@ export function TransactionsMainPage() {
         <Form<DeactivateValues> form={deactivateForm} layout="vertical" onFinish={submitDeactivate}>
           <Alert
             className="mb-4"
-            type={isControlUser && adjustmentAction === 'VOID' ? 'error' : 'warning'}
+            type={isControlUser ? 'error' : 'warning'}
             showIcon
             message={isControlUser
-              ? adjustmentAction === 'VOID'
-                ? 'Giao dịch sẽ được hủy và ghi bút toán đảo ngay'
-                : 'Giao dịch cũ sẽ được đảo và thay thế ngay'
-              : 'Phiếu cần được GĐ/KTTH duyệt trước khi ghi sổ'}
+              ? 'Giao dịch sẽ được xóa và ghi bút toán đảo ngay'
+              : 'Yêu cầu cần được GĐ/KTTH duyệt trước khi ghi sổ'}
             description={isControlUser
               ? 'Chỉ giao dịch có công nợ PENDING mới được thao tác. Giao dịch đã RECONCILED hoặc SETTLED bị khóa.'
-              : 'Nếu được duyệt, bút toán đảo và giao dịch thay thế được ghi vào ca đang mở; tỷ giá giao dịch cũ được giữ nguyên.'}
+              : 'Nếu được duyệt, giao dịch được hủy và bút toán đảo được ghi vào ca đang mở.'}
           />
-          <Form.Item name="action" label="Cách xử lý" rules={[{ required: true }]}>
-            <Segmented
-              block
-              options={[
-                ...(deactivateTarget?.source === 'DOMESTIC'
-                  ? []
-                  : [{ label: 'Thay thế giao dịch', value: 'REPLACE' }]),
-                { label: 'Hủy giao dịch', value: 'VOID' },
-              ]}
-            />
-          </Form.Item>
-          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'WU' && (
-            <Row gutter={12}>
-              <Col span={12}>
-                <Form.Item name="wuUsdAmount" label="Amount USD đúng" rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập Amount USD lớn hơn 0' }]}>
-                  <InputNumber className="w-full" min={0.01} precision={2} addonAfter="USD" formatter={usdInputFormatter} parser={usdInputParser} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="wuVndAmount" label="Amount VND đúng" rules={[{ required: true, type: 'number', min: 1, message: 'Nhập Amount VND lớn hơn 0' }]}>
-                  <InputNumber className="w-full" min={1} precision={0} addonAfter="VND" formatter={numberInputFormatter} parser={numberInputParser} />
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
-          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'MG' && (
-            <Form.Item name="paidAmount" label={`Số tiền MG đúng (${deactivateTarget.financialData?.paidCurrency ?? ''})`} rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập số tiền lớn hơn 0' }]}>
-              <InputNumber
-                className="w-full"
-                min={0.01}
-                precision={deactivateTarget.financialData?.paidCurrency === 'VND' ? 0 : 2}
-                addonAfter={deactivateTarget.financialData?.paidCurrency}
-                formatter={deactivateTarget.financialData?.paidCurrency === 'VND' ? numberInputFormatter : usdInputFormatter}
-                parser={deactivateTarget.financialData?.paidCurrency === 'VND' ? numberInputParser : usdInputParser}
-              />
-            </Form.Item>
-          )}
-          {adjustmentAction === 'REPLACE' && deactivateTarget?.source === 'FX' && (
-            <>
-              <Form.Item name="fxAmount" label={`Số lượng ngoại tệ đúng (${deactivateTarget.financialData?.fxCurrency ?? ''})`} rules={[{ required: true, type: 'number', min: 0.01, message: 'Nhập số lượng lớn hơn 0' }]}>
-                <InputNumber className="w-full" min={0.01} precision={2} addonAfter={deactivateTarget.financialData?.fxCurrency} formatter={usdInputFormatter} parser={usdInputParser} />
-              </Form.Item>
-              <Row gutter={12}>
-                <Col span={12}>
-                  <Form.Item label="Tỷ giá giữ lại">
-                    <Input value={formatExchangeRate(deactivateTarget.financialData?.appliedRate ?? 0)} addonAfter="VND" readOnly />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item label="Giá trị VND tính lại">
-                    <Input
-                      value={formatVnd(Math.round(Number(replacementFxAmount) * Number(deactivateTarget.financialData?.appliedRate ?? 0)))}
-                      readOnly
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Alert
-                className="mb-4"
-                type="info"
-                showIcon
-                message="Số VND sẽ được tính lại theo số lượng mới và tỷ giá của giao dịch gốc"
-                description="Nếu tỷ giá giao dịch gốc bị nhập sai, hãy chọn Hủy giao dịch và tạo lại giao dịch mới với tỷ giá đúng."
-              />
-            </>
-          )}
-          <Form.Item name="reason" label="Lý do điều chỉnh" rules={[{ required: true, whitespace: true, message: 'Nhập lý do điều chỉnh' }]}>
+          <Form.Item name="action" hidden><Input /></Form.Item>
+          <Form.Item name="reason" label="Lý do xóa" rules={[{ required: true, whitespace: true, message: 'Nhập lý do xóa giao dịch' }]}>
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Mô tả sai sót của giao dịch gốc" />
           </Form.Item>
-          <Form.Item name="proposedCorrection" label="Nội dung đề nghị" rules={[{ required: adjustmentAction === 'REPLACE', whitespace: true, message: 'Nhập nội dung đề nghị điều chỉnh' }]}>
-            <Input.TextArea rows={3} maxLength={1000} showCount placeholder={adjustmentAction === 'REPLACE' ? 'Mô tả số tiền đúng và căn cứ điều chỉnh' : 'Ghi chú thêm cho yêu cầu hủy (nếu có)'} />
+          <Form.Item name="proposedCorrection" label="Ghi chú thêm">
+            <Input.TextArea rows={3} maxLength={1000} showCount placeholder="Thông tin bổ sung cho yêu cầu xóa (nếu có)" />
           </Form.Item>
           <div className="flex justify-end gap-2">
             <Button onClick={() => setDeactivateTarget(null)}>Hủy</Button>
             <Button type="primary" htmlType="submit" loading={adjustmentMutation.isPending}>
-              {adjustmentAction === 'REPLACE'
-                ? isControlUser ? 'Thay thế giao dịch ngay' : 'Gửi phiếu thay thế'
-                : isControlUser ? 'Hủy giao dịch ngay' : 'Gửi phiếu hủy'}
+              {isControlUser ? 'Xóa và đảo bút toán' : 'Gửi yêu cầu xóa'}
             </Button>
           </div>
         </Form>
       </Modal>
 
       <Modal
-        title="Phiếu điều chỉnh giao dịch"
+        title="Yêu cầu sửa / xóa giao dịch"
         open={adjustmentListOpen}
         onCancel={() => setAdjustmentListOpen(false)}
         footer={null}
@@ -988,7 +836,7 @@ export function TransactionsMainPage() {
       </Modal>
 
       <Modal
-        title={reviewTarget?.action === 'APPROVE' ? 'Duyệt phiếu điều chỉnh' : 'Từ chối phiếu điều chỉnh'}
+        title={reviewTarget?.action === 'APPROVE' ? 'Duyệt yêu cầu sửa/xóa' : 'Từ chối yêu cầu sửa/xóa'}
         open={Boolean(reviewTarget)}
         onCancel={() => setReviewTarget(null)}
         footer={null}

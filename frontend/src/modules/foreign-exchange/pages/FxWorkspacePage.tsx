@@ -1,8 +1,10 @@
 // Flow FX — Mua/Bán ngoại tệ (nối API thật)
 import { App, Alert, Button, Card, Checkbox, Col, Form, Input, InputNumber, Row, Segmented, Select, Slider, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { SwapOutlined } from '@ant-design/icons';
+import { EditOutlined, SwapOutlined } from '@ant-design/icons';
 import { useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
 import { getApiErrorMessage } from '@/shared/utils/errors';
 import { currencyOptions, getCurrencyMetadata } from '@/shared/constants/currencies';
@@ -18,11 +20,12 @@ import {
   usdInputFormatter,
   usdInputParser,
 } from '@/shared/utils/formatters';
-import { useCreateFx, useFxStock } from '../hooks/useFx';
+import { useCreateFx, useFxStock, useFxTransactions } from '../hooks/useFx';
 import type { ExchangeRateDto, ExchangeRateType, ServiceProvider } from '@/modules/exchange-rate/api/exchangeRate.api';
 import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
 import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
 import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
+import { transactionAdminApi } from '@/modules/transactions/api/transactionAdmin.api';
 
 const FX_CURRENCY_OPTIONS = currencyOptions.filter((currency) => currency.value !== 'VND');
 const money = (n: number) => formatNumber(n, 2);
@@ -34,11 +37,44 @@ type FxStockRow = {
 };
 export function FxWorkspacePage() {
   const { message } = App.useApp();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const editTransactionId = searchParams.get('edit');
+  const isEditMode = Boolean(editTransactionId);
   const { data: activeRates = [] } = useActiveRates();
   const create = useCreateFx();
   const [form] = Form.useForm();
   const { user, branches, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form, { includeHeadOffice: true });
   const { data: stock = [] } = useFxStock(isBranchUser ? user?.branchId : undefined);
+  const { data: editTransactions = [], isLoading: isLoadingEditTransaction } = useFxTransactions(isBranchUser ? user?.branchId : undefined);
+  const editTransaction = editTransactions.find((transaction) => transaction.id === editTransactionId);
+  const replace = useMutation({
+    mutationFn: async ({ correctedData, reason }: { correctedData: Record<string, unknown>; reason: string }) => {
+      if (!editTransactionId) throw new Error('Không tìm thấy giao dịch cần sửa');
+      const request = {
+        action: 'REPLACE' as const,
+        reason,
+        proposedCorrection: `Sửa giao dịch ngoại tệ ${editTransaction?.transactionNo ?? editTransactionId}`,
+        correctedData,
+      };
+      return user?.role === 'branch'
+        ? transactionAdminApi.createAdjustmentRequest(editTransactionId, request)
+        : transactionAdminApi.replaceDirectly(editTransactionId, request);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['fx-trading'] }),
+        queryClient.invalidateQueries({ queryKey: ['fund'] }),
+        queryClient.invalidateQueries({ queryKey: ['transaction-adjustment-requests'] }),
+      ]);
+      void message.success(user?.role === 'branch'
+        ? 'Đã gửi yêu cầu sửa giao dịch ngoại tệ để GĐ/KTTH duyệt'
+        : 'Đã đảo giao dịch cũ và tạo giao dịch ngoại tệ đã sửa');
+      navigate('/transactions');
+    },
+    onError: (error: unknown) => void message.error(getApiErrorMessage(error, 'Không thể sửa giao dịch ngoại tệ')),
+  });
 
   const resetTransactionForm = () => {
     form.resetFields();
@@ -63,10 +99,26 @@ export function FxWorkspacePage() {
   const netVndAmount = Math.max(grossVndAmount - Math.round(Number(deductionVnd)), 0);
 
   useEffect(() => {
-    if (systemRate) {
+    if (!isEditMode && systemRate) {
       form.setFieldsValue({ rate: systemRate });
     }
-  }, [form, systemRate]);
+  }, [form, isEditMode, systemRate]);
+
+  useEffect(() => {
+    if (!isEditMode || !editTransaction) return;
+    const editFraction = Number(editTransaction.fractionalAmount ?? 0);
+    form.setFieldsValue({
+      branchId: editTransaction.branchId,
+      side: editTransaction.isBuy ? 'buy' : 'sell',
+      fxCurrency: editTransaction.fxCurrency,
+      fxAmount: Math.max(Number(editTransaction.fxAmount) - editFraction, 0),
+      hasFraction: editFraction > 0,
+      fractionalAmount: editFraction,
+      deductionVnd: editTransaction.deductionVnd,
+      rate: editTransaction.rate,
+      customerName: editTransaction.customerName ?? undefined,
+    });
+  }, [editTransaction, form, isEditMode]);
 
   useEffect(() => {
     if (side !== 'buy') {
@@ -85,7 +137,7 @@ export function FxWorkspacePage() {
     }
 
     try {
-      await create.mutateAsync({
+      const payload = {
         branchId: isBranchUser && user?.branchId ? user.branchId : v.branchId,
         isBuy: v.side === 'buy',
         fxCurrency: v.fxCurrency,
@@ -94,7 +146,12 @@ export function FxWorkspacePage() {
         deductionVnd: v.side === 'buy' ? Number(v.deductionVnd ?? 0) : 0,
         rate: v.rate,
         customerName: v.customerName,
-      });
+      };
+      if (isEditMode) {
+        await replace.mutateAsync({ correctedData: payload, reason: v.reason });
+        return;
+      }
+      await create.mutateAsync(payload);
       message.success(v.side === 'buy' ? 'Đã mua ngoại tệ — tồn tăng, quỹ VND giảm' : 'Đã bán ngoại tệ — tồn giảm, quỹ VND tăng');
       resetTransactionForm();
     } catch (error: unknown) {
@@ -192,26 +249,26 @@ export function FxWorkspacePage() {
 
   return (
     <TransactionCreatePage
-      title="Mua / Bán ngoại tệ"
-      description="Mua (khách bán cho công ty): quỹ VND giảm, tồn ngoại tệ tăng. Bán: ngược lại. Không bán vượt tồn."
+      title={isEditMode ? 'Sửa giao dịch ngoại tệ' : 'Mua / Bán ngoại tệ'}
+      description={isEditMode ? 'Sửa giao dịch bằng cách đảo giao dịch cũ và tạo revision mới để giữ nguyên lịch sử sổ.' : 'Mua (khách bán cho công ty): quỹ VND giảm, tồn ngoại tệ tăng. Bán: ngược lại. Không bán vượt tồn.'}
       moduleName="foreign-exchange"
     >
       <Row gutter={[16, 16]} align="stretch">
         <Col xs={24} lg={10} xl={9}>
-          <Card title="Giao dịch ngoại tệ" size="small" className="h-full">
+          <Card title={isEditMode ? `Sửa ${editTransaction?.transactionNo ?? ''}` : 'Giao dịch ngoại tệ'} size="small" className="h-full" loading={isEditMode && isLoadingEditTransaction}>
             <Form
               form={form}
               layout="vertical"
               onFinish={onCreate}
               onKeyDownCapture={preventNumberInputEnter}
-              disabled={!canCreateTransaction}
+              disabled={!canCreateTransaction || (isEditMode && !editTransaction)}
               initialValues={{ branchId: isBranchUser ? user?.branchId : undefined, side: 'buy', fxCurrency: 'USD', fxAmount: 0, hasFraction: false, fractionalAmount: 0, deductionVnd: 0, rate: 0 }}
             >
               <Form.Item name="side" label="Loại giao dịch">
                 <Segmented block options={[{ label: 'MUA (khách bán)', value: 'buy' }, { label: 'BÁN (khách mua)', value: 'sell' }]} />
               </Form.Item>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
-                <Select placeholder="Chọn chi nhánh" disabled={isBranchUser} options={branchOptions} />
+                <Select placeholder="Chọn chi nhánh" disabled={isBranchUser || isEditMode} options={branchOptions} />
               </Form.Item>
               <Row gutter={8}>
                 <Col xs={24} sm={12}><Form.Item name="fxCurrency" label="Ngoại tệ" rules={[{ required: true }]}>
@@ -322,8 +379,13 @@ export function FxWorkspacePage() {
               {!systemRate && (
                 <Alert type="warning" showIcon className="mb-3" message={`Chưa có tỷ giá ${side === 'buy' ? 'mua' : 'bán'} ACTIVE cho ${fxCurrency}. Vui lòng tạo/duyệt tỷ giá trước khi giao dịch.`} />
               )}
-              <Button type="primary" htmlType="submit" icon={<SwapOutlined />} loading={create.isPending} disabled={!canCreateTransaction || !systemRate} block>
-                {side === 'buy' ? 'Mua ngoại tệ' : 'Bán ngoại tệ'}
+              {isEditMode && (
+                <Form.Item name="reason" label="Lý do sửa giao dịch" rules={[{ required: true, whitespace: true, message: 'Nhập lý do sửa giao dịch' }]}>
+                  <Input.TextArea rows={3} maxLength={500} showCount placeholder="Mô tả thông tin sai và nội dung đã sửa" />
+                </Form.Item>
+              )}
+              <Button type="primary" htmlType="submit" icon={isEditMode ? <EditOutlined /> : <SwapOutlined />} loading={create.isPending || replace.isPending} disabled={!canCreateTransaction || !systemRate} block>
+                {isEditMode ? (user?.role === 'branch' ? 'Gửi yêu cầu sửa giao dịch' : 'Lưu giao dịch đã sửa') : side === 'buy' ? 'Mua ngoại tệ' : 'Bán ngoại tệ'}
               </Button>
             </Form>
           </Card>
@@ -385,6 +447,7 @@ interface FxFormValues {
   deductionVnd?: number;
   rate: number;
   customerName?: string;
+  reason: string;
 }
 
 function findActiveRate(

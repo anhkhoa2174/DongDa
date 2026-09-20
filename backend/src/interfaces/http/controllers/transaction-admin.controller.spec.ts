@@ -7,22 +7,48 @@ describe('TransactionAdminController adjustment vouchers', () => {
   const postingShiftId = '00000000-0000-0000-0000-000000000003';
   const userId = '00000000-0000-0000-0000-000000000004';
   const originalBusinessDate = new Date('2026-08-01T00:00:00.000Z');
+  const originalCreatedAt = new Date('2026-08-01T03:15:00.000Z');
 
-  it('builds a WU replacement payload with corrected amounts only', () => {
+  it('builds a WU replacement payload with editable business fields', () => {
     const controller = new TransactionAdminController({} as any, {} as any);
     const payload = (controller as any).buildAdjustmentPayload(
-      { operation_code: 'WU' },
+      {
+        operation_code: 'WU',
+        customer_name: 'Khách cũ',
+        customer_phone: '0900000000',
+        wu_transaction_details: {
+          mtcn: '1234567890', bank_account_id: 'bank-usd', paid_currency: 'USD', payout_currency: 'USD',
+          applied_rate: 25_500, received_usd: 1000, received_vnd: 12_750,
+          sending_country: 'USA', receiver_date_of_birth: new Date('1990-01-01'), current_address: 'Hà Nội',
+          identity_document_type: 'CCCD', identity_document_number: '001', identity_place_of_issue: 'CỤC CẢNH SÁT',
+          identity_issuing_country: 'VIETNAM', identity_issue_date: new Date('2020-01-01'),
+          identity_expiry_date: new Date('2030-01-01'), has_visa: false, employment_status: 'Kinh doanh',
+          country_of_birth: 'VIETNAM', nationality: 'VIETNAM', sender_relationship: 'Người thân',
+          receive_purpose: 'Chi phí đi lại', sender_name: 'Người gửi', received_date: new Date('2026-08-01'),
+        },
+      },
       {
         action: 'REPLACE',
         reason: 'Nhập nhầm số tiền',
-        correctedData: { wuUsdAmount: 1000.5, wuVndAmount: 25_600_000 },
+        correctedData: {
+          mtcn: '9998887776', wuUsdAmount: 1000.5, wuVndAmount: 25_600_000,
+          paidCurrency: 'VND', payoutCurrency: 'VND', appliedRate: 25_550,
+          receivedUsd: 0, receivedVnd: 25_600_000,
+        },
       },
     );
 
-    expect(payload).toEqual({
+    expect(payload).toEqual(expect.objectContaining({
       action: 'REPLACE',
-      correctedData: { wuUsdAmount: 1000.5, wuVndAmount: 25_600_000 },
-    });
+      correctedData: expect.objectContaining({
+        mtcn: '9998887776',
+        wuUsdAmount: 1000.5,
+        wuVndAmount: 25_600_000,
+        paidCurrency: 'VND',
+        payoutCurrency: 'VND',
+        receivedVnd: 25_600_000,
+      }),
+    }));
   });
 
   it('does not require corrected amounts for a void voucher', () => {
@@ -31,6 +57,36 @@ describe('TransactionAdminController adjustment vouchers', () => {
       { operation_code: 'WU' },
       { action: 'VOID', reason: 'Hủy giao dịch tạo nhầm' },
     )).toEqual({ action: 'VOID' });
+  });
+
+  it('allows an MG edit to change reference, paid currency, payout and rate', () => {
+    const controller = new TransactionAdminController({} as any, {} as any);
+    const payload = (controller as any).buildAdjustmentPayload(
+      {
+        operation_code: 'MG',
+        customer_name: 'Khách cũ',
+        mg_transaction_details: {
+          reference_no: 'AB12CD34', paid_currency: 'USD', payout_currency: 'VND',
+          payout_amount: 2_550_000, received_usd: 0, received_vnd: 2_550_000, applied_rate: 25_500,
+        },
+      },
+      {
+        action: 'REPLACE',
+        reason: 'Sai loại tiền hoàn',
+        correctedData: {
+          referenceNo: 'ZX98YU76', customerName: 'Khách đúng', paidCurrency: 'VND', paidAmount: 2_600_000,
+          payoutCurrency: 'USD', payoutAmount: 100, receivedUsd: 100, receivedVnd: 0, appliedRate: 26_000,
+        },
+      },
+    );
+
+    expect(payload).toEqual({
+      action: 'REPLACE',
+      correctedData: {
+        referenceNo: 'ZX98YU76', customerName: 'Khách đúng', paidCurrency: 'VND', paidAmount: 2_600_000,
+        payoutCurrency: 'USD', payoutAmount: 100, receivedUsd: 100, receivedVnd: 0, appliedRate: 26_000,
+      },
+    });
   });
 
   it.each(['RECONCILED', 'SETTLED'])('blocks every edit or void path when debt is %s', async (status) => {
@@ -168,18 +224,41 @@ describe('TransactionAdminController adjustment vouchers', () => {
   it('rejects corrected monetary amounts with more than two decimal places', () => {
     const controller = new TransactionAdminController({} as any, {} as any);
     expect(() => (controller as any).buildAdjustmentPayload(
-      { operation_code: 'FX' },
+      { operation_code: 'FX', fx_transaction_details: { fx_currency: 'USD', is_buy: false, rate: 25_500 } },
       { action: 'REPLACE', reason: 'Sai tiền', correctedData: { fxAmount: 1.234 } },
     )).toThrow(BadRequestException);
   });
 
-  it('creates a WU replacement with the original rate snapshot', async () => {
+  it('builds a full FX replacement including side, currency, fraction, rate and deduction', () => {
+    const controller = new TransactionAdminController({} as any, {} as any);
+    expect((controller as any).buildAdjustmentPayload(
+      {
+        operation_code: 'FX', customer_name: 'Khách cũ',
+        fx_transaction_details: { fx_currency: 'USD', is_buy: true, rate: 25_500, fractional_amount: 0, deduction_vnd: 0 },
+      },
+      {
+        action: 'REPLACE', reason: 'Sai ngoại tệ', correctedData: {
+          isBuy: true, fxCurrency: 'EUR', fxAmount: 10, fractionalAmount: 0.5,
+          deductionVnd: 1_000, rate: 28_500, customerName: 'Khách đúng',
+        },
+      },
+    )).toEqual({
+      action: 'REPLACE',
+      correctedData: {
+        isBuy: true, fxCurrency: 'EUR', fxAmount: 10.5, fractionalAmount: 0.5,
+        deductionVnd: 1_000, rate: 28_500, customerName: 'Khách đúng',
+      },
+    });
+  });
+
+  it('creates a WU replacement with recalculated fund and debt data', async () => {
     const wuDetailCreate = jest.fn().mockResolvedValue({ id: 'detail-new' });
     const transactionCreate = jest.fn().mockResolvedValue({
       id: 'replacement-1', transaction_no: 'WU-R2-001', revision: 2,
     });
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer_transactions: {
         findUnique: jest.fn().mockResolvedValue({
           id: transactionId,
@@ -192,11 +271,13 @@ describe('TransactionAdminController adjustment vouchers', () => {
           status: 'VOIDED',
           revision: 1,
           business_date: originalBusinessDate,
+          created_at: originalCreatedAt,
           wu_transaction_details: {
             mtcn: '1234567890',
             paid_currency: 'USD',
             payout_currency: 'USD',
             received_usd: 0,
+            received_vnd: 12_725,
             system_rate: 25_500,
             applied_rate: 25_450,
           },
@@ -204,7 +285,14 @@ describe('TransactionAdminController adjustment vouchers', () => {
           fx_transaction_details: null,
         }),
         create: transactionCreate,
+        findFirst: jest.fn().mockResolvedValue(null),
       },
+      exchange_rates: {
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({ rate: 25_500 })
+          .mockResolvedValueOnce({ rate: 25_900 }),
+      },
+      bank_accounts: { findFirst: jest.fn().mockResolvedValue({ id: 'bank-usd' }) },
       fund_accounts: {
         findFirst: jest.fn().mockImplementation(({ where }) => Promise.resolve({ id: `fund-${where.currency_code}` })),
       },
@@ -224,7 +312,12 @@ describe('TransactionAdminController adjustment vouchers', () => {
       transactionId,
       postingShiftId,
       userId,
-      { wuUsdAmount: 0.5, wuVndAmount: 12_000_000 },
+      {
+        mtcn: '1234567890', bankAccountId: 'bank-usd',
+        wuUsdAmount: 0.5, wuVndAmount: 12_725,
+        paidCurrency: 'USD', payoutCurrency: 'USD', appliedRate: 25_450,
+        receivedUsd: 0, receivedVnd: 12_725,
+      },
       'request-1',
     );
 
@@ -233,6 +326,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
         replacement_of_transaction_id: transactionId,
         revision: 2,
         business_date: originalBusinessDate,
+        created_at: originalCreatedAt,
       }),
     }));
     expect(wuDetailCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -242,7 +336,7 @@ describe('TransactionAdminController adjustment vouchers', () => {
         system_rate: 25_500,
         applied_rate: 25_450,
         wu_usd_amount: 0.5,
-        wu_vnd_amount: 12_000_000,
+        wu_vnd_amount: 12_725,
         received_usd: 0,
         received_vnd: 12_725,
       }),

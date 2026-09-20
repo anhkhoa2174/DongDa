@@ -24,7 +24,7 @@ export type TransactionAdjustmentRequest = {
   completed_at?: string | null;
   payload?: {
     action?: 'VOID' | 'REPLACE';
-    correctedData?: Record<string, number>;
+    correctedData?: Record<string, unknown>;
     originalRateSnapshot?: Record<string, number>;
   };
   users?: {
@@ -49,7 +49,7 @@ export const transactionAdminApi = {
       action: 'REPLACE';
       reason: string;
       proposedCorrection?: string;
-      correctedData: Record<string, number>;
+      correctedData: Record<string, unknown>;
     },
   ) => httpClient.post(`/transactions/${transactionId}/replace`, payload).then((response) => response.data),
   updateMetadata: (transactionId: string, payload: UpdateTransactionMetadataPayload) =>
@@ -64,7 +64,7 @@ export const transactionAdminApi = {
       action: 'VOID' | 'REPLACE';
       reason: string;
       proposedCorrection?: string;
-      correctedData?: Record<string, number>;
+      correctedData?: Record<string, unknown>;
     },
   ) => httpClient.post(`/transactions/${transactionId}/adjustment-requests`, payload)
     .then((response) => response.data),

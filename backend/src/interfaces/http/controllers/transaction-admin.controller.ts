@@ -1,7 +1,7 @@
 import {
   BadRequestException, Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { currency_code, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { toVietnamBusinessDate } from '../../../infrastructure/database/business-date';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -14,6 +14,19 @@ import {
 } from '../../../application/dtos/transactions/transaction-admin.dto';
 import { NotificationService } from '../../../infrastructure/notifications/notification.service';
 import { calculateFxVndAmount } from '../../../domain/entities/fx.entity';
+import { validateFxAppliedRate } from '../../../application/use-cases/fx/fx.use-cases';
+import type { CreateWuDto } from '../../../application/dtos/wu/wu.dto';
+import { assertWuPayoutMatches, validateAppliedRate } from '../../../application/use-cases/wu/wu.use-cases';
+import {
+  assertMgPayoutMatches,
+  calculateMgPayout,
+  validateMgAppliedRate,
+} from '../../../application/use-cases/mg/mg.use-cases';
+import {
+  normalizeCountryName,
+  normalizeUpperText,
+  normalizeUsStateName,
+} from '../../../domain/services/wu-reference-data';
 
 const TRANSACTION_ADJUSTMENT = 'CUSTOMER_TRANSACTION_ADJUSTMENT';
 
@@ -100,7 +113,7 @@ export class TransactionAdminController {
         include: { approval_steps: true },
       });
       await this.notifications.notifyUsers({
-        title: 'Phiếu điều chỉnh giao dịch chờ duyệt',
+        title: 'Yêu cầu sửa/xóa giao dịch chờ duyệt',
         body: `${transaction.transaction_no} · ${transaction.shifts?.shift_code ?? 'không có ca'} · ${dto.reason.trim()}`,
         sourceType: 'TRANSACTION_ADJUSTMENT_REQUEST',
         sourceId: request.id,
@@ -377,7 +390,7 @@ export class TransactionAdminController {
         },
       });
       await this.notifications.notifyUsers({
-        title: 'Phiếu điều chỉnh giao dịch đã được duyệt',
+        title: 'Yêu cầu sửa/xóa giao dịch đã được duyệt',
         body: replacementTransaction
           ? `${transaction.transaction_no} đã được đảo và thay thế bằng ${replacementTransaction.transaction_no}.`
           : `${transaction.transaction_no} đã được hủy và đảo quỹ/công nợ trong ca hiện tại.`,
@@ -433,7 +446,7 @@ export class TransactionAdminController {
         },
       });
       await this.notifications.notifyUsers({
-        title: 'Phiếu điều chỉnh giao dịch bị từ chối',
+        title: 'Yêu cầu sửa/xóa giao dịch bị từ chối',
         body: dto.reason.trim(),
         sourceType: 'TRANSACTION_ADJUSTMENT_REJECTED',
         sourceId: request.id,
@@ -519,19 +532,156 @@ export class TransactionAdminController {
       const wuUsdAmount = positive('wuUsdAmount');
       const wuVndAmount = positive('wuVndAmount');
       if (!Number.isInteger(wuVndAmount)) throw new BadRequestException('Amount VND của WU phải là số nguyên');
-      return { action: 'REPLACE', correctedData: { wuUsdAmount, wuVndAmount } };
+      const detail = transaction.wu_transaction_details;
+      const mtcn = String(corrected.mtcn ?? detail?.mtcn ?? '').replace(/\D/g, '');
+      if (!/^\d{10}$/.test(mtcn)) throw new BadRequestException('MTCN phải gồm đúng 10 chữ số');
+      const paidCurrency = this.parseSettlementCurrency(corrected.paidCurrency ?? detail?.paid_currency, 'Paid Currency');
+      const payoutCurrency = this.parseSettlementCurrency(corrected.payoutCurrency ?? detail?.payout_currency, 'Tiền khách nhận');
+      const appliedRate = Number(corrected.appliedRate ?? detail?.applied_rate);
+      if (!Number.isFinite(appliedRate) || appliedRate <= 0) throw new BadRequestException('appliedRate phải là số dương hợp lệ');
+      const receivedUsd = this.nonNegativeMoney(corrected.receivedUsd ?? detail?.received_usd, 'receivedUsd');
+      const receivedVnd = this.nonNegativeMoney(corrected.receivedVnd ?? detail?.received_vnd, 'receivedVnd', true);
+      const requiredText = (field: string, fallback?: unknown) => {
+        const value = String(corrected[field] ?? fallback ?? '').trim();
+        if (!value) throw new BadRequestException(`${field} không được để trống`);
+        return value;
+      };
+      const optionalText = (field: string, fallback?: unknown) => {
+        const value = corrected[field] ?? fallback;
+        return value == null || String(value).trim() === '' ? null : String(value).trim();
+      };
+      const requiredDate = (field: string, fallback?: unknown) => {
+        const value = corrected[field] ?? fallback;
+        const date = value instanceof Date ? value : new Date(String(value ?? ''));
+        if (Number.isNaN(date.getTime())) throw new BadRequestException(`${field} không phải ngày hợp lệ`);
+        return date.toISOString();
+      };
+      const hasVisa = corrected.hasVisa === undefined ? Boolean(detail?.has_visa) : Boolean(corrected.hasVisa);
+      return {
+        action: 'REPLACE',
+        correctedData: {
+          mtcn,
+          bankAccountId: requiredText('bankAccountId', detail?.bank_account_id),
+          customerName: requiredText('customerName', transaction.customer_name),
+          customerPhone: requiredText('customerPhone', transaction.customer_phone),
+          sendingCountry: normalizeCountryName(requiredText('sendingCountry', detail?.sending_country)),
+          senderState: normalizeUsStateName(optionalText('senderState', detail?.sender_state) ?? undefined) ?? null,
+          receiverDateOfBirth: requiredDate('receiverDateOfBirth', detail?.receiver_date_of_birth),
+          currentAddress: requiredText('currentAddress', detail?.current_address),
+          identityAddress: optionalText('identityAddress', detail?.identity_address),
+          identityDocumentType: requiredText('identityDocumentType', detail?.identity_document_type),
+          identityDocumentNumber: requiredText('identityDocumentNumber', detail?.identity_document_number),
+          identityPlaceOfIssue: normalizeUpperText(requiredText('identityPlaceOfIssue', detail?.identity_place_of_issue)),
+          identityIssuingCountry: normalizeCountryName(requiredText('identityIssuingCountry', detail?.identity_issuing_country)),
+          identityIssueDate: requiredDate('identityIssueDate', detail?.identity_issue_date),
+          identityExpiryDate: requiredDate('identityExpiryDate', detail?.identity_expiry_date),
+          hasVisa,
+          visaType: hasVisa ? requiredText('visaType', detail?.visa_type) : null,
+          visaNumber: hasVisa ? requiredText('visaNumber', detail?.visa_number) : null,
+          visaIssueDate: hasVisa ? requiredDate('visaIssueDate', detail?.visa_issue_date) : null,
+          visaExpiryDate: hasVisa ? requiredDate('visaExpiryDate', detail?.visa_expiry_date) : null,
+          employmentStatus: requiredText('employmentStatus', detail?.employment_status),
+          countryOfBirth: normalizeCountryName(requiredText('countryOfBirth', detail?.country_of_birth)),
+          nationality: normalizeCountryName(requiredText('nationality', detail?.nationality)),
+          senderRelationship: requiredText('senderRelationship', detail?.sender_relationship),
+          receivePurpose: requiredText('receivePurpose', detail?.receive_purpose),
+          senderName: requiredText('senderName', detail?.sender_name),
+          receivedDate: requiredDate('receivedDate', detail?.received_date),
+          wuUsdAmount,
+          wuVndAmount,
+          receivedUsd,
+          receivedVnd,
+          appliedRate,
+          paidCurrency,
+          payoutCurrency,
+        },
+      };
     }
     if (transaction.operation_code === 'MG') {
       const paidAmount = positive('paidAmount');
-      if (transaction.mg_transaction_details?.paid_currency === 'VND' && !Number.isInteger(paidAmount)) {
+      const detail = transaction.mg_transaction_details;
+      const paidCurrency = this.parseSettlementCurrency(corrected.paidCurrency ?? detail?.paid_currency, 'Paid Currency');
+      const payoutCurrency = this.parseSettlementCurrency(corrected.payoutCurrency ?? detail?.payout_currency, 'Tiền khách nhận');
+      if (paidCurrency === 'VND' && !Number.isInteger(paidAmount)) {
         throw new BadRequestException('Amount VND của MG phải là số nguyên');
       }
-      return { action: 'REPLACE', correctedData: { paidAmount } };
+      const referenceNo = String(corrected.referenceNo ?? detail?.reference_no ?? '')
+        .replace(/[^a-z0-9]/gi, '').toUpperCase();
+      if (!/^[A-Z0-9]{8}$/.test(referenceNo)) {
+        throw new BadRequestException('Reference Number phải gồm đúng 8 ký tự chữ hoa hoặc số');
+      }
+      const customerName = String(corrected.customerName ?? transaction.customer_name ?? '').trim();
+      const appliedRate = Number(corrected.appliedRate ?? detail?.applied_rate);
+      if (!Number.isFinite(appliedRate) || appliedRate <= 0) throw new BadRequestException('appliedRate phải là số dương hợp lệ');
+      const payoutAmount = Number(corrected.payoutAmount ?? detail?.payout_amount);
+      if (!Number.isFinite(payoutAmount) || payoutAmount <= 0) throw new BadRequestException('payoutAmount phải là số dương hợp lệ');
+      const receivedUsd = this.nonNegativeMoney(corrected.receivedUsd ?? detail?.received_usd, 'receivedUsd');
+      const receivedVnd = this.nonNegativeMoney(corrected.receivedVnd ?? detail?.received_vnd, 'receivedVnd', true);
+      return { action: 'REPLACE', correctedData: {
+        referenceNo,
+        customerName: customerName || null,
+        paidCurrency,
+        paidAmount,
+        payoutCurrency,
+        payoutAmount,
+        receivedUsd,
+        receivedVnd,
+        appliedRate,
+      } };
     }
     if (transaction.operation_code === 'FX') {
-      return { action: 'REPLACE', correctedData: { fxAmount: positive('fxAmount') } };
+      const detail = transaction.fx_transaction_details;
+      const isBuy = corrected.isBuy === undefined ? Boolean(detail?.is_buy) : Boolean(corrected.isBuy);
+      const fxCurrency = String(corrected.fxCurrency ?? detail?.fx_currency ?? '').trim().toUpperCase();
+      if (!Object.values(currency_code).includes(fxCurrency as currency_code) || fxCurrency === 'VND') {
+        throw new BadRequestException('Ngoại tệ giao dịch không hợp lệ');
+      }
+      const wholeAmount = this.nonNegativeMoney(corrected.fxAmount ?? detail?.fx_amount, 'fxAmount');
+      const fractionalAmount = this.nonNegativeMoney(corrected.fractionalAmount ?? detail?.fractional_amount ?? 0, 'fractionalAmount');
+      if (isBuy && !Number.isInteger(wholeAmount)) {
+        throw new BadRequestException('Số lượng mua phần nguyên phải là số nguyên; phần lẻ nhập ở ô riêng');
+      }
+      if (fractionalAmount >= 1) throw new BadRequestException('Phần lẻ phải nhỏ hơn 1 đơn vị ngoại tệ');
+      const deductionVnd = this.nonNegativeMoney(corrected.deductionVnd ?? detail?.deduction_vnd ?? 0, 'deductionVnd', true);
+      if (!isBuy && (fractionalAmount > 0 || deductionVnd > 0)) {
+        throw new BadRequestException('Phần lẻ và khấu trừ chỉ áp dụng khi mua ngoại tệ');
+      }
+      const totalFxAmount = wholeAmount + fractionalAmount;
+      if (totalFxAmount <= 0) throw new BadRequestException('Tổng số lượng ngoại tệ phải lớn hơn 0');
+      const rate = Number(corrected.rate ?? detail?.rate);
+      if (!Number.isFinite(rate) || rate <= 0) throw new BadRequestException('Tỷ giá giao dịch phải là số dương hợp lệ');
+      return { action: 'REPLACE', correctedData: {
+        isBuy,
+        fxCurrency,
+        fxAmount: totalFxAmount,
+        fractionalAmount,
+        deductionVnd,
+        rate,
+        customerName: String(corrected.customerName ?? transaction.customer_name ?? '').trim() || null,
+      } };
     }
     throw new BadRequestException(`Chưa hỗ trợ thay thế giao dịch ${transaction.operation_code}`);
+  }
+
+  private parseSettlementCurrency(value: unknown, label: string): 'USD' | 'VND' {
+    if (value !== 'USD' && value !== 'VND') {
+      throw new BadRequestException(`${label} phải là USD hoặc VND`);
+    }
+    return value;
+  }
+
+  private nonNegativeMoney(value: unknown, field: string, integer = false) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException(`${field} phải là số không âm hợp lệ`);
+    }
+    if (integer && !Number.isInteger(amount)) {
+      throw new BadRequestException(`${field} phải là số nguyên`);
+    }
+    if (!integer && Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-8) {
+      throw new BadRequestException(`${field} chỉ được có tối đa 2 chữ số thập phân`);
+    }
+    return amount;
   }
 
   private async assertTransactionNotReconciled(tx: Prisma.TransactionClient, transactionId: string) {
@@ -653,6 +803,7 @@ export class TransactionAdminController {
       branch_id: original.branch_id,
       shift_id: postingShiftId,
       business_date: original.business_date,
+      created_at: original.created_at,
       status: 'COMPLETED' as const,
       customer_id: original.customer_id,
       customer_name: original.customer_name,
@@ -667,30 +818,104 @@ export class TransactionAdminController {
       const detail = original.wu_transaction_details;
       const wuUsdAmount = Number(correctedData.wuUsdAmount);
       const wuVndAmount = Number(correctedData.wuVndAmount);
-      const rate = Number(detail.applied_rate);
-      const payoutUsd = detail.payout_currency === 'USD';
-      const receivedUsd = payoutUsd
-        ? Math.min(Math.max(Math.trunc(Number(detail.received_usd)), 0), Math.trunc(wuUsdAmount))
-        : 0;
-      const receivedVnd = Math.round((wuUsdAmount - receivedUsd) * rate);
+      const rate = Number(correctedData.appliedRate ?? detail.applied_rate);
+      const paidCurrency = this.parseSettlementCurrency(correctedData.paidCurrency ?? detail.paid_currency, 'Paid Currency');
+      const payoutCurrency = this.parseSettlementCurrency(correctedData.payoutCurrency ?? detail.payout_currency, 'Tiền khách nhận');
+      const receivedUsd = this.nonNegativeMoney(correctedData.receivedUsd ?? detail.received_usd, 'receivedUsd');
+      const receivedVnd = this.nonNegativeMoney(correctedData.receivedVnd ?? detail.received_vnd, 'receivedVnd', true);
+      const mtcn = String(correctedData.mtcn ?? detail.mtcn).replace(/\D/g, '');
+
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'WU:' + mtcn}))`;
+      const duplicateMtcn = await tx.customer_transactions.findFirst({
+        where: {
+          id: { not: original.id },
+          status: 'COMPLETED',
+          wu_transaction_details: { is: { mtcn } },
+        },
+        select: { id: true },
+      });
+      if (duplicateMtcn) throw new BadRequestException(`MSKH (MTCN) ${mtcn} đã được xử lý`);
+
+      const usesBuyRate = payoutCurrency === 'VND' || (payoutCurrency === 'USD' && paidCurrency === 'USD');
+      const rateType = usesBuyRate ? 'PAID_BUY' : 'PAID_SELL';
+      const fxRateType = usesBuyRate ? 'FX_BUY' : 'FX_SELL';
+      const [activeRate, activeFxRate] = await Promise.all([
+        tx.exchange_rates.findFirst({
+          where: { status: 'ACTIVE', rate_type: rateType, provider: 'WU_MG', from_currency: 'USD', to_currency: 'VND' },
+          orderBy: { effective_from: 'desc' },
+        }),
+        tx.exchange_rates.findFirst({
+          where: { status: 'ACTIVE', rate_type: fxRateType, provider: 'INTERNAL', from_currency: 'USD', to_currency: 'VND' },
+          orderBy: { effective_from: 'desc' },
+        }),
+      ]);
+      if (!activeRate || !activeFxRate) {
+        throw new BadRequestException(`Chưa có đủ tỷ giá ACTIVE ${rateType}/${fxRateType} cho USD`);
+      }
+      const systemRate = Number(activeRate.rate);
+      const fxUsdRate = Number(activeFxRate.rate);
+      const wuRate = wuVndAmount / wuUsdAmount;
+      validateAppliedRate(rate, wuRate, systemRate, fxUsdRate);
+      assertWuPayoutMatches({
+        wuUsdAmount,
+        wuVndAmount,
+        receivedUsd,
+        receivedVnd,
+        paidCurrency,
+        payoutCurrency,
+      } as CreateWuDto, rate);
+
+      const bankAccountId = String(correctedData.bankAccountId ?? detail.bank_account_id ?? '');
+      const bankAccount = await tx.bank_accounts.findFirst({
+        where: { id: bankAccountId, status: 'ACTIVE', currency_code: paidCurrency },
+        select: { id: true },
+      });
+      if (!bankAccount) throw new BadRequestException(`Tài khoản ngân hàng ${paidCurrency} không tồn tại hoặc đã ngưng hoạt động`);
+      const correctedCustomerName = String(correctedData.customerName ?? original.customer_name ?? '').trim();
+      const correctedCustomerPhone = String(correctedData.customerPhone ?? original.customer_phone ?? '').trim();
       replacement = await tx.customer_transactions.create({ data: {
         ...commonTransaction,
+        customer_name: correctedCustomerName || null,
+        customer_phone: correctedCustomerPhone || null,
         transaction_no: `WU-R${commonTransaction.revision}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         operation_code: 'WU', amount: wuUsdAmount, currency_code: 'USD', vnd_amount: wuVndAmount,
       } });
       await tx.wu_transaction_details.create({ data: {
         transaction_id: replacement.id,
-        bank_account_id: detail.bank_account_id,
-        mtcn: detail.mtcn,
-        paid_currency: detail.paid_currency,
-        payout_currency: detail.payout_currency,
+        bank_account_id: bankAccount.id,
+        mtcn,
+        sending_country: correctedData.sendingCountry as string ?? detail.sending_country,
+        sender_state: correctedData.senderState as string ?? detail.sender_state,
+        receiver_date_of_birth: new Date(String(correctedData.receiverDateOfBirth ?? detail.receiver_date_of_birth)),
+        current_address: correctedData.currentAddress as string ?? detail.current_address,
+        identity_address: correctedData.identityAddress as string ?? detail.identity_address,
+        identity_document_type: correctedData.identityDocumentType as string ?? detail.identity_document_type,
+        identity_document_number: correctedData.identityDocumentNumber as string ?? detail.identity_document_number,
+        identity_place_of_issue: correctedData.identityPlaceOfIssue as string ?? detail.identity_place_of_issue,
+        identity_issuing_country: correctedData.identityIssuingCountry as string ?? detail.identity_issuing_country,
+        identity_issue_date: new Date(String(correctedData.identityIssueDate ?? detail.identity_issue_date)),
+        identity_expiry_date: new Date(String(correctedData.identityExpiryDate ?? detail.identity_expiry_date)),
+        has_visa: Boolean(correctedData.hasVisa ?? detail.has_visa),
+        visa_type: correctedData.visaType as string ?? detail.visa_type,
+        visa_number: correctedData.visaNumber as string ?? detail.visa_number,
+        visa_issue_date: correctedData.visaIssueDate ? new Date(String(correctedData.visaIssueDate)) : detail.visa_issue_date,
+        visa_expiry_date: correctedData.visaExpiryDate ? new Date(String(correctedData.visaExpiryDate)) : detail.visa_expiry_date,
+        employment_status: correctedData.employmentStatus as string ?? detail.employment_status,
+        country_of_birth: correctedData.countryOfBirth as string ?? detail.country_of_birth,
+        nationality: correctedData.nationality as string ?? detail.nationality,
+        sender_relationship: correctedData.senderRelationship as string ?? detail.sender_relationship,
+        receive_purpose: correctedData.receivePurpose as string ?? detail.receive_purpose,
+        sender_name: correctedData.senderName as string ?? detail.sender_name,
+        received_date: new Date(String(correctedData.receivedDate ?? detail.received_date)),
+        paid_currency: paidCurrency,
+        payout_currency: payoutCurrency,
         wu_usd_amount: wuUsdAmount,
         wu_vnd_amount: wuVndAmount,
         received_usd: receivedUsd,
         received_vnd: receivedVnd,
-        wu_rate: wuVndAmount / wuUsdAmount,
-        system_rate: detail.system_rate,
-        applied_rate: detail.applied_rate,
+        wu_rate: wuRate,
+        system_rate: systemRate,
+        applied_rate: rate,
       } });
       const lines: any[] = [];
       if (receivedUsd > 0) {
@@ -712,38 +937,67 @@ export class TransactionAdminController {
         description: `WU thay thế ${original.transaction_no}`,
         created_by_user_id: userId, ledger_lines: { create: lines },
       } });
-      const debtAmount = detail.paid_currency === 'USD' ? wuUsdAmount : wuVndAmount;
-      await createDebt(replacement.id, replacement.transaction_no, 'WU', detail.paid_currency as 'USD' | 'VND', debtAmount);
+      const debtAmount = paidCurrency === 'USD' ? wuUsdAmount : wuVndAmount;
+      await createDebt(replacement.id, replacement.transaction_no, 'WU', paidCurrency, debtAmount);
     } else if (original.operation_code === 'MG' && original.mg_transaction_details) {
       const detail = original.mg_transaction_details;
       const paidAmount = Number(correctedData.paidAmount);
-      const rate = Number(detail.applied_rate);
-      const paidCurrency = detail.paid_currency as 'USD' | 'VND';
-      const payoutCurrency = detail.payout_currency as 'USD' | 'VND';
+      const rate = Number(correctedData.appliedRate ?? detail.applied_rate);
+      const paidCurrency = this.parseSettlementCurrency(correctedData.paidCurrency ?? detail.paid_currency, 'Paid Currency');
+      const payoutCurrency = this.parseSettlementCurrency(correctedData.payoutCurrency ?? detail.payout_currency, 'Tiền khách nhận');
+      const referenceNo = String(correctedData.referenceNo ?? detail.reference_no).replace(/[^a-z0-9]/gi, '').toUpperCase();
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'MG:' + referenceNo}))`;
+      const duplicateReference = await tx.customer_transactions.findFirst({
+        where: {
+          id: { not: original.id },
+          status: 'COMPLETED',
+          mg_transaction_details: { is: { reference_no: referenceNo } },
+        },
+        select: { id: true },
+      });
+      if (duplicateReference) throw new BadRequestException(`Reference Number ${referenceNo} đã được xử lý`);
+
+      const rateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
+      const fxRateType = payoutCurrency === 'VND' ? 'FX_BUY' : 'FX_SELL';
+      const [activeRate, activeFxRate] = await Promise.all([
+        tx.exchange_rates.findFirst({
+          where: { status: 'ACTIVE', rate_type: rateType, provider: 'WU_MG', from_currency: 'USD', to_currency: 'VND' },
+          orderBy: { effective_from: 'desc' },
+        }),
+        tx.exchange_rates.findFirst({
+          where: { status: 'ACTIVE', rate_type: fxRateType, provider: 'INTERNAL', from_currency: 'USD', to_currency: 'VND' },
+          orderBy: { effective_from: 'desc' },
+        }),
+      ]);
+      if (!activeRate || !activeFxRate) throw new BadRequestException(`Chưa có đủ tỷ giá ACTIVE ${rateType}/${fxRateType} cho USD`);
+      const systemRate = Number(activeRate.rate);
+      validateMgAppliedRate(rate, systemRate, Number(activeFxRate.rate));
       const mgUsdAmount = paidCurrency === 'USD' ? paidAmount : 0;
       const mgVndAmount = paidCurrency === 'VND' ? paidAmount : 0;
-      const payoutAmount = payoutCurrency === 'USD'
-        ? Number((paidCurrency === 'USD' ? paidAmount : paidAmount / rate).toFixed(2))
-        : Math.round(paidCurrency === 'VND' ? paidAmount : paidAmount * rate);
-      const receivedUsd = payoutCurrency === 'USD' ? Math.trunc(payoutAmount) : 0;
-      const receivedVnd = payoutCurrency === 'USD'
-        ? Math.round((payoutAmount - receivedUsd) * rate)
-        : payoutAmount;
+      const payoutAmount = calculateMgPayout(paidCurrency, payoutCurrency, mgUsdAmount, mgVndAmount, rate);
+      const submittedPayout = Number(correctedData.payoutAmount ?? payoutAmount);
+      if (Math.abs(submittedPayout - payoutAmount) > (payoutCurrency === 'VND' ? 1 : 0.01)) {
+        throw new BadRequestException(`Số tiền MG phải trả phải là ${payoutAmount.toFixed(payoutCurrency === 'VND' ? 0 : 2)} ${payoutCurrency}`);
+      }
+      const receivedUsd = this.nonNegativeMoney(correctedData.receivedUsd ?? detail.received_usd, 'receivedUsd');
+      const receivedVnd = this.nonNegativeMoney(correctedData.receivedVnd ?? detail.received_vnd, 'receivedVnd', true);
+      assertMgPayoutMatches(payoutCurrency, payoutAmount, receivedUsd, receivedVnd, rate);
       replacement = await tx.customer_transactions.create({ data: {
         ...commonTransaction,
+        customer_name: String(correctedData.customerName ?? original.customer_name ?? '').trim() || null,
         transaction_no: `MG-R${commonTransaction.revision}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
         operation_code: 'MG', amount: mgUsdAmount, currency_code: 'USD', vnd_amount: mgVndAmount,
       } });
       await tx.mg_transaction_details.create({ data: {
         transaction_id: replacement.id,
-        reference_no: detail.reference_no,
+        reference_no: referenceNo,
         payout_currency: payoutCurrency,
         paid_currency: paidCurrency,
         payout_amount: payoutAmount,
         received_usd: receivedUsd,
         received_vnd: receivedVnd,
-        system_rate: detail.system_rate,
-        applied_rate: detail.applied_rate,
+        system_rate: systemRate,
+        applied_rate: rate,
       } });
       const lines: any[] = [];
       if (receivedUsd > 0) {
@@ -769,13 +1023,30 @@ export class TransactionAdminController {
     } else if (original.operation_code === 'FX' && original.fx_transaction_details) {
       const detail = original.fx_transaction_details;
       const fxAmount = Number(correctedData.fxAmount);
-      const rate = Number(detail.rate);
-      const fractionalAmount = Number(detail.fractional_amount ?? 0);
+      const rate = Number(correctedData.rate ?? detail.rate);
+      const isBuy = correctedData.isBuy === undefined ? detail.is_buy : Boolean(correctedData.isBuy);
+      const fxCurrency = String(correctedData.fxCurrency ?? detail.fx_currency).toUpperCase() as currency_code;
+      const fractionalAmount = Number(correctedData.fractionalAmount ?? detail.fractional_amount ?? 0);
       if (fxAmount <= fractionalAmount) {
         throw new BadRequestException('Tổng số lượng ngoại tệ phải lớn hơn phần lẻ đã ghi nhận');
       }
-      const fractionalRate = detail.fractional_rate == null ? rate : Number(detail.fractional_rate);
-      const deductionVnd = Number(detail.deduction_vnd ?? 0);
+      const deductionVnd = Number(correctedData.deductionVnd ?? detail.deduction_vnd ?? 0);
+      if (!isBuy && (fractionalAmount > 0 || deductionVnd > 0)) {
+        throw new BadRequestException('Phần lẻ và khấu trừ chỉ áp dụng khi mua ngoại tệ');
+      }
+      const activeRate = await tx.exchange_rates.findFirst({
+        where: {
+          status: 'ACTIVE',
+          rate_type: isBuy ? 'FX_BUY' : 'FX_SELL',
+          provider: 'INTERNAL',
+          from_currency: fxCurrency,
+          to_currency: 'VND',
+        },
+        orderBy: { effective_from: 'desc' },
+      });
+      if (!activeRate) throw new BadRequestException(`Chưa có tỷ giá ACTIVE ${isBuy ? 'mua' : 'bán'} cho ${fxCurrency}`);
+      validateFxAppliedRate(rate, Number(activeRate.rate), Number(activeRate.margin), isBuy);
+      const fractionalRate = isBuy ? rate : 0;
       const { vndAmount } = calculateFxVndAmount({
         fxAmount,
         fractionalAmount,
@@ -787,27 +1058,28 @@ export class TransactionAdminController {
         throw new BadRequestException('Khấu trừ phải nhỏ hơn thành tiền mua ngoại tệ');
       }
       const vndAccountId = await fundAccount('VND');
-      const fxAccountId = await fundAccount(detail.fx_currency);
+      const fxAccountId = await fundAccount(fxCurrency);
       const lines: any[] = [
-        { fund_account_id: vndAccountId, direction: detail.is_buy ? 'CREDIT' : 'DEBIT', amount: vndAmount,
+        { fund_account_id: vndAccountId, direction: isBuy ? 'CREDIT' : 'DEBIT', amount: vndAmount,
           currency_code: 'VND', exchange_rate: 1, base_amount_vnd: vndAmount },
-        { fund_account_id: fxAccountId, direction: detail.is_buy ? 'DEBIT' : 'CREDIT', amount: fxAmount,
-          currency_code: detail.fx_currency, exchange_rate: rate, base_amount_vnd: vndAmount },
+        { fund_account_id: fxAccountId, direction: isBuy ? 'DEBIT' : 'CREDIT', amount: fxAmount,
+          currency_code: fxCurrency, exchange_rate: rate, base_amount_vnd: vndAmount },
       ];
       await lockAndCheckCredits(lines);
       replacement = await tx.customer_transactions.create({ data: {
         ...commonTransaction,
+        customer_name: String(correctedData.customerName ?? original.customer_name ?? '').trim() || null,
         transaction_no: `FX-R${commonTransaction.revision}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        operation_code: 'FX', amount: fxAmount, currency_code: detail.fx_currency, vnd_amount: vndAmount,
+        operation_code: 'FX', amount: fxAmount, currency_code: fxCurrency, vnd_amount: vndAmount,
       } });
       await tx.fx_transaction_details.create({ data: {
         transaction_id: replacement.id,
-        fx_currency: detail.fx_currency,
+        fx_currency: fxCurrency,
         fx_amount: fxAmount,
-        rate: detail.rate,
-        is_buy: detail.is_buy,
+        rate,
+        is_buy: isBuy,
         fractional_amount: fractionalAmount,
-        fractional_rate: detail.fractional_rate,
+        fractional_rate: isBuy ? fractionalRate : null,
         deduction_vnd: deductionVnd,
       } });
       await tx.ledger_entries.create({ data: {
@@ -833,7 +1105,7 @@ export class TransactionAdminController {
         replacementTransactionNo: replacement.transaction_no,
         revision: replacement.revision,
         approvalRequestId,
-        ratePolicy: 'PRESERVE_ORIGINAL_SNAPSHOT',
+        ratePolicy: 'REVALIDATE_ACTIVE_FOR_WU_MG_PRESERVE_FX',
         originalBusinessDate: original.business_date,
         postingBusinessDate,
       },
