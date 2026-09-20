@@ -1,0 +1,57 @@
+# Deploy bản TEST (test.dongda.info.vn) — CHỈ chạy khi bấm tay (Run workflow), KHÔNG
+# tự chạy khi push nữa (đổi theo yêu cầu 2026-09-20 — tránh mỗi lần push là tự đẩy
+# lên TEST ngay, kể cả code còn dở).
+# Trước đây bước này Claude tự SSH tay — không qua Actions nên lỗi không hiện ở đâu cả.
+# Từ giờ mọi lần cập nhật bản test đều chạy qua đây: build/migrate/healthcheck lỗi ở bước nào
+# thì step đó đỏ ngay trên tab Actions, kèm log đầy đủ, và GitHub tự gửi email cho người bấm chạy khi fail.
+name: Deploy DongDa (test)
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, dongda]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend
+        run: |
+          set -e
+          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend":/app -w /app node:20-alpine \
+            sh -c "npm install --no-audit --no-fund && npm run build"
+
+      - name: Đồng bộ code + cấu hình vào /srv/dongda-test
+        run: |
+          set -e
+          # rsync --exclude .git (không cp -r .): "rm -rf src/*" không khớp file ẩn nên .git cũ không
+          # bao giờ bị xoá, cp -r sau đó cố ghi đè file git object cũ (git đặt quyền chỉ-đọc 444) -> lỗi
+          # thật gặp: "Permission denied" hàng loạt trên .git/objects ở lần deploy thứ 2 trở đi.
+          mkdir -p /srv/dongda-test/src /srv/dongda-test/www
+          rsync -a --delete --exclude .git --exclude node_modules ./ /srv/dongda-test/src/
+          rsync -a --delete frontend/dist/ /srv/dongda-test/www/
+          test -f /srv/dongda-test/.env || { echo "THIẾU /srv/dongda-test/.env"; exit 1; }
+          test -f /srv/dongda-test/docker-compose.yml || { echo "THIẾU /srv/dongda-test/docker-compose.yml (dựng thủ công lần đầu)"; exit 1; }
+
+      - name: Build & up (test stack, port 8080)
+        working-directory: /srv/dongda-test
+        run: |
+          set -e
+          docker compose up -d --build
+          docker image prune -f
+
+      - name: Kiểm tra sức khỏe
+        run: |
+          set -e
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/auth/me || true)
+            [ "$code" = "401" ] && echo "Backend test OK (401 khi chưa đăng nhập)" && exit 0
+            sleep 3
+          done
+          echo "Backend test không phản hồi sau 120s"
+          docker compose -f /srv/dongda-test/docker-compose.yml logs --tail 80 backend
+          exit 1
