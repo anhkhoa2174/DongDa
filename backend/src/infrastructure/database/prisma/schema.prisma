@@ -1173,7 +1173,7 @@ model reconciliation_final_sources {
   branch_run    reconciliation_runs @relation("reconciliation_final_sources_branch", fields: [branch_run_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
 
   @@id([final_run_id, branch_run_id])
-  @@index([branch_run_id], map: "idx_reconciliation_final_sources_branch")
+  @@unique([branch_run_id], map: "uq_reconciliation_final_source_branch")
 }
 
 model role_permissions {

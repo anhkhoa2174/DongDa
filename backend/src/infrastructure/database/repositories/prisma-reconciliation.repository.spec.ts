@@ -83,7 +83,7 @@ describe('PrismaReconciliationRepository fund reconciliation', () => {
   });
 });
 
-describe('PrismaReconciliationRepository.saveRun — chặn chốt Final trùng ngày đã chốt', () => {
+describe('PrismaReconciliationRepository.saveRun — nhiều vòng Final cùng ngày', () => {
   function saveRunInput(overrides: Partial<import('../../../domain/repositories/reconciliation.repository').SaveRunInput> = {}) {
     return {
       provider: 'WU',
@@ -103,39 +103,135 @@ describe('PrismaReconciliationRepository.saveRun — chặn chốt Final trùng 
     };
   }
 
-  it('báo lỗi rõ ràng thay vì crash khi Final trúng ngày+loại tiền đã được chốt rồi (dù status vẫn PENDING_REVIEW)', async () => {
-    const alreadyPosted = {
-      id: 'run-existing', posted_at: new Date('2026-09-16T10:41:39.000Z'), status: 'PENDING_REVIEW',
-    };
+  it('cho phép Final mới sau Final khớp một phần để xử lý các dòng chi nhánh đã sửa', async () => {
     const tx = {
       $executeRaw: jest.fn().mockResolvedValue(undefined),
       reconciliation_runs: {
-        findFirst: jest.fn().mockResolvedValue(alreadyPosted),
+        findFirst: jest.fn(),
+        count: jest.fn().mockResolvedValue(1),
+        create: jest.fn().mockResolvedValue({ id: 'run-new', run_no: 'RC-2' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      reconciliation_final_sources: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      journal_upload_files: { create: jest.fn().mockResolvedValue({ id: 'file-1' }) },
+      journal_batches: { create: jest.fn().mockResolvedValue({ id: 'batch-1' }) },
+      debt_accounts: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const prisma = { $transaction: jest.fn((cb: any) => cb(tx)) };
+    const notifications = { notifyUsers: jest.fn().mockResolvedValue(undefined) };
+    const repository = new PrismaReconciliationRepository(prisma as any, notifications as any);
+
+    const result = await repository.saveRun(saveRunInput());
+
+    expect(result.id).toBe('run-new');
+    expect(tx.reconciliation_runs.findFirst).not.toHaveBeenCalled();
+    expect(tx.reconciliation_runs.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('cho phép chi nhánh gửi branch run mới cùng ngày sau khi Final cũ đã hoàn tất', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
+      reconciliation_runs: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'branch-run-2', run_no: 'RC-BRANCH-2' }),
+      },
+      journal_upload_files: { create: jest.fn().mockResolvedValue({ id: 'file-2' }) },
+      journal_batches: { create: jest.fn().mockResolvedValue({ id: 'batch-2' }) },
+    };
+    const prisma = { $transaction: jest.fn((cb: any) => cb(tx)) };
+    const notifications = { notifyUsers: jest.fn().mockResolvedValue(undefined) };
+    const repository = new PrismaReconciliationRepository(prisma as any, notifications as any);
+
+    const result = await repository.saveRun(saveRunInput({
+      scope: 'BRANCH',
+      branchId: 'branch-1',
+      stage: 'BRANCH',
+      postFinancial: false,
+      submitForFinal: true,
+      sourceRunIds: undefined,
+    }));
+
+    expect(result.id).toBe('branch-run-2');
+    expect(tx.reconciliation_runs.findFirst).toHaveBeenCalledTimes(1);
+    expect(tx.reconciliation_runs.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        branch_id: 'branch-1',
+        submitted_at: { not: null },
+        final_targets: { none: {} },
+      }),
+    }));
+  });
+
+  it('từ chối dùng lại branch run đã thuộc một Final trước đó', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
+      reconciliation_runs: {
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
       },
     };
     const prisma = { $transaction: jest.fn((cb: any) => cb(tx)) };
     const repository = new PrismaReconciliationRepository(prisma as any, {} as any);
 
-    await expect(repository.saveRun(saveRunInput())).rejects.toThrow(
-      'Ngày này đã được đối chiếu Final và chốt công nợ rồi, không thể chốt lại.',
-    );
-
-    // Phần cốt lõi của regression test: phải phát hiện TRƯỚC khi insert, không được
-    // đâm thẳng vào create() rồi để Postgres tự chặn bằng lỗi 500 thô.
+    await expect(repository.saveRun(saveRunInput()))
+      .rejects.toThrow('Có bản chi nhánh đã được một lần đối chiếu Final khác sử dụng');
     expect(tx.reconciliation_runs.create).not.toHaveBeenCalled();
-    // Query kiểm tra phải khớp đúng cột của unique index — business_date (không phải
-    // period_from/period_to như nhánh BRANCH) — và KHÔNG lọc status: 'MATCHED', vì dữ
-    // liệu thật cho thấy Final có thể posted_at != null trong lúc status vẫn PENDING_REVIEW.
-    expect(tx.reconciliation_runs.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        business_date: new Date('2026-09-16T00:00:00.000Z'),
-        currency_code: 'USD',
-        posted_at: { not: null },
-      }),
+  });
+
+  it('không chuyển công nợ khi loại tiền khác với dòng Final đã khớp', async () => {
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
+      debt_accounts: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: 'debt-1' }])
+          .mockResolvedValueOnce([{
+            id: 'debt-1', transaction_id: 'tx-1', lifecycle_status: 'PENDING', currency_code: 'VND',
+          }]),
+        updateMany: jest.fn(),
+      },
+    };
+    const repository = new PrismaReconciliationRepository({} as any, {} as any);
+
+    await expect((repository as any).postActualDebt(tx, 'run-1', [{
+      status: 'MATCHED', code: '1234567890', transactionId: 'tx-1', branchId: 'branch-1',
+      systemAmount: 100, journalAmount: 100, varianceAmount: 0, currencyCode: 'USD',
+    }], new Date())).rejects.toThrow('Loại tiền công nợ giao dịch tx-1 không khớp bản đối chiếu');
+
+    expect(tx.debt_accounts.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('chỉ chuyển debt PENDING của dòng khớp và giữ nguyên debt đã RECONCILED', async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(undefined),
+      debt_accounts: {
+        findMany: jest.fn()
+          .mockResolvedValueOnce([{ id: 'debt-old' }, { id: 'debt-new' }])
+          .mockResolvedValueOnce([
+            { id: 'debt-old', transaction_id: 'tx-old', lifecycle_status: 'RECONCILED', currency_code: 'USD' },
+            { id: 'debt-new', transaction_id: 'tx-new', lifecycle_status: 'PENDING', currency_code: 'USD' },
+          ]),
+        updateMany,
+      },
+    };
+    const repository = new PrismaReconciliationRepository({} as any, {} as any);
+
+    const count = await (repository as any).postActualDebt(tx, 'final-run-2', [
+      {
+        status: 'MATCHED', code: '1111111111', transactionId: 'tx-old', branchId: 'branch-1',
+        systemAmount: 100, journalAmount: 100, varianceAmount: 0, currencyCode: 'USD',
+      },
+      {
+        status: 'MATCHED', code: '2222222222', transactionId: 'tx-new', branchId: 'branch-1',
+        systemAmount: 200, journalAmount: 200, varianceAmount: 0, currencyCode: 'USD',
+      },
+    ], new Date());
+
+    expect(count).toBe(1);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['debt-new'] }, lifecycle_status: 'PENDING' },
+      data: expect.objectContaining({ lifecycle_status: 'RECONCILED', reconciliation_run_id: 'final-run-2' }),
     }));
-    const calledWhere = tx.reconciliation_runs.findFirst.mock.calls[0][0].where;
-    expect(calledWhere).not.toHaveProperty('status');
   });
 
   it('Final vẫn chốt bình thường khi ngày+loại tiền đó chưa từng được chốt', async () => {

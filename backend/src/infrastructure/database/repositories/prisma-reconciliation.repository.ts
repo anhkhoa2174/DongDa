@@ -70,24 +70,14 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     let reconciledDebtCount = 0;
 
     const run = await this.prisma.$transaction(async (tx) => {
-      // Mọi bản chi nhánh và bản tổng cùng nhóm dùng chung một lock. Nhờ vậy một
-      // chi nhánh không thể gửi chen vào đúng lúc bản toàn công ty đang được chốt.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`RECON:${input.provider}:${periodKey}:${input.currencyCode}`}))`;
-      // Final khớp đúng cột unique index (provider, scope, branch_id, business_date,
-      // currency_code) WHERE posted_at IS NOT NULL — không lọc theo status vì Final có
-      // thể ghi công nợ (posted_at) trong lúc status vẫn PENDING_REVIEW (còn dòng lệch).
-      // Trước đây chỗ này bị `stage !== 'FINAL'` loại hẳn Final ra, nên bấm Final lại
-      // trúng ngày đã chốt là đâm thẳng vào tx.reconciliation_runs.create() và vỡ ra
-      // lỗi Postgres "Unique constraint failed" thô, không có thông báo cho người dùng.
-      const posted = postFinancial ? await tx.reconciliation_runs.findFirst({
-        where: stage === 'FINAL' ? {
-          provider: input.provider as any,
-          scope: input.scope,
-          branch_id: input.branchId ?? null,
-          business_date: dateTo,
-          currency_code: input.currencyCode,
-          posted_at: { not: null },
-        } : {
+      // Serialize by provider + currency, including overlapping date ranges.
+      // This keeps branch submission and Final consumption in the same lock domain.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`RECON:${input.provider}:${input.currencyCode}`}))`;
+      // Một ngày có thể cần nhiều vòng Final: vòng đầu chốt ngay các dòng khớp,
+      // chi nhánh sửa phần lệch rồi gửi bản mới. Chỉ bản BRANCH mới bị chặn theo
+      // phạm vi ngày; Final được chống lặp bằng sourceRunIds đã tiêu thụ.
+      const posted = postFinancial && stage !== 'FINAL' ? await tx.reconciliation_runs.findFirst({
+        where: {
           provider: input.provider as any,
           scope: input.scope,
           branch_id: input.branchId ?? null,
@@ -99,11 +89,7 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         },
       }) : null;
       if (posted) {
-        throw new BadRequestException(
-          stage === 'FINAL'
-            ? 'Ngày này đã được đối chiếu Final và chốt công nợ rồi, không thể chốt lại.'
-            : 'Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế',
-        );
+        throw new BadRequestException('Journal ngày/phạm vi này đã được đối chiếu và ghi công nợ thực tế');
       }
       if (stage === 'FINAL') {
         if (!input.sourceRunIds?.length) {
@@ -126,22 +112,9 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
         }
       }
       if (submitForFinal) {
-        const finalized = await tx.reconciliation_final_sources.findFirst({
-          where: {
-            branch_run: {
-              provider: input.provider as any,
-              stage: 'BRANCH',
-              branch_id: input.branchId ?? null,
-              period_from: { lte: dateTo },
-              period_to: { gte: dateFrom },
-              currency_code: input.currencyCode,
-            },
-            final_run: { status: 'MATCHED', posted_at: { not: null } },
-          },
-        });
-        if (finalized) {
-          throw new BadRequestException(`Chi nhánh đã có bản ${input.provider} Final khớp trong khoảng ngày này`);
-        }
+        // Final cũ không khóa cả ngày. Nếu còn giao dịch phát sinh muộn hoặc một
+        // dòng PENDING đã được sửa, chi nhánh phải được gửi một branch run mới.
+        // Mỗi branch run vẫn chỉ được tiêu thụ một lần bởi final_targets + unique DB.
         const waiting = await tx.reconciliation_runs.findFirst({
           where: {
             provider: input.provider as any, stage: 'BRANCH', branch_id: input.branchId ?? null,
@@ -570,11 +543,21 @@ export class PrismaReconciliationRepository implements IReconciliationRepository
     }
     const accounts = await tx.debt_accounts.findMany({
       where: { id: { in: accountRefs.map((account: any) => account.id) } },
-      select: { id: true, transaction_id: true, lifecycle_status: true },
+      select: { id: true, transaction_id: true, lifecycle_status: true, currency_code: true },
     });
     const invalid = accounts.find((account: any) => !['PENDING', 'RECONCILED', 'SETTLED'].includes(account.lifecycle_status));
     if (invalid) {
       throw new BadRequestException(`Công nợ giao dịch ${invalid.transaction_id} không còn hợp lệ để đối chiếu`);
+    }
+    const itemByTransactionId = new Map(items
+      .filter((item) => item.status === ReconItemStatus.MATCHED && item.transactionId)
+      .map((item) => [item.transactionId as string, item]));
+    const currencyMismatch = accounts.find((account: any) =>
+      account.currency_code !== itemByTransactionId.get(account.transaction_id)?.currencyCode);
+    if (currencyMismatch) {
+      throw new BadRequestException(
+        `Loại tiền công nợ giao dịch ${currencyMismatch.transaction_id} không khớp bản đối chiếu`,
+      );
     }
 
     const pendingAccountIds = accounts
