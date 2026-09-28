@@ -30,8 +30,10 @@ export interface DebtMovementDto {
 
 export interface ListDebtsParams {
   branchId?: string;
+  bankAccountId?: string;
   providerCode?: string;
   currencyCode?: string;
+  status?: DebtStatus;
   businessDate?: string;
   dateFrom?: string;
   dateTo?: string;

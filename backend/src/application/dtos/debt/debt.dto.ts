@@ -6,6 +6,7 @@ import {
   IsNumber, IsPositive, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
+import { DebtStatus } from '../../../domain/entities/debt.entity';
 
 const CURRENCIES = [...SUPPORTED_CURRENCIES];
 const PROVIDERS = ['WU', 'MG'];
@@ -83,6 +84,14 @@ export class ListDebtsQueryDto {
   @IsOptional()
   @IsEnum(CURRENCIES as any)
   currencyCode?: string;
+
+  @IsOptional()
+  @IsUUID()
+  bankAccountId?: string;
+
+  @IsOptional()
+  @IsEnum(DebtStatus)
+  status?: DebtStatus;
 
   @IsOptional()
   @IsDateString()

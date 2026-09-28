@@ -7,7 +7,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { preventNumberInputEnter } from '@/shared/utils/formEvents';
-import { getApiErrorMessage } from '@/shared/utils/errors';
+import { getApiErrorMessage, getDownloadErrorMessage } from '@/shared/utils/errors';
 import { DATE_INPUT_FORMAT, DATE_INPUT_PLACEHOLDER } from '@/shared/utils/datePicker';
 import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import {
@@ -336,8 +336,14 @@ export function WuWorkspacePage() {
       downloadBlob(blob, `WU-${bank}-${values.mtcn}.xlsx`);
       message.success(`Đã xuất phiếu ${bank}`);
     } catch (error: unknown) {
-      if (error && typeof error === 'object' && 'errorFields' in error) return;
-      message.error(getApiErrorMessage(error, `Không thể xuất phiếu ${bank}`));
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        const firstError = (error as { errorFields?: Array<{ name?: Array<string | number> }> })
+          .errorFields?.[0]?.name;
+        if (firstError) form.scrollToField(firstError, { block: 'center' });
+        message.warning('Vui lòng điền đầy đủ các trường bắt buộc trước khi xuất phiếu');
+        return;
+      }
+      message.error(await getDownloadErrorMessage(error, `Không thể xuất phiếu ${bank}`));
     } finally {
       setExportingBank(null);
     }

@@ -1,6 +1,7 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { strFromU8, unzipSync } from 'fflate';
+import * as XLSX from 'xlsx';
 import { XlsxWuFormExporterService } from './xlsx-wu-form-exporter.service';
 
 const dto = {
@@ -73,6 +74,40 @@ describe('XlsxWuFormExporterService', () => {
       .toEqual(['xl/worksheets/sheet1.xml']);
     expect(strFromU8(unzipSync(result.buffer)['xl/workbook.xml']))
       .toContain('name="PHIẾU ACB (VN)" sheetId="1" r:id="rId1"/>');
+  });
+
+  it('exports the Vietnamese MSB sheet for CCCD/Vietnam and remains readable by Excel parsers', async () => {
+    const result = await new XlsxWuFormExporterService().export('MSB', {
+      ...dto,
+      identityDocumentType: 'CCCD',
+      identityIssuingCountry: 'Việt Nam',
+      identityPlaceOfIssue: 'Cục Cảnh sát QLHC về TTXH',
+      countryOfBirth: 'Việt Nam',
+      nationality: 'Việt Nam',
+      hasVisa: false,
+      visaType: undefined,
+      visaNumber: undefined,
+      visaIssueDate: undefined,
+      visaExpiryDate: undefined,
+    });
+    const exported = unzipSync(result.buffer);
+    expect(Object.keys(exported).filter((path) => /^xl\/worksheets\/sheet\d+\.xml$/.test(path)))
+      .toEqual(['xl/worksheets/sheet5.xml']);
+    expect(strFromU8(exported['xl/workbook.xml']))
+      .toContain('name="PHIẾU MSB (vn)" sheetId="8" r:id="rId5"/>');
+    expect(XLSX.read(result.buffer, { type: 'buffer' }).SheetNames).toEqual(['PHIẾU MSB (vn)']);
+  });
+
+  it.each(['ACB', 'MSB'] as const)('creates a readable %s workbook with XML special characters', async (bank) => {
+    const result = await new XlsxWuFormExporterService().export(bank, {
+      ...dto,
+      customerName: 'NGUYEN A & B <TEST>',
+      senderName: 'O\'NEIL & FAMILY',
+      currentAddress: '12 A&B <WARD>',
+    });
+    const workbook = XLSX.read(result.buffer, { type: 'buffer' });
+    expect(workbook.SheetNames).toHaveLength(1);
+    expect(result.filename).toBe(`WU-${bank}-${dto.mtcn}.xlsx`);
   });
 
   it('writes place, issuing country, nationality and country of birth to their MSB cells', async () => {

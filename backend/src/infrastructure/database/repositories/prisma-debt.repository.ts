@@ -536,6 +536,12 @@ export class PrismaDebtRepository implements IDebtRepository {
         ...(filter?.branchId && { branch_id: filter.branchId }),
         ...(filter?.providerCode && { provider_code: filter.providerCode }),
         ...(filter?.currencyCode && { currency_code: filter.currencyCode }),
+        ...(filter?.status && { lifecycle_status: filter.status }),
+        ...(filter?.bankAccountId && {
+          transaction: {
+            wu_transaction_details: { bank_account_id: filter.bankAccountId },
+          },
+        }),
         ...(filter?.businessDate && { business_date: toVietnamBusinessDate(filter.businessDate) }),
         ...(!filter?.businessDate && (filter?.dateFrom || filter?.dateTo) && {
           business_date: {

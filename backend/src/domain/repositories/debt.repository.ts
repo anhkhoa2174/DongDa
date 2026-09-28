@@ -2,7 +2,7 @@
 // Layer: Domain
 
 import type {
-  DebtAccount, DebtAccountSummary, DebtMovement, CurrencyCode,
+  DebtAccount, DebtAccountSummary, DebtMovement, CurrencyCode, DebtStatus,
 } from '../entities/debt.entity';
 
 export interface SettleUsdCashDebtInput {
@@ -49,6 +49,8 @@ export interface ListDebtsFilter {
   branchId?: string;
   providerCode?: string;
   currencyCode?: CurrencyCode;
+  bankAccountId?: string;
+  status?: DebtStatus;
   businessDate?: Date;
   dateFrom?: Date;
   dateTo?: Date;

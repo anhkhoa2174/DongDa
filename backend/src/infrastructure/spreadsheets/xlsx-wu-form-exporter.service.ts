@@ -8,8 +8,11 @@ import {
   isVietnamCountry, normalizeCountryName, normalizeUpperText, normalizeUsStateName,
 } from '../../domain/services/wu-reference-data';
 
-const TEMPLATE_PATH = join(process.cwd(), 'src', 'assets', 'wu-form-template.xlsx');
-const ACB_TEMPLATE_PATH = join(process.cwd(), 'src', 'assets', 'wu-acb-form-template.xlsx');
+// __dirname trỏ tới src/... khi chạy ts-node/Jest và dist/... sau khi build.
+// Không dùng process.cwd() vì backend có thể được khởi động từ thư mục monorepo.
+const ASSET_DIR = join(__dirname, '..', '..', 'assets');
+const TEMPLATE_PATH = join(ASSET_DIR, 'wu-form-template.xlsx');
+const ACB_TEMPLATE_PATH = join(ASSET_DIR, 'wu-acb-form-template.xlsx');
 const WORKBOOK_XML = 'xl/workbook.xml';
 const WORKBOOK_RELS_XML = 'xl/_rels/workbook.xml.rels';
 const CONTENT_TYPES_XML = '[Content_Types].xml';

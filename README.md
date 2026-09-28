@@ -493,7 +493,7 @@ GET   /api/v1/bank/movements?bankAccountId=:id
 POST  /api/v1/bank/accounts/:id/movements
 POST  /api/v1/bank/receive
 
-GET  /api/v1/debts?branchId=:branchId&providerCode=WU&currencyCode=USD
+GET  /api/v1/debts?branchId=:branchId&bankAccountId=:bankAccountId&providerCode=WU&currencyCode=USD&status=RECONCILED
 GET  /api/v1/debts?businessDate=YYYY-MM-DD
 GET  /api/v1/debts?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
 GET  /api/v1/debts/:id/movements

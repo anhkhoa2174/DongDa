@@ -124,3 +124,36 @@ describe('PrismaDebtRepository.approvePending — duyệt tay công nợ không 
     expect(tx.debt_accounts.update).not.toHaveBeenCalled();
   });
 });
+
+describe('PrismaDebtRepository.listAccountSummaries — bộ lọc', () => {
+  it('lọc theo ngân hàng, trạng thái, chi nhánh, provider, tiền tệ và khoảng ngày', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const repository = new PrismaDebtRepository({ debt_accounts: { findMany } } as any, {} as any);
+
+    await repository.listAccountSummaries({
+      branchId: '00000000-0000-0000-0000-000000000001',
+      bankAccountId: '00000000-0000-0000-0000-000000000002',
+      providerCode: 'WU',
+      currencyCode: 'USD',
+      status: 'RECONCILED' as any,
+      dateFrom: new Date('2026-09-01T00:00:00.000Z'),
+      dateTo: new Date('2026-09-30T00:00:00.000Z'),
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        branch_id: '00000000-0000-0000-0000-000000000001',
+        provider_code: 'WU',
+        currency_code: 'USD',
+        lifecycle_status: 'RECONCILED',
+        transaction: {
+          wu_transaction_details: { bank_account_id: '00000000-0000-0000-0000-000000000002' },
+        },
+        business_date: {
+          gte: new Date('2026-09-01T00:00:00.000Z'),
+          lte: new Date('2026-09-30T00:00:00.000Z'),
+        },
+      },
+    }));
+  });
+});
