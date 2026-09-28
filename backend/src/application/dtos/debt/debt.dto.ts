@@ -2,13 +2,20 @@
 // Layer: Application
 
 import {
-  ArrayMinSize, ArrayUnique, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsOptional,
+  ArrayMinSize, ArrayUnique, IsArray, IsDateString, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional,
   IsNumber, IsPositive, IsString, IsUUID, Max, MaxLength, Min,
 } from 'class-validator';
 import { SUPPORTED_CURRENCIES } from '../../../domain/entities/currency';
 
 const CURRENCIES = [...SUPPORTED_CURRENCIES];
 const PROVIDERS = ['WU', 'MG'];
+
+export class ApprovePendingDebtDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(500)
+  reason: string;
+}
 
 export class SettleUsdCashDebtDto {
   @IsInt()

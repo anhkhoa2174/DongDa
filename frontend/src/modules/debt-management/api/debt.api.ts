@@ -62,4 +62,7 @@ export const debtApi = {
   settleBatch: (payload: SettleDebtBatchPayload) =>
     httpClient.post('/debts/settle-batch', payload).then((r) => r.data),
 
+  approvePending: (id: string, reason: string) =>
+    httpClient.post<DebtAccountSummaryDto>(`/debts/${id}/approve`, { reason }).then((r) => r.data),
+
 };

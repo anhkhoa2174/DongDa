@@ -1,11 +1,12 @@
 // Prisma Debt Repository Implementation
 // Layer: Infrastructure
 
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import {
   IDebtRepository, SettleUsdCashDebtInput, ListDebtsFilter,
   SettleVndCashDebtInput, SettleDebtBatchInput, DebtBatchSettlementResult,
+  ApprovePendingDebtInput,
 } from '../../../domain/repositories/debt.repository';
 import {
   DebtAccount, DebtAccountSummary, DebtMovement, DebtMovementType,
@@ -474,6 +475,46 @@ export class PrismaDebtRepository implements IDebtRepository {
         totalAmount: totalOutstanding,
       };
     });
+  }
+
+  async approvePending(input: ApprovePendingDebtInput): Promise<DebtAccountSummary> {
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const ref = await tx.debt_accounts.findUnique({
+        where: { id: input.debtAccountId },
+        select: { transaction_id: true },
+      });
+      if (!ref) throw new NotFoundException('Không tìm thấy khoản công nợ');
+      // Cùng thứ tự khoá giao dịch -> công nợ với đối chiếu (postActualDebt) và hủy/thay giao dịch,
+      // để duyệt tay không chéo khoá với 2 luồng đó khi chạy đồng thời.
+      if (ref.transaction_id) {
+        await tx.$executeRaw`SELECT id FROM customer_transactions WHERE id = ${ref.transaction_id}::uuid FOR UPDATE`;
+      }
+      await tx.$executeRaw`SELECT id FROM debt_accounts WHERE id = ${input.debtAccountId}::uuid FOR UPDATE`;
+      const account = await tx.debt_accounts.findUnique({
+        where: { id: input.debtAccountId },
+        select: { lifecycle_status: true },
+      });
+      if (account?.lifecycle_status !== 'PENDING') {
+        throw new BadRequestException('Chỉ duyệt được công nợ đang ở trạng thái Chờ đối chiếu');
+      }
+      await tx.debt_accounts.update({
+        where: { id: input.debtAccountId },
+        data: { lifecycle_status: 'RECONCILED', reconciled_at: now, updated_at: now },
+      });
+      await tx.audit_logs.create({
+        data: {
+          user_id: input.approvedByUserId,
+          action: 'MANUAL_APPROVE_DEBT',
+          entity_type: 'DEBT_ACCOUNT',
+          entity_id: input.debtAccountId,
+          before_data: { lifecycleStatus: 'PENDING' },
+          after_data: { lifecycleStatus: 'RECONCILED', reason: input.reason },
+        },
+      });
+    });
+    const summary = await this.getAccountSummary(input.debtAccountId);
+    return summary!;
   }
 
   async findAccountById(id: string): Promise<DebtAccount | null> {
