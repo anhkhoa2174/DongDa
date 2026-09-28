@@ -358,10 +358,10 @@ export function DebtSettlementPage() {
           extra={<Space><Tag>{visibleDebts.length} / {debts.length} khoản</Tag>{canSettle && <Button type="primary" icon={<PayCircleOutlined />} disabled={selectedDebtIds.length === 0} onClick={openSelectedSettlement}>Thanh toán đã chọn ({selectedDebtIds.length})</Button>}</Space>}
           classNames={{ body: 'pt-4!' }}
         >
-          <Form form={filterForm} layout="vertical" initialValues={{ status: 'ALL' }} className="mb-2">
-            <Row gutter={[12, 0]}>
-              <Col xs={24} md={12} xl={6}>
-                <Form.Item name="dateRange" label="Ngày công nợ">
+          <Form form={filterForm} initialValues={{ status: 'ALL' }} className="mb-4">
+            <Row gutter={[8, 8]}>
+              <Col xs={24} md={12} xl={5}>
+                <Form.Item name="dateRange" noStyle>
                   <RangePicker
                     className="w-full"
                     format={DATE_INPUT_FORMAT}
@@ -374,8 +374,8 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12} xl={6}>
-                <Form.Item name="bankAccountId" label="Ngân hàng">
+              <Col xs={24} md={12} xl={4}>
+                <Form.Item name="bankAccountId" noStyle>
                   <Select
                     className="w-full"
                     allowClear
@@ -390,8 +390,8 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12} xl={6}>
-                <Form.Item name="branchId" label="Chi nhánh">
+              <Col xs={24} md={12} xl={4}>
+                <Form.Item name="branchId" noStyle>
                   <Select
                     className="w-full"
                     allowClear
@@ -403,20 +403,18 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={24} md={12} xl={6}>
-                <Form.Item name="keyword" label="Tìm kiếm">
+              <Col xs={24} md={12} xl={3}>
+                <Form.Item name="keyword" noStyle>
                   <Input
                     allowClear
                     prefix={<SearchOutlined className="text-slate-400" />}
-                    placeholder="Tên công nợ, chi nhánh..."
+                    placeholder="Tìm công nợ..."
                     onChange={(event) => setKeyword(event.target.value)}
                   />
                 </Form.Item>
               </Col>
-            </Row>
-            <Row gutter={[12, 0]} align="bottom">
-              <Col xs={12} md={6} xl={5}>
-                <Form.Item name="providerCode" label="Nghiệp vụ">
+              <Col xs={12} md={6} xl={2}>
+                <Form.Item name="providerCode" noStyle>
                   <Select
                     className="w-full"
                     allowClear
@@ -426,8 +424,8 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={12} md={6} xl={5}>
-                <Form.Item name="currencyCode" label="Loại tiền">
+              <Col xs={12} md={6} xl={2}>
+                <Form.Item name="currencyCode" noStyle>
                   <Select
                     className="w-full"
                     allowClear
@@ -437,8 +435,8 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={12} md={6} xl={7}>
-                <Form.Item name="status" label="Trạng thái">
+              <Col xs={12} md={6} xl={2}>
+                <Form.Item name="status" noStyle>
                   <Select
                     className="w-full"
                     options={[
@@ -452,8 +450,8 @@ export function DebtSettlementPage() {
                   />
                 </Form.Item>
               </Col>
-              <Col xs={12} md={6} xl={7}>
-                <Form.Item label=" ">
+              <Col xs={12} md={6} xl={2}>
+                <Form.Item noStyle>
                   <Button className="w-full" icon={<ReloadOutlined />} onClick={resetFilters}>Xóa bộ lọc</Button>
                 </Form.Item>
               </Col>
