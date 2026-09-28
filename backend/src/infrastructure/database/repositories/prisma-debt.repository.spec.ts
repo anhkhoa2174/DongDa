@@ -68,6 +68,53 @@ describe('PrismaDebtRepository.approvePending — duyệt tay công nợ không 
     expect(tx.audit_logs.create).not.toHaveBeenCalled();
   });
 
+  it('công nợ không gắn giao dịch: bỏ qua khoá customer_transactions, vẫn khoá công nợ', async () => {
+    const tx = makeTx('PENDING', null);
+    const repository = makeRepository(tx);
+
+    await repository.approvePending({ debtAccountId: 'debt-1', reason: 'ok', approvedByUserId: 'mgr-1' });
+
+    const lockedTables = tx.$executeRaw.mock.calls.map((call: any[]) => call[0].join('?'));
+    expect(lockedTables).toHaveLength(1);
+    expect(lockedTables[0]).toContain('debt_accounts');
+    expect(tx.debt_accounts.update).toHaveBeenCalled();
+  });
+
+  it('đọc lại trạng thái SAU khi khoá (chống 2 người duyệt cùng lúc)', async () => {
+    // Lần đọc trước khoá thấy PENDING, nhưng sau khi khoá thì người khác đã duyệt xong.
+    const tx = makeTx('RECONCILED');
+    const repository = makeRepository(tx);
+
+    await expect(repository.approvePending({ debtAccountId: 'debt-1', reason: 'ok', approvedByUserId: 'mgr-2' }))
+      .rejects.toThrow('Chỉ duyệt được công nợ đang ở trạng thái Chờ đối chiếu');
+    const lockCallOrder = tx.$executeRaw.mock.invocationCallOrder;
+    const statusReadOrder = tx.debt_accounts.findUnique.mock.invocationCallOrder[1];
+    expect(Math.max(...lockCallOrder)).toBeLessThan(statusReadOrder);
+  });
+
+  it('ghi audit lỗi thì cả thao tác thất bại (không để đổi trạng thái mà thiếu nhật ký)', async () => {
+    const tx = makeTx('PENDING');
+    tx.audit_logs.create.mockRejectedValue(new Error('audit down'));
+    const repository = makeRepository(tx);
+
+    await expect(repository.approvePending({ debtAccountId: 'debt-1', reason: 'ok', approvedByUserId: 'mgr-1' }))
+      .rejects.toThrow('audit down');
+    expect(repository.getAccountSummary).not.toHaveBeenCalled();
+  });
+
+  it('cập nhật trạng thái và ghi audit trong cùng 1 transaction', async () => {
+    const tx = makeTx('PENDING');
+    const prisma = { $transaction: jest.fn((cb: any) => cb(tx)) };
+    const repository = new PrismaDebtRepository(prisma as any, {} as any);
+    jest.spyOn(repository, 'getAccountSummary').mockResolvedValue({ id: 'debt-1' } as any);
+
+    await repository.approvePending({ debtAccountId: 'debt-1', reason: 'ok', approvedByUserId: 'mgr-1' });
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.debt_accounts.update).toHaveBeenCalledTimes(1);
+    expect(tx.audit_logs.create).toHaveBeenCalledTimes(1);
+  });
+
   it('báo không tìm thấy nếu công nợ không tồn tại', async () => {
     const tx = makeTx(null);
     const repository = makeRepository(tx);
