@@ -4,6 +4,7 @@
 //   GET  /debts                   danh sách sổ nợ (+ outstanding + status)
 //   GET  /debts/:id/movements     lịch sử biến động của 1 sổ
 //   POST /debts/settle-batch      tất toán các khoản đã RECONCILED
+//   POST /debts/:id/approve       GĐ/KTTH duyệt tay khoản kẹt "Chờ đối chiếu" (bắt buộc lý do)
 
 import {
   Controller, Post, Get, Body, Param, Query,
@@ -16,8 +17,9 @@ import {
   SettleDebtBatchUseCase, SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
 } from '../../../application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from '../../../application/use-cases/debt/list-debts.use-case';
+import { ApprovePendingDebtUseCase } from '../../../application/use-cases/debt/approve-pending-debt.use-case';
 import {
-  SettleDebtBatchDto, SettleUsdCashDebtDto, SettleVndCashDebtDto, ListDebtsQueryDto,
+  ApprovePendingDebtDto, SettleDebtBatchDto, SettleUsdCashDebtDto, SettleVndCashDebtDto, ListDebtsQueryDto,
 } from '../../../application/dtos/debt/debt.dto';
 
 @Controller('debts')
@@ -28,6 +30,7 @@ export class DebtController {
     private readonly settleVndCashDebt: SettleVndCashDebtUseCase,
     private readonly settleDebtBatch: SettleDebtBatchUseCase,
     private readonly listDebts: ListDebtsUseCase,
+    private readonly approvePendingDebt: ApprovePendingDebtUseCase,
   ) {}
 
   // Danh sách sổ nợ
@@ -48,6 +51,13 @@ export class DebtController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.AUDITOR)
   movements(@Param('id') id: string) {
     return this.listDebts.movements(id);
+  }
+
+  @Post(':id/approve')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  approve(@Request() req: any, @Param('id') id: string, @Body() dto: ApprovePendingDebtDto) {
+    return this.approvePendingDebt.execute(id, dto, req.user.id);
   }
 
   @Post(':id/settle-usd-cash')

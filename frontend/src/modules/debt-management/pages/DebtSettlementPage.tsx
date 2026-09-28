@@ -20,7 +20,7 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
-  BankOutlined, EyeOutlined, PayCircleOutlined, ReloadOutlined, SearchOutlined, WalletOutlined,
+  BankOutlined, CheckCircleOutlined, EyeOutlined, PayCircleOutlined, ReloadOutlined, SearchOutlined, WalletOutlined,
 } from '@ant-design/icons';
 import { PageScaffold } from '@/shared/components/PageScaffold';
 import { DATE_INPUT_FORMAT, DATE_RANGE_PLACEHOLDERS } from '@/shared/utils/datePicker';
@@ -35,7 +35,7 @@ import { useActiveRates } from '@/modules/exchange-rate/hooks/useExchangeRates';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
 import { useBranches } from '@/shared/hooks/useBranches';
 import {
-  useDebtMovements, useDebts, useSettleDebtBatch,
+  useApprovePendingDebt, useDebtMovements, useDebts, useSettleDebtBatch,
 } from '../hooks/useDebts';
 import type { DebtAccountSummaryDto, DebtMovementDto, DebtStatus, ListDebtsParams } from '../api/debt.api';
 
@@ -94,7 +94,24 @@ export function DebtSettlementPage() {
   const [settlementCurrency, setSettlementCurrency] = useState<'USD' | 'VND' | null>(null);
   const [settleGroup, setSettleGroup] = useState<DebtSettlementGroup | null>(null);
   const [movementTarget, setMovementTarget] = useState<DebtAccountSummaryDto | null>(null);
+  // Duyệt tay công nợ kẹt "Chờ đối chiếu" (giao dịch không khớp Journal) — bắt buộc lý do.
+  const [approveTarget, setApproveTarget] = useState<DebtAccountSummaryDto | null>(null);
+  const [approveForm] = Form.useForm<{ reason: string }>();
+  const approvePending = useApprovePendingDebt();
   const [selectedDebtIds, setSelectedDebtIds] = useState<React.Key[]>([]);
+
+  const submitApprove = async () => {
+    if (!approveTarget) return;
+    const { reason } = await approveForm.validateFields();
+    try {
+      await approvePending.mutateAsync({ id: approveTarget.id, reason: reason.trim() });
+      message.success('Đã duyệt công nợ — chuyển sang Đã đối chiếu, có thể xử lý tiếp');
+      setApproveTarget(null);
+      approveForm.resetFields();
+    } catch (error) {
+      message.error(getApiErrorMessage(error) ?? 'Không duyệt được công nợ');
+    }
+  };
   const [settleForm] = Form.useForm<SettlementForm>();
   const [filterForm] = Form.useForm();
 
@@ -287,6 +304,11 @@ export function DebtSettlementPage() {
           <Button size="small" icon={<EyeOutlined />} onClick={() => setMovementTarget(record)}>
             Lịch sử
           </Button>
+          {canSettle && record.status === 'PENDING' && (
+            <Button size="small" icon={<CheckCircleOutlined />} onClick={() => setApproveTarget(record)}>
+              Duyệt
+            </Button>
+          )}
           {canSettle && record.status === 'RECONCILED' && record.outstanding > 0 && (
             <Button
               type="primary"
@@ -499,6 +521,43 @@ export function DebtSettlementPage() {
             </Form>
           </>
         )}
+      </Modal>
+
+      <Modal
+        title={`Duyệt công nợ - ${approveTarget?.name ?? ''}`}
+        open={!!approveTarget}
+        okText="Duyệt"
+        cancelText="Hủy"
+        confirmLoading={approvePending.isPending}
+        onOk={submitApprove}
+        onCancel={() => {
+          setApproveTarget(null);
+          approveForm.resetFields();
+        }}
+        destroyOnClose
+      >
+        <Alert
+          type="warning"
+          showIcon
+          className="mb-4"
+          message="Công nợ này chưa khớp đối chiếu tự động"
+          description="Duyệt tay sẽ chuyển công nợ sang Đã đối chiếu để xử lý/thanh toán như bình thường. Thao tác được ghi nhật ký kèm lý do và không hoàn tác được."
+        />
+        {approveTarget && (
+          <Typography.Paragraph>
+            Số tiền: <Typography.Text strong>{formatCurrency(approveTarget.outstanding, approveTarget.currencyCode)}</Typography.Text>
+            {' · '}Ngày: {toDateLabel(approveTarget.businessDate)}
+          </Typography.Paragraph>
+        )}
+        <Form form={approveForm} layout="vertical" preserve={false}>
+          <Form.Item
+            name="reason"
+            label="Lý do duyệt"
+            rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập lý do duyệt' }]}
+          >
+            <Input.TextArea rows={3} maxLength={500} showCount placeholder="VD: Journal WU thiếu dòng, đã xác nhận trực tiếp với WU" />
+          </Form.Item>
+        </Form>
       </Modal>
 
       <Modal

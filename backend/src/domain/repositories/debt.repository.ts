@@ -39,6 +39,12 @@ export interface DebtBatchSettlementResult {
   totalAmount: number;
 }
 
+export interface ApprovePendingDebtInput {
+  debtAccountId: string;
+  reason: string;
+  approvedByUserId: string;
+}
+
 export interface ListDebtsFilter {
   branchId?: string;
   providerCode?: string;
@@ -53,6 +59,8 @@ export interface IDebtRepository {
   settleUsdCash(input: SettleUsdCashDebtInput): Promise<DebtMovement>;
   settleVndCash(input: SettleVndCashDebtInput): Promise<DebtMovement>;
   settleBatch(input: SettleDebtBatchInput): Promise<DebtBatchSettlementResult>;
+  // Duyệt tay công nợ kẹt ở "Chờ đối chiếu" (giao dịch không khớp Journal): PENDING -> RECONCILED.
+  approvePending(input: ApprovePendingDebtInput): Promise<DebtAccountSummary>;
 
   findAccountById(id: string): Promise<DebtAccount | null>;
   getAccountSummary(id: string): Promise<DebtAccountSummary | null>;

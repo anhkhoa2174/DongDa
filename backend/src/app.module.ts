@@ -90,6 +90,7 @@ import {
   SettleDebtBatchUseCase, SettleUsdCashDebtUseCase, SettleVndCashDebtUseCase,
 } from './application/use-cases/debt/settle-debt.use-case';
 import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-case';
+import { ApprovePendingDebtUseCase } from './application/use-cases/debt/approve-pending-debt.use-case';
 
 @Module({
   imports: [
@@ -194,6 +195,7 @@ import { ListDebtsUseCase } from './application/use-cases/debt/list-debts.use-ca
     SettleVndCashDebtUseCase,
     SettleDebtBatchUseCase,
     ListDebtsUseCase,
+    ApprovePendingDebtUseCase,
 
     CreateTransferUseCase,
     ConfirmTransferUseCase,

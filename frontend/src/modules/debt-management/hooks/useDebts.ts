@@ -50,6 +50,14 @@ export function useSettleVndCashDebt() {
   });
 }
 
+export function useApprovePendingDebt() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => debtApi.approvePending(id, reason),
+    onSuccess: invalidate,
+  });
+}
+
 export function useSettleDebtBatch() {
   const invalidate = useInvalidate();
   const queryClient = useQueryClient();
