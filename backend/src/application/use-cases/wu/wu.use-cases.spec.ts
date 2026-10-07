@@ -48,6 +48,31 @@ describe('WU financial rules', () => {
     }, 26_000)).not.toThrow();
   });
 
+  it('subtracts an optional VND deduction without changing the WU paid amount', () => {
+    expect(() => assertWuPayoutMatches({
+      ...base,
+      receivedVnd: 2_606_000,
+      deductionVnd: 500,
+    }, 26_000)).not.toThrow();
+    expect(() => assertWuPayoutMatches({
+      ...base,
+      payoutCurrency: 'USD',
+      receivedUsd: 100,
+      receivedVnd: 6_000,
+      deductionVnd: 500,
+    }, 26_000)).not.toThrow();
+  });
+
+  it('rejects a VND deduction above the gross VND payout', () => {
+    expect(() => assertWuPayoutMatches({
+      ...base,
+      payoutCurrency: 'USD',
+      receivedUsd: 100,
+      receivedVnd: 0,
+      deductionVnd: 6_501,
+    }, 26_000)).toThrow(BadRequestException);
+  });
+
   it('rejects an applied rate outside the allowed band', () => {
     expect(() => validateAppliedRate(27_000, 25_500, 26_000)).toThrow(BadRequestException);
   });
@@ -93,6 +118,7 @@ describe('WU financial rules', () => {
     expect(wuRepo.create).toHaveBeenCalledWith(expect.objectContaining({
       bankAccountId: base.bankAccountId,
       visaType: 'WORK_PERMIT',
+      deductionVnd: 0,
     }));
   });
 

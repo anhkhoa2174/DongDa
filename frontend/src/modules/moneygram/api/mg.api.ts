@@ -17,6 +17,7 @@ export interface MgTransactionDto {
   payoutAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd: number;
   mgRate: number;
   appliedRate: number;
   transactionValueVnd: number;
@@ -33,6 +34,7 @@ export interface CreateMgPayload {
   payoutAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd?: number;
   appliedRate?: number;
   paidCurrency: string;
 }

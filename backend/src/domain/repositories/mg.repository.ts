@@ -13,6 +13,7 @@ export interface CreateMgInput {
   payoutAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd: number;
   appliedRate: number;
   systemRate: number;
   paidCurrency: Currency2;

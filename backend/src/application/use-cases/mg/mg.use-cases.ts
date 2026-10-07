@@ -51,7 +51,14 @@ export class CreateMgUseCase {
     if (Math.abs(Number(dto.payoutAmount) - expectedPayout) > (dto.payoutCurrency === 'VND' ? 1 : 0.01)) {
       throw new BadRequestException(`Số tiền MG phải trả phải là ${expectedPayout.toFixed(dto.payoutCurrency === 'VND' ? 0 : 2)} ${dto.payoutCurrency}`);
     }
-    assertMgPayoutMatches(dto.payoutCurrency, expectedPayout, dto.receivedUsd, dto.receivedVnd, appliedRate);
+    assertMgPayoutMatches(
+      dto.payoutCurrency,
+      expectedPayout,
+      dto.receivedUsd,
+      dto.receivedVnd,
+      appliedRate,
+      dto.deductionVnd ?? 0,
+    );
 
     return this.mgRepo.create({
       branchId: dto.branchId,
@@ -63,6 +70,7 @@ export class CreateMgUseCase {
       payoutAmount: expectedPayout,
       receivedUsd: dto.receivedUsd,
       receivedVnd: dto.receivedVnd,
+      deductionVnd: dto.deductionVnd ?? 0,
       appliedRate,
       systemRate,
       paidCurrency: dto.paidCurrency as Currency2,
@@ -90,14 +98,22 @@ export function assertMgPayoutMatches(
   receivedUsd: number,
   receivedVnd: number,
   appliedRate: number,
+  deductionVnd = 0,
 ) {
+  if (!Number.isInteger(deductionVnd) || deductionVnd < 0) {
+    throw new BadRequestException('MG: Khấu trừ VND phải là số nguyên không âm');
+  }
   if (Number(receivedUsd ?? 0) <= 0 && Number(receivedVnd ?? 0) <= 0) {
     throw new BadRequestException('Phải nhập số tiền thực trả cho khách');
   }
 
   if (payoutCurrency === 'VND') {
-    if (Number(receivedUsd ?? 0) > 0 || Math.abs(Number(receivedVnd ?? 0) - payoutAmount) > 1) {
-      throw new BadRequestException('MG VND: khách nhận VND thì số VND thực trả phải khớp số tiền MG');
+    const grossVnd = Math.round(payoutAmount);
+    if (deductionVnd > grossVnd) {
+      throw new BadRequestException(`MG: Khấu trừ VND không được vượt quá ${grossVnd} VND`);
+    }
+    if (Number(receivedUsd ?? 0) > 0 || Math.abs(Number(receivedVnd ?? 0) - (grossVnd - deductionVnd)) > 1) {
+      throw new BadRequestException('MG VND: số VND thực trả phải bằng số tiền MG trừ khấu trừ');
     }
     return;
   }
@@ -109,9 +125,13 @@ export function assertMgPayoutMatches(
   }
   const convertedUsd = Math.max(payoutAmount - actualReceivedUsd, 0);
   const expectedVnd = Math.round(convertedUsd * appliedRate);
-  if (Math.abs(Number(receivedVnd ?? 0) - expectedVnd) > 1) {
+  if (deductionVnd > expectedVnd) {
+    throw new BadRequestException(`MG: Khấu trừ VND không được vượt quá ${expectedVnd} VND`);
+  }
+  const netVnd = expectedVnd - deductionVnd;
+  if (Math.abs(Number(receivedVnd ?? 0) - netVnd) > 1) {
     throw new BadRequestException(
-      `MG USD: VND thực trả phải bằng phần USD còn lại quy đổi theo tỷ giá (${expectedVnd} VND)`,
+      `MG USD: VND thực trả phải bằng phần USD còn lại quy đổi trừ khấu trừ (${netVnd} VND)`,
     );
   }
 }

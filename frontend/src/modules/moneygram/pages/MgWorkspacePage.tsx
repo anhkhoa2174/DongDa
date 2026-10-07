@@ -26,6 +26,7 @@ import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/tran
 import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
 import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
 import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
+import { clampVndDeduction, suggestVndDeduction } from '@/modules/transactions/utils/vndDeduction';
 import { transactionAdminApi } from '@/modules/transactions/api/transactionAdmin.api';
 
 export function MgWorkspacePage() {
@@ -40,6 +41,7 @@ export function MgWorkspacePage() {
   const [form] = Form.useForm();
   const previousPayoutAmount = useRef<number>();
   const previousPayoutCurrency = useRef<string>();
+  const previousDeductionSourceKey = useRef<string>();
   const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
   const { data: editTransactions = [], isLoading: isLoadingEditTransaction } = useMgTransactions(
     isBranchUser ? user?.branchId : undefined,
@@ -85,6 +87,7 @@ export function MgWorkspacePage() {
   const payoutAmount = Number(Form.useWatch('payoutAmount', form) ?? 0);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
+  const deductionVnd = Number(Form.useWatch('deductionVnd', form) ?? 0);
   const transactionRate = Number(Form.useWatch('appliedRate', form) ?? 0);
   const rateType: ExchangeRateType = payoutCurrency === 'VND' ? 'PAID_BUY' : 'PAID_SELL';
   const systemRate = findActiveRate(activeRates, rateType, 'USD', 'WU_MG')?.rate;
@@ -126,10 +129,17 @@ export function MgWorkspacePage() {
       payoutAmount: editTransaction.payoutAmount,
       receivedUsd: editTransaction.receivedUsd,
       receivedVnd: editTransaction.receivedVnd,
+      deductionVnd: editTransaction.deductionVnd ?? 0,
       appliedRate: editTransaction.appliedRate,
     });
     previousPayoutAmount.current = editTransaction.payoutAmount;
     previousPayoutCurrency.current = editTransaction.payoutCurrency;
+    previousDeductionSourceKey.current = getMgDeductionSourceKey(
+      editTransaction.payoutCurrency,
+      editTransaction.payoutAmount,
+      editTransaction.appliedRate,
+      editTransaction.receivedUsd,
+    );
   }, [editTransaction, form, isEditMode]);
 
   useEffect(() => {
@@ -144,13 +154,30 @@ export function MgWorkspacePage() {
   }, [form, paidAmount, paidCurrency, payoutCurrency, transactionRate]);
 
   useEffect(() => {
+    const deductionSourceKey = getMgDeductionSourceKey(
+      payoutCurrency,
+      payoutAmount,
+      transactionRate,
+      splitPayout.receivedUsd,
+    );
+    const grossReceivedVnd = splitPayout.receivedVnd;
+    const nextDeductionVnd = previousDeductionSourceKey.current === deductionSourceKey
+      ? clampVndDeduction(Number(form.getFieldValue('deductionVnd') ?? 0), grossReceivedVnd)
+      : suggestVndDeduction(grossReceivedVnd);
     form.setFieldsValue({
       receivedUsd: splitPayout.receivedUsd,
-      receivedVnd: splitPayout.receivedVnd,
+      receivedVnd: grossReceivedVnd - nextDeductionVnd,
+      deductionVnd: nextDeductionVnd,
     });
     previousPayoutAmount.current = payoutAmount;
     previousPayoutCurrency.current = payoutCurrency;
-  }, [form, payoutAmount, payoutCurrency, splitPayout.receivedUsd, splitPayout.receivedVnd]);
+    previousDeductionSourceKey.current = deductionSourceKey;
+  }, [form, payoutAmount, payoutCurrency, splitPayout.receivedUsd, splitPayout.receivedVnd, transactionRate]);
+
+  useEffect(() => {
+    const safeDeduction = clampVndDeduction(deductionVnd, splitPayout.receivedVnd);
+    form.setFieldValue('receivedVnd', splitPayout.receivedVnd - safeDeduction);
+  }, [deductionVnd, form, splitPayout.receivedVnd]);
 
   const onCreate = async (v: MgFormValues) => {
     if (!canSubmit) {
@@ -170,6 +197,7 @@ export function MgWorkspacePage() {
         payoutAmount: v.payoutAmount ?? 0,
         receivedUsd: v.receivedUsd ?? 0,
         receivedVnd: v.receivedVnd ?? 0,
+        deductionVnd: v.deductionVnd ?? 0,
         appliedRate: v.appliedRate,
         paidCurrency: v.paidCurrency,
       };
@@ -182,6 +210,7 @@ export function MgWorkspacePage() {
       resetTransactionForm();
       previousPayoutAmount.current = undefined;
       previousPayoutCurrency.current = undefined;
+      previousDeductionSourceKey.current = undefined;
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Tạo GD thất bại'));
     }
@@ -207,6 +236,7 @@ export function MgWorkspacePage() {
                 payoutAmount: 0,
                 receivedUsd: 0,
                 receivedVnd: 0,
+                deductionVnd: 0,
                 appliedRate: 0,
               }}>
               <Form.Item name="branchId" label="Chi nhánh" rules={[{ required: true }]}>
@@ -264,6 +294,23 @@ export function MgWorkspacePage() {
                     />
                 </Form.Item></Col>
               </Row>
+              <Form.Item
+                name="deductionVnd"
+                label="Khấu trừ tiền VND"
+                extra="Không bắt buộc. Hệ thống tự đề xuất phần dư để tiền thực chi tròn 1.000 VND; có thể sửa hoặc nhập 0."
+                rules={[{ type: 'number', min: 0, message: 'Khấu trừ phải là số không âm' }]}
+              >
+                <InputNumber
+                  min={0}
+                  max={receivedVnd + deductionVnd}
+                  precision={0}
+                  keyboard={false}
+                  addonAfter="VND"
+                  style={{ width: '100%' }}
+                  formatter={numberInputFormatter}
+                  parser={numberInputParser}
+                />
+              </Form.Item>
               <Row gutter={8}>
                 <Col span={12}><Form.Item name="payoutCurrency" label="Tiền khách nhận">
                   <Segmented className="wu-currency-segmented" block options={['USD', 'VND']} />
@@ -315,6 +362,7 @@ export function MgWorkspacePage() {
                         : formatVnd(receivedVnd)}
                     </div>
                     <Typography.Text type="secondary">
+                      {deductionVnd > 0 && <>Gộp {formatVnd(receivedVnd + deductionVnd)} − khấu trừ {formatVnd(deductionVnd)}<br /></>}
                       {payoutCurrency === 'USD'
                         ? `${formatUsd(splitPayout.convertedUsd)} còn lại được quy đổi sang VND`
                         : 'VND'}
@@ -362,6 +410,7 @@ interface MgFormValues {
   payoutAmount?: number;
   receivedUsd?: number;
   receivedVnd?: number;
+  deductionVnd?: number;
   appliedRate: number;
   reason: string;
 }
@@ -430,4 +479,13 @@ function splitMgPayout(
     receivedVnd: Math.round(convertedUsd * Math.max(appliedRate, 0)),
     convertedUsd,
   };
+}
+
+function getMgDeductionSourceKey(
+  payoutCurrency: string,
+  payoutAmount: number,
+  appliedRate: number,
+  receivedUsd: number,
+) {
+  return [payoutCurrency, payoutAmount, appliedRate, receivedUsd].join(':');
 }

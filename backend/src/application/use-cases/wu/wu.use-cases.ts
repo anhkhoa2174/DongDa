@@ -102,6 +102,7 @@ export class CreateWuUseCase {
       wuVndAmount: dto.wuVndAmount,
       receivedUsd: dto.receivedUsd,
       receivedVnd: dto.receivedVnd,
+      deductionVnd: dto.deductionVnd ?? 0,
       appliedRate,
       systemRate,
       paidCurrency: dto.paidCurrency as Currency2,
@@ -138,7 +139,10 @@ export function validateAppliedRate(value: number, firstRate: number, secondRate
 export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
   const receivedUsd = Number(dto.receivedUsd ?? 0);
   const receivedVnd = Number(dto.receivedVnd ?? 0);
+  const deductionVnd = Number(dto.deductionVnd ?? 0);
   const wuUsd = Number(dto.wuUsdAmount ?? 0);
+
+  assertValidVndDeduction(deductionVnd);
 
   if (receivedUsd > 0 && !Number.isInteger(receivedUsd)) {
     throw new BadRequestException('WU: USD thực trả phải là số nguyên, phần lẻ sau dấu . quy đổi sang VND');
@@ -154,11 +158,15 @@ export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
     const expectedVnd = dto.paidCurrency === 'VND'
       ? Math.round(Number(dto.wuVndAmount))
       : Math.round(wuUsd * appliedRate);
-    if (Math.abs(receivedVnd - expectedVnd) > 1) {
+    assertDeductionWithinGross(deductionVnd, expectedVnd);
+    const netVnd = expectedVnd - deductionVnd;
+    if (Math.abs(receivedVnd - netVnd) > 1) {
       const calculation = dto.paidCurrency === 'VND'
         ? 'Amount VND của WU'
         : 'Amount USD nhân tỷ giá áp dụng';
-      throw new BadRequestException(`WU: VND thực trả phải bằng ${calculation} (${expectedVnd} VND)`);
+      throw new BadRequestException(
+        `WU: VND thực trả phải bằng ${calculation} trừ khấu trừ (${netVnd} VND)`,
+      );
     }
     return;
   }
@@ -169,7 +177,23 @@ export function assertWuPayoutMatches(dto: CreateWuDto, appliedRate: number) {
   }
   const convertedUsd = Math.max(wuUsd - receivedUsd, 0);
   const expectedVnd = Math.round(convertedUsd * appliedRate);
-  if (Math.abs(receivedVnd - expectedVnd) > 1) {
-    throw new BadRequestException(`WU: VND thực trả phải bằng phần USD còn lại quy đổi theo tỷ giá (${expectedVnd} VND)`);
+  assertDeductionWithinGross(deductionVnd, expectedVnd);
+  const netVnd = expectedVnd - deductionVnd;
+  if (Math.abs(receivedVnd - netVnd) > 1) {
+    throw new BadRequestException(
+      `WU: VND thực trả phải bằng phần USD còn lại quy đổi trừ khấu trừ (${netVnd} VND)`,
+    );
+  }
+}
+
+function assertValidVndDeduction(deductionVnd: number) {
+  if (!Number.isInteger(deductionVnd) || deductionVnd < 0) {
+    throw new BadRequestException('WU: Khấu trừ VND phải là số nguyên không âm');
+  }
+}
+
+function assertDeductionWithinGross(deductionVnd: number, grossVnd: number) {
+  if (deductionVnd > grossVnd) {
+    throw new BadRequestException(`WU: Khấu trừ VND không được vượt quá ${grossVnd} VND`);
   }
 }

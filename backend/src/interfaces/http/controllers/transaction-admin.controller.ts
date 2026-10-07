@@ -541,6 +541,7 @@ export class TransactionAdminController {
       if (!Number.isFinite(appliedRate) || appliedRate <= 0) throw new BadRequestException('appliedRate phải là số dương hợp lệ');
       const receivedUsd = this.nonNegativeMoney(corrected.receivedUsd ?? detail?.received_usd, 'receivedUsd');
       const receivedVnd = this.nonNegativeMoney(corrected.receivedVnd ?? detail?.received_vnd, 'receivedVnd', true);
+      const deductionVnd = this.nonNegativeMoney(corrected.deductionVnd ?? detail?.deduction_vnd ?? 0, 'deductionVnd', true);
       const requiredText = (field: string, fallback?: unknown) => {
         const value = String(corrected[field] ?? fallback ?? '').trim();
         if (!value) throw new BadRequestException(`${field} không được để trống`);
@@ -591,6 +592,7 @@ export class TransactionAdminController {
           wuVndAmount,
           receivedUsd,
           receivedVnd,
+          deductionVnd,
           appliedRate,
           paidCurrency,
           payoutCurrency,
@@ -617,6 +619,7 @@ export class TransactionAdminController {
       if (!Number.isFinite(payoutAmount) || payoutAmount <= 0) throw new BadRequestException('payoutAmount phải là số dương hợp lệ');
       const receivedUsd = this.nonNegativeMoney(corrected.receivedUsd ?? detail?.received_usd, 'receivedUsd');
       const receivedVnd = this.nonNegativeMoney(corrected.receivedVnd ?? detail?.received_vnd, 'receivedVnd', true);
+      const deductionVnd = this.nonNegativeMoney(corrected.deductionVnd ?? detail?.deduction_vnd ?? 0, 'deductionVnd', true);
       return { action: 'REPLACE', correctedData: {
         referenceNo,
         customerName: customerName || null,
@@ -626,6 +629,7 @@ export class TransactionAdminController {
         payoutAmount,
         receivedUsd,
         receivedVnd,
+        deductionVnd,
         appliedRate,
       } };
     }
@@ -823,6 +827,7 @@ export class TransactionAdminController {
       const payoutCurrency = this.parseSettlementCurrency(correctedData.payoutCurrency ?? detail.payout_currency, 'Tiền khách nhận');
       const receivedUsd = this.nonNegativeMoney(correctedData.receivedUsd ?? detail.received_usd, 'receivedUsd');
       const receivedVnd = this.nonNegativeMoney(correctedData.receivedVnd ?? detail.received_vnd, 'receivedVnd', true);
+      const deductionVnd = this.nonNegativeMoney(correctedData.deductionVnd ?? detail.deduction_vnd ?? 0, 'deductionVnd', true);
       const mtcn = String(correctedData.mtcn ?? detail.mtcn).replace(/\D/g, '');
 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'WU:' + mtcn}))`;
@@ -861,6 +866,7 @@ export class TransactionAdminController {
         wuVndAmount,
         receivedUsd,
         receivedVnd,
+        deductionVnd,
         paidCurrency,
         payoutCurrency,
       } as CreateWuDto, rate);
@@ -913,6 +919,7 @@ export class TransactionAdminController {
         wu_vnd_amount: wuVndAmount,
         received_usd: receivedUsd,
         received_vnd: receivedVnd,
+        deduction_vnd: deductionVnd,
         wu_rate: wuRate,
         system_rate: systemRate,
         applied_rate: rate,
@@ -981,7 +988,8 @@ export class TransactionAdminController {
       }
       const receivedUsd = this.nonNegativeMoney(correctedData.receivedUsd ?? detail.received_usd, 'receivedUsd');
       const receivedVnd = this.nonNegativeMoney(correctedData.receivedVnd ?? detail.received_vnd, 'receivedVnd', true);
-      assertMgPayoutMatches(payoutCurrency, payoutAmount, receivedUsd, receivedVnd, rate);
+      const deductionVnd = this.nonNegativeMoney(correctedData.deductionVnd ?? detail.deduction_vnd ?? 0, 'deductionVnd', true);
+      assertMgPayoutMatches(payoutCurrency, payoutAmount, receivedUsd, receivedVnd, rate, deductionVnd);
       replacement = await tx.customer_transactions.create({ data: {
         ...commonTransaction,
         customer_name: String(correctedData.customerName ?? original.customer_name ?? '').trim() || null,
@@ -996,6 +1004,7 @@ export class TransactionAdminController {
         payout_amount: payoutAmount,
         received_usd: receivedUsd,
         received_vnd: receivedVnd,
+        deduction_vnd: deductionVnd,
         system_rate: systemRate,
         applied_rate: rate,
       } });

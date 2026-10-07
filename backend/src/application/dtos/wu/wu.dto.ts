@@ -135,6 +135,11 @@ export class CreateWuDto {
   @Min(0)
   receivedVnd: number;
 
+  @IsOptional()
+  @IsInt({ message: 'Khấu trừ VND phải là số nguyên' })
+  @Min(0)
+  deductionVnd?: number;
+
   @IsNumber()
   @IsPositive()
   appliedRate: number;

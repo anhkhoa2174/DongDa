@@ -48,6 +48,7 @@ export interface WuTransaction {
   wuVndAmount: number;
   receivedUsd: number; // trả khách USD
   receivedVnd: number; // trả khách VND
+  deductionVnd: number; // phần VND khách không nhận, không làm thay đổi công nợ
   wuRate: number; // implied = wuVnd / wuUsd
   systemRate: number; // snapshot tỷ giá công ty tại thời điểm
   appliedRate: number;

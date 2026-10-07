@@ -36,6 +36,7 @@ export interface CreateWuInput {
   wuVndAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd: number;
   appliedRate: number;
   systemRate: number; // snapshot (từ tỷ giá active)
   paidCurrency: Currency2;

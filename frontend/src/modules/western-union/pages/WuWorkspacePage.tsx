@@ -30,6 +30,7 @@ import { clampPaidRate, getPaidRateBounds, PAID_RATE_STEP } from '@/modules/tran
 import { TransactionCreatePage } from '@/modules/transactions/components/TransactionCreatePage';
 import { useTransactionBranchScope } from '@/modules/transactions/hooks/useTransactionBranchScope';
 import { positiveNumberRule } from '@/modules/transactions/utils/formRules';
+import { clampVndDeduction, suggestVndDeduction } from '@/modules/transactions/utils/vndDeduction';
 import { wuApi } from '../api/wu.api';
 import type { CreateWuPayload } from '../api/wu.api';
 import { useBankAccounts } from '@/modules/bank-management/hooks/useBank';
@@ -65,6 +66,7 @@ export function WuWorkspacePage() {
   const previousPayoutCurrency = useRef<string | undefined>(undefined);
   const previousRateSelectionKey = useRef<string | undefined>(undefined);
   const previousWuUsd = useRef<number | undefined>(undefined);
+  const previousDeductionSourceKey = useRef<string | undefined>(undefined);
   const manuallyEditedCountryFields = useRef(new Set<LinkedCountryField>());
   const { user, isBranchUser, canCreateTransaction, branchOptions, resetBranchField } = useTransactionBranchScope(form);
   const { data: editTransactions = [], isLoading: isLoadingEditTransaction } = useWuTransactions(
@@ -171,6 +173,7 @@ export function WuWorkspacePage() {
   const rateBounds = getPaidRateBounds(implied, systemRate, fxUsdRate);
   const receivedUsd = Number(Form.useWatch('receivedUsd', form) ?? 0);
   const receivedVnd = Number(Form.useWatch('receivedVnd', form) ?? 0);
+  const deductionVnd = Number(Form.useWatch('deductionVnd', form) ?? 0);
   const hasVisa = Form.useWatch('hasVisa', form) ?? false;
   const isDirectVndPayout = payoutCurrency === 'VND' && paidCurrency === 'VND';
   // Đã nhập đủ 2 số tiền WU (USD + VND) và có đủ tỷ giá hệ thống -> bật thanh kéo, tô đỏ để NV nhận ra ngay.
@@ -220,12 +223,21 @@ export function WuWorkspacePage() {
       wuVndAmount: editTransaction.wuVndAmount,
       receivedUsd: editTransaction.receivedUsd,
       receivedVnd: editTransaction.receivedVnd,
+      deductionVnd: editTransaction.deductionVnd ?? 0,
       appliedRate: editTransaction.appliedRate,
       payoutCurrency: editTransaction.payoutCurrency,
       paidCurrency: editTransaction.paidCurrency,
     });
     previousPayoutCurrency.current = editTransaction.payoutCurrency;
     previousWuUsd.current = editTransaction.wuUsdAmount;
+    previousDeductionSourceKey.current = getWuDeductionSourceKey(
+      editTransaction.payoutCurrency,
+      editTransaction.paidCurrency,
+      editTransaction.wuUsdAmount,
+      editTransaction.wuVndAmount,
+      editTransaction.appliedRate,
+      editTransaction.receivedUsd,
+    );
   }, [editTransaction, form, isEditMode]);
 
   useEffect(() => {
@@ -249,14 +261,44 @@ export function WuWorkspacePage() {
       receivedUsd,
       payoutCurrencyChanged || wuUsdChanged,
     );
+    const deductionSourceKey = getWuDeductionSourceKey(
+      payoutCurrency,
+      paidCurrency,
+      wuUsd,
+      wuVnd,
+      nextRate,
+      nextPayout.receivedUsd,
+    );
+    const grossReceivedVnd = nextPayout.receivedVnd;
+    const nextDeductionVnd = previousDeductionSourceKey.current === deductionSourceKey
+      ? clampVndDeduction(Number(form.getFieldValue('deductionVnd') ?? 0), grossReceivedVnd)
+      : suggestVndDeduction(grossReceivedVnd);
     form.setFieldsValue({
       appliedRate: nextRate,
       ...nextPayout,
+      deductionVnd: nextDeductionVnd,
+      receivedVnd: grossReceivedVnd - nextDeductionVnd,
     });
     previousPayoutCurrency.current = payoutCurrency;
     previousRateSelectionKey.current = rateSelectionKey;
     previousWuUsd.current = wuUsd;
+    previousDeductionSourceKey.current = deductionSourceKey;
   }, [form, fxUsdRate, implied, paidCurrency, payoutCurrency, rateSelectionKey, receivedUsd, systemRate, transactionRate, wuUsd, wuVnd]);
+
+  useEffect(() => {
+    if (!wuUsd || !wuVnd || !transactionRate) return;
+    const grossPayout = getWuPayout(
+      payoutCurrency,
+      paidCurrency,
+      wuUsd,
+      wuVnd,
+      transactionRate,
+      receivedUsd,
+      false,
+    );
+    const safeDeduction = clampVndDeduction(deductionVnd, grossPayout.receivedVnd);
+    form.setFieldValue('receivedVnd', grossPayout.receivedVnd - safeDeduction);
+  }, [deductionVnd, form, paidCurrency, payoutCurrency, receivedUsd, transactionRate, wuUsd, wuVnd]);
 
   useEffect(() => {
     if (!hasVisa) form.setFieldsValue({ visaType: undefined, visaNumber: undefined, visaIssueDate: undefined, visaExpiryDate: undefined });
@@ -301,6 +343,7 @@ export function WuWorkspacePage() {
     wuVndAmount: v.wuVndAmount,
     receivedUsd: v.receivedUsd ?? 0,
     receivedVnd: v.receivedVnd ?? 0,
+    deductionVnd: v.deductionVnd ?? 0,
     appliedRate: v.appliedRate,
     payoutCurrency: v.payoutCurrency,
     paidCurrency: v.paidCurrency,
@@ -323,6 +366,7 @@ export function WuWorkspacePage() {
       previousPayoutCurrency.current = undefined;
       previousRateSelectionKey.current = undefined;
       previousWuUsd.current = undefined;
+      previousDeductionSourceKey.current = undefined;
     } catch (error: unknown) {
       message.error(getApiErrorMessage(error, 'Tạo GD thất bại'));
     }
@@ -370,6 +414,7 @@ export function WuWorkspacePage() {
                 wuVndAmount: 0,
                 receivedUsd: 0,
                 receivedVnd: 0,
+                deductionVnd: 0,
                 appliedRate: 0,
                 receivedDate: dayjs(),
                 countryOfBirth: 'VIETNAM',
@@ -436,6 +481,23 @@ export function WuWorkspacePage() {
                     parser={usdInputParser}
                   /></Form.Item></Col>
               </Row>
+              <Form.Item
+                name="deductionVnd"
+                label="Khấu trừ tiền VND"
+                extra="Không bắt buộc. Hệ thống tự đề xuất phần dư để tiền thực chi tròn 1.000 VND; có thể sửa hoặc nhập 0."
+                rules={[{ type: 'number', min: 0, message: 'Khấu trừ phải là số không âm' }]}
+              >
+                <InputNumber
+                  min={0}
+                  max={receivedVnd + deductionVnd}
+                  precision={0}
+                  keyboard={false}
+                  addonAfter="VND"
+                  style={{ width: '100%' }}
+                  formatter={numberInputFormatter}
+                  parser={numberInputParser}
+                />
+              </Form.Item>
               <Form.Item
                 name="bankAccountId"
                 label="Ngân hàng nhận thanh toán công nợ"
@@ -530,6 +592,7 @@ export function WuWorkspacePage() {
                       {payoutCurrency === 'USD' ? `${formatUsd(receivedUsd, 0)} + ${formatVnd(receivedVnd)}` : formatVnd(receivedVnd)}
                     </div>
                     <Typography.Text type="secondary">
+                      {deductionVnd > 0 && <>Gộp {formatVnd(receivedVnd + deductionVnd)} − khấu trừ {formatVnd(deductionVnd)}<br /></>}
                       {payoutCurrency === 'USD'
                         ? `Phần còn lại ${(Math.max(Number(wuUsd) - receivedUsd, 0)).toFixed(2)} USD được quy đổi · Tổng ${formatVnd(payoutEquivalent)}`
                         : isDirectVndPayout
@@ -620,6 +683,7 @@ interface WuFormValues {
   wuVndAmount: number;
   receivedUsd?: number;
   receivedVnd?: number;
+  deductionVnd?: number;
   appliedRate: number;
   payoutCurrency: 'USD' | 'VND';
   paidCurrency: 'USD' | 'VND';
@@ -700,4 +764,15 @@ function getWuPayout(
         ? Math.round(convertedUsd * transactionRate)
         : 0,
   };
+}
+
+function getWuDeductionSourceKey(
+  payoutCurrency: string,
+  paidCurrency: string,
+  wuUsd: number,
+  wuVnd: number,
+  transactionRate: number,
+  receivedUsd: number,
+) {
+  return [payoutCurrency, paidCurrency, wuUsd, wuVnd, transactionRate, receivedUsd].join(':');
 }

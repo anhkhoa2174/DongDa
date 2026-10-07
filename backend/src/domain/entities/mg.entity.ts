@@ -24,6 +24,7 @@ export interface MgTransaction {
   payoutAmount: number; // số tiền trả khách
   receivedUsd: number; // USD thực chi cho khách
   receivedVnd: number; // VND thực chi cho khách, gồm phần lẻ USD quy đổi
+  deductionVnd: number; // phần VND khách không nhận, không làm thay đổi công nợ
   mgRate: number; // implied = mgVnd / mgUsd
   systemRate: number;
   appliedRate: number;

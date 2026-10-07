@@ -84,7 +84,8 @@ describe('TransactionAdminController adjustment vouchers', () => {
       action: 'REPLACE',
       correctedData: {
         referenceNo: 'ZX98YU76', customerName: 'Khách đúng', paidCurrency: 'VND', paidAmount: 2_600_000,
-        payoutCurrency: 'USD', payoutAmount: 100, receivedUsd: 100, receivedVnd: 0, appliedRate: 26_000,
+        payoutCurrency: 'USD', payoutAmount: 100, receivedUsd: 100, receivedVnd: 0,
+        deductionVnd: 0, appliedRate: 26_000,
       },
     });
   });

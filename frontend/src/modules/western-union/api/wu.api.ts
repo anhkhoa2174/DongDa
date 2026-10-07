@@ -38,6 +38,7 @@ export interface WuTransactionDto {
   wuVndAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd: number;
   wuRate: number;
   systemRate: number;
   appliedRate: number;
@@ -80,6 +81,7 @@ export interface CreateWuPayload {
   wuVndAmount: number;
   receivedUsd: number;
   receivedVnd: number;
+  deductionVnd?: number;
   appliedRate: number;
   payoutCurrency: string;
   paidCurrency: string;

@@ -41,6 +41,11 @@ export class CreateMgDto {
   receivedVnd: number;
 
   @IsOptional()
+  @IsInt({ message: 'Khấu trừ VND phải là số nguyên' })
+  @Min(0)
+  deductionVnd?: number;
+
+  @IsOptional()
   @IsNumber()
   @IsPositive()
   appliedRate?: number;
