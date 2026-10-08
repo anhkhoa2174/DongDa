@@ -20,6 +20,15 @@ describe('sanitizeGeminiRates', () => {
 });
 
 describe('geminiApiException', () => {
+  it('reports depleted prepaid credits as 503 without exposing provider details', () => {
+    const exception = geminiApiException({
+      response: { status: 402, data: { error: { status: 'RESOURCE_EXHAUSTED', message: 'secret-provider-details' } } },
+    });
+    expect(exception).toBeInstanceOf(ServiceUnavailableException);
+    expect(exception.message).toContain('hết số dư trả trước');
+    expect(exception.message).not.toContain('secret-provider-details');
+  });
+
   it.each(['ECONNABORTED', 'ETIMEDOUT'])('reports timeout %s as 504', (code) => {
     const exception = geminiApiException({ code });
     expect(exception).toBeInstanceOf(GatewayTimeoutException);

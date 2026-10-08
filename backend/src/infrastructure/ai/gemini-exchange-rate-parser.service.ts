@@ -134,6 +134,11 @@ export function geminiApiException(error: any) {
     return new ServiceUnavailableException('Không kết nối được Gemini API. Kiểm tra kết nối mạng và DNS của backend.');
   }
   const status = Number(error?.response?.status ?? 0);
+  if (status === 402) {
+    return new ServiceUnavailableException(
+      'Gemini API đã hết số dư trả trước. Kiểm tra số dư và thanh toán của project trong Google AI Studio.',
+    );
+  }
   if (status === 401 || status === 403) {
     return new ServiceUnavailableException(
       'Gemini API từ chối xác thực. Kiểm tra API key, trạng thái project và quyền Generative Language API.',
