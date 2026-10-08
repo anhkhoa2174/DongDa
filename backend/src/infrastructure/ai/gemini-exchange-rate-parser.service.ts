@@ -1,5 +1,5 @@
 import {
-  BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException,
+  BadGatewayException, BadRequestException, GatewayTimeoutException, Injectable, Logger, ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -66,6 +66,8 @@ const RESPONSE_SCHEMA = {
 
 @Injectable()
 export class GeminiExchangeRateParserService implements IExchangeRateImageParser {
+  private readonly logger = new Logger(GeminiExchangeRateParserService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   async parse(input: ExchangeRateImageInput): Promise<ParsedExchangeRateCandidate[]> {
@@ -103,13 +105,34 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
       if (!text) throw new BadGatewayException('Gemini không trả về dữ liệu nhận dạng');
       return sanitizeGeminiRates(JSON.parse(text)?.rates);
     } catch (error: any) {
+      // Never log the Axios error object: it contains the API key and uploaded image.
+      const status = Number(error?.response?.status);
+      this.logger.warn(`Gemini image parsing failed: model=${model}, status=${Number.isInteger(status) ? status : 'none'}, category=${geminiFailureCategory(error)}`);
       if (error instanceof BadRequestException || error instanceof BadGatewayException) throw error;
       throw geminiApiException(error);
     }
   }
 }
 
+export function geminiFailureCategory(error: any): string {
+  if (error instanceof SyntaxError) return 'invalid-json';
+  if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') return 'timeout';
+  if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ERR_NETWORK'].includes(error?.code)) return 'connection';
+  if (error instanceof BadGatewayException) return 'invalid-response';
+  return error?.response ? 'upstream-http' : 'unknown';
+}
+
 export function geminiApiException(error: any) {
+  const category = geminiFailureCategory(error);
+  if (category === 'invalid-json') {
+    return new BadGatewayException('Gemini trả về dữ liệu JSON không hợp lệ. Vui lòng thử lại.');
+  }
+  if (category === 'timeout') {
+    return new GatewayTimeoutException('Gemini API phản hồi quá thời gian chờ. Vui lòng thử lại.');
+  }
+  if (category === 'connection') {
+    return new ServiceUnavailableException('Không kết nối được Gemini API. Kiểm tra kết nối mạng và DNS của backend.');
+  }
   const status = Number(error?.response?.status ?? 0);
   if (status === 401 || status === 403) {
     return new ServiceUnavailableException(
@@ -124,6 +147,9 @@ export function geminiApiException(error: any) {
   }
   if (status === 400) {
     return new BadGatewayException('Gemini API từ chối nội dung ảnh hoặc cấu hình structured output');
+  }
+  if (status >= 500 && status <= 599) {
+    return new ServiceUnavailableException('Gemini API đang gặp lỗi máy chủ. Vui lòng thử lại sau.');
   }
   return new BadGatewayException('Không thể phân tích ảnh bằng Gemini API');
 }

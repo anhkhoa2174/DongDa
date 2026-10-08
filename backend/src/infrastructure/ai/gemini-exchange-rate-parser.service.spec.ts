@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, GatewayTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { geminiApiException, sanitizeGeminiRates } from './gemini-exchange-rate-parser.service';
 
 describe('sanitizeGeminiRates', () => {
@@ -20,6 +20,31 @@ describe('sanitizeGeminiRates', () => {
 });
 
 describe('geminiApiException', () => {
+  it.each(['ECONNABORTED', 'ETIMEDOUT'])('reports timeout %s as 504', (code) => {
+    const exception = geminiApiException({ code });
+    expect(exception).toBeInstanceOf(GatewayTimeoutException);
+    expect(exception.getStatus()).toBe(504);
+  });
+
+  it.each(['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET'])('reports connection failure %s as 503', (code) => {
+    const exception = geminiApiException({ code });
+    expect(exception).toBeInstanceOf(ServiceUnavailableException);
+    expect(exception.message).toContain('DNS');
+  });
+
+  it.each([500, 502, 503, 504])('reports upstream %s as service unavailable', (status) => {
+    const exception = geminiApiException({ response: { status } });
+    expect(exception).toBeInstanceOf(ServiceUnavailableException);
+    expect(exception.message).toContain('lỗi máy chủ');
+  });
+
+  it('distinguishes invalid JSON without exposing response content', () => {
+    const exception = geminiApiException(new SyntaxError('secret response content'));
+    expect(exception).toBeInstanceOf(BadGatewayException);
+    expect(exception.message).toContain('JSON');
+    expect(exception.message).not.toContain('secret response content');
+  });
+
   it('does not expose provider error details or API keys', () => {
     const exception = geminiApiException({
       response: { status: 403, data: { error: { message: 'Permission denied for secret-key-value' } } },
