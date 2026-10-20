@@ -61,4 +61,17 @@ describe('geminiApiException', () => {
     expect(exception).toBeInstanceOf(ServiceUnavailableException);
     expect(exception.message).not.toContain('secret-key-value');
   });
+
+  it('distinguishes a Google AI project denied by the provider', () => {
+    const exception = geminiApiException({
+      response: {
+        status: 403,
+        data: { error: { message: 'Your project has been denied access. Please contact support.' } },
+      },
+    });
+    expect(exception).toBeInstanceOf(ServiceUnavailableException);
+    expect(exception.message).toContain('Project Google AI');
+    expect(exception.message).toContain('từ chối quyền truy cập');
+    expect(exception.message).not.toContain('contact support');
+  });
 });

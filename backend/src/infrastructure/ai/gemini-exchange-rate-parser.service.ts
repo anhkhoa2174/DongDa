@@ -115,6 +115,8 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
 }
 
 export function geminiFailureCategory(error: any): string {
+  const upstreamMessage = String(error?.response?.data?.error?.message ?? '').toLowerCase();
+  if (upstreamMessage.includes('project has been denied access')) return 'project-denied';
   if (error instanceof SyntaxError) return 'invalid-json';
   if (error?.code === 'ECONNABORTED' || error?.code === 'ETIMEDOUT') return 'timeout';
   if (['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ERR_NETWORK'].includes(error?.code)) return 'connection';
@@ -124,6 +126,11 @@ export function geminiFailureCategory(error: any): string {
 
 export function geminiApiException(error: any) {
   const category = geminiFailureCategory(error);
+  if (category === 'project-denied') {
+    return new ServiceUnavailableException(
+      'Project Google AI gắn với API key đã bị từ chối quyền truy cập Gemini. Hãy kiểm tra trạng thái project hoặc tạo key từ project khác.',
+    );
+  }
   if (category === 'invalid-json') {
     return new BadGatewayException('Gemini trả về dữ liệu JSON không hợp lệ. Vui lòng thử lại.');
   }

@@ -4,14 +4,14 @@
 // Tesseract, không chặn nghiệp vụ.
 
 import {
-  BadGatewayException, BadRequestException, Injectable, ServiceUnavailableException,
+  BadGatewayException, BadRequestException, Injectable, Logger, ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import type {
   IJournalPdfParser, JournalPdfParserInput, ParsedJournalPdfRow,
 } from '../../application/ports/journal-pdf-parser.port';
-import { geminiApiException } from './gemini-exchange-rate-parser.service';
+import { geminiApiException, geminiFailureCategory } from './gemini-exchange-rate-parser.service';
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
@@ -58,6 +58,8 @@ const RESPONSE_SCHEMA = {
 
 @Injectable()
 export class GeminiJournalParserService implements IJournalPdfParser {
+  private readonly logger = new Logger(GeminiJournalParserService.name);
+
   constructor(private readonly config: ConfigService) {}
 
   async parse(input: JournalPdfParserInput): Promise<ParsedJournalPdfRow[]> {
@@ -95,6 +97,11 @@ export class GeminiJournalParserService implements IJournalPdfParser {
       if (!text) throw new BadGatewayException('Gemini không trả về dữ liệu nhận dạng');
       return sanitizeGeminiJournalRows(JSON.parse(text)?.rows);
     } catch (error: any) {
+      // Không log Axios error/response vì có thể chứa API key và nội dung PDF.
+      const status = Number(error?.response?.status);
+      this.logger.warn(
+        `Gemini Journal parsing failed: model=${model}, status=${Number.isInteger(status) ? status : 'none'}, category=${geminiFailureCategory(error)}`,
+      );
       if (error instanceof BadRequestException || error instanceof BadGatewayException) throw error;
       throw geminiApiException(error);
     }
