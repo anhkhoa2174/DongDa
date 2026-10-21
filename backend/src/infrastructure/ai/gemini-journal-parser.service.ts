@@ -11,7 +11,8 @@ import axios from 'axios';
 import type {
   IJournalPdfParser, JournalPdfParserInput, ParsedJournalPdfRow,
 } from '../../application/ports/journal-pdf-parser.port';
-import { geminiApiException, geminiFailureCategory } from './gemini-exchange-rate-parser.service';
+import { DEFAULT_GEMINI_MODEL, geminiApiException, geminiFailureCategory } from './gemini-exchange-rate-parser.service';
+import { withGeminiRetry } from './gemini-retry';
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
@@ -68,11 +69,11 @@ export class GeminiJournalParserService implements IJournalPdfParser {
 
     const apiKey = this.config.get<string>('GEMINI_API_KEY')?.trim();
     if (!apiKey) throw new ServiceUnavailableException('Chưa cấu hình GEMINI_API_KEY');
-    const model = this.config.get<string>('GEMINI_MODEL')?.trim() || 'gemini-2.5-flash';
+    const model = this.config.get<string>('GEMINI_MODEL')?.trim() || DEFAULT_GEMINI_MODEL;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     try {
-      const response = await axios.post(endpoint, {
+      const response = await withGeminiRetry(() => axios.post(endpoint, {
         systemInstruction: { parts: [{ text: JOURNAL_SYSTEM_PROMPT }] },
         contents: [{ parts: [
           { inlineData: { mimeType: 'application/pdf', data: input.bytes.toString('base64') } },
@@ -91,6 +92,9 @@ export class GeminiJournalParserService implements IJournalPdfParser {
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
         timeout: 90_000, // Journal nhiều trang/nhiều dòng hơn ảnh tỷ giá — nới thời gian chờ
         maxBodyLength: 20 * 1024 * 1024,
+      }), {
+        maxTotalMs: 150_000, // tối đa ~2,5 phút kể cả các lần chờ
+        onRetry: (info) => this.logger.warn(`Gemini Journal parsing: thử lại ${info.attempt}/${info.maxAttempts - 1} sau ${Math.round(info.delayMs)}ms (model=${model}, status=${info.status ?? 'none'})`),
       });
       const text = response.data?.candidates?.[0]?.content?.parts
         ?.map((part: any) => part.text ?? '').join('').trim();

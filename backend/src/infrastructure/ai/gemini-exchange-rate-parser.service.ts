@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { withGeminiRetry } from './gemini-retry';
 import type {
   IExchangeRateImageParser, ExchangeRateImageInput, ParsedExchangeRateCandidate,
 } from '../../application/ports/exchange-rate-image-parser.port';
@@ -64,6 +65,9 @@ const RESPONSE_SCHEMA = {
   required: ['rates'],
 };
 
+// gemini-2.5-flash đã ngừng cho user mới (Google trả 404). Đặt GEMINI_MODEL trong .env để đổi.
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+
 @Injectable()
 export class GeminiExchangeRateParserService implements IExchangeRateImageParser {
   private readonly logger = new Logger(GeminiExchangeRateParserService.name);
@@ -80,11 +84,11 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
 
     const apiKey = this.config.get<string>('GEMINI_API_KEY')?.trim();
     if (!apiKey) throw new ServiceUnavailableException('Chưa cấu hình GEMINI_API_KEY');
-    const model = this.config.get<string>('GEMINI_MODEL')?.trim() || 'gemini-2.5-flash';
+    const model = this.config.get<string>('GEMINI_MODEL')?.trim() || DEFAULT_GEMINI_MODEL;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     try {
-      const response = await axios.post(endpoint, {
+      const response = await withGeminiRetry(() => axios.post(endpoint, {
         systemInstruction: { parts: [{ text: EXCHANGE_RATE_IMAGE_SYSTEM_PROMPT }] },
         contents: [{ parts: [
           { inlineData: { mimeType: input.mimeType, data: input.bytes.toString('base64') } },
@@ -99,6 +103,9 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
         timeout: 45_000,
         maxBodyLength: 15 * 1024 * 1024,
+      }), {
+        maxTotalMs: 60_000,
+        onRetry: (info) => this.logger.warn(`Gemini image parsing: thử lại ${info.attempt}/${info.maxAttempts - 1} sau ${Math.round(info.delayMs)}ms (model=${model}, status=${info.status ?? 'none'})`),
       });
       const text = response.data?.candidates?.[0]?.content?.parts
         ?.map((part: any) => part.text ?? '').join('').trim();
