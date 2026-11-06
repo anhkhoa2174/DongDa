@@ -84,6 +84,7 @@ import { ListExchangeRatesUseCase } from './application/use-cases/exchange-rate/
 import { ParseExchangeRateImageUseCase } from './application/use-cases/exchange-rate/parse-exchange-rate-image.use-case';
 import { GeminiExchangeRateParserService } from './infrastructure/ai/gemini-exchange-rate-parser.service';
 import { GeminiJournalParserService } from './infrastructure/ai/gemini-journal-parser.service';
+import { GeminiKeyPool } from './infrastructure/ai/gemini-key-pool';
 
 import { PrismaDebtRepository } from './infrastructure/database/repositories/prisma-debt.repository';
 import {
@@ -122,6 +123,7 @@ import { ApprovePendingDebtUseCase } from './application/use-cases/debt/approve-
     { provide: 'IUserRepository', useClass: PrismaUserRepository },
     { provide: 'IAuthSessionRepository', useClass: PrismaAuthSessionRepository },
     { provide: 'IExchangeRateRepository', useClass: PrismaExchangeRateRepository },
+    GeminiKeyPool, // dùng chung cho mọi lời gọi Gemini: nhớ key nào đang hết hạn mức
     { provide: 'IExchangeRateImageParser', useClass: GeminiExchangeRateParserService },
     { provide: 'IJournalPdfParser', useClass: GeminiJournalParserService },
     { provide: 'IDebtRepository', useClass: PrismaDebtRepository },

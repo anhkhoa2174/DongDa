@@ -1,9 +1,10 @@
 import {
-  BadGatewayException, BadRequestException, GatewayTimeoutException, Injectable, Logger, ServiceUnavailableException,
+  BadGatewayException, BadRequestException, GatewayTimeoutException, HttpException, Inject, Injectable, Logger,
+  Optional, ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { withGeminiRetry } from './gemini-retry';
+import { GeminiKeyPool } from './gemini-key-pool';
 import type {
   IExchangeRateImageParser, ExchangeRateImageInput, ParsedExchangeRateCandidate,
 } from '../../application/ports/exchange-rate-image-parser.port';
@@ -72,7 +73,15 @@ export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
 export class GeminiExchangeRateParserService implements IExchangeRateImageParser {
   private readonly logger = new Logger(GeminiExchangeRateParserService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  private readonly keys: GeminiKeyPool;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() @Inject(GeminiKeyPool) keys?: GeminiKeyPool,
+  ) {
+    // Nest truyền 1 pool dùng chung cho mọi service (hạn mức tính theo project); test tự tạo.
+    this.keys = keys ?? new GeminiKeyPool(config);
+  }
 
   async parse(input: ExchangeRateImageInput): Promise<ParsedExchangeRateCandidate[]> {
     if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
@@ -82,13 +91,11 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
       throw new BadRequestException('Ảnh bảng tỷ giá không được vượt quá 10 MB');
     }
 
-    const apiKey = this.config.get<string>('GEMINI_API_KEY')?.trim();
-    if (!apiKey) throw new ServiceUnavailableException('Chưa cấu hình GEMINI_API_KEY');
     const model = this.config.get<string>('GEMINI_MODEL')?.trim() || DEFAULT_GEMINI_MODEL;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     try {
-      const response = await withGeminiRetry(() => axios.post(endpoint, {
+      const response = await this.keys.run(model, (apiKey) => axios.post(endpoint, {
         systemInstruction: { parts: [{ text: EXCHANGE_RATE_IMAGE_SYSTEM_PROMPT }] },
         contents: [{ parts: [
           { inlineData: { mimeType: input.mimeType, data: input.bytes.toString('base64') } },
@@ -115,7 +122,8 @@ export class GeminiExchangeRateParserService implements IExchangeRateImageParser
       // Never log the Axios error object: it contains the API key and uploaded image.
       const status = Number(error?.response?.status);
       this.logger.warn(`Gemini image parsing failed: model=${model}, status=${Number.isInteger(status) ? status : 'none'}, category=${geminiFailureCategory(error)}`);
-      if (error instanceof BadRequestException || error instanceof BadGatewayException) throw error;
+      // Lỗi đã được dịch sang thông báo tiếng Việt (BadRequest, BadGateway, hết key…) thì giữ nguyên.
+      if (error instanceof HttpException) throw error;
       throw geminiApiException(error);
     }
   }

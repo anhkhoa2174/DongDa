@@ -4,7 +4,7 @@
 // Tesseract, không chặn nghiệp vụ.
 
 import {
-  BadGatewayException, BadRequestException, Injectable, Logger, ServiceUnavailableException,
+  BadGatewayException, BadRequestException, HttpException, Inject, Injectable, Logger, Optional, ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -12,7 +12,7 @@ import type {
   IJournalPdfParser, JournalPdfParserInput, ParsedJournalPdfRow,
 } from '../../application/ports/journal-pdf-parser.port';
 import { DEFAULT_GEMINI_MODEL, geminiApiException, geminiFailureCategory } from './gemini-exchange-rate-parser.service';
-import { withGeminiRetry } from './gemini-retry';
+import { GeminiKeyPool } from './gemini-key-pool';
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
@@ -61,19 +61,25 @@ const RESPONSE_SCHEMA = {
 export class GeminiJournalParserService implements IJournalPdfParser {
   private readonly logger = new Logger(GeminiJournalParserService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  private readonly keys: GeminiKeyPool;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() @Inject(GeminiKeyPool) keys?: GeminiKeyPool,
+  ) {
+    // Nest truyền 1 pool dùng chung cho mọi service (hạn mức tính theo project); test tự tạo.
+    this.keys = keys ?? new GeminiKeyPool(config);
+  }
 
   async parse(input: JournalPdfParserInput): Promise<ParsedJournalPdfRow[]> {
     if (!input.bytes?.length) throw new BadRequestException('File rỗng hoặc không đọc được');
     if (input.bytes.length > MAX_PDF_BYTES) throw new BadRequestException('File Journal không được vượt quá 15 MB');
 
-    const apiKey = this.config.get<string>('GEMINI_API_KEY')?.trim();
-    if (!apiKey) throw new ServiceUnavailableException('Chưa cấu hình GEMINI_API_KEY');
     const model = this.config.get<string>('GEMINI_MODEL')?.trim() || DEFAULT_GEMINI_MODEL;
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     try {
-      const response = await withGeminiRetry(() => axios.post(endpoint, {
+      const response = await this.keys.run(model, (apiKey) => axios.post(endpoint, {
         systemInstruction: { parts: [{ text: JOURNAL_SYSTEM_PROMPT }] },
         contents: [{ parts: [
           { inlineData: { mimeType: 'application/pdf', data: input.bytes.toString('base64') } },
@@ -106,7 +112,8 @@ export class GeminiJournalParserService implements IJournalPdfParser {
       this.logger.warn(
         `Gemini Journal parsing failed: model=${model}, status=${Number.isInteger(status) ? status : 'none'}, category=${geminiFailureCategory(error)}`,
       );
-      if (error instanceof BadRequestException || error instanceof BadGatewayException) throw error;
+      // Lỗi đã được dịch sang thông báo tiếng Việt (BadRequest, BadGateway, hết key…) thì giữ nguyên.
+      if (error instanceof HttpException) throw error;
       throw geminiApiException(error);
     }
   }

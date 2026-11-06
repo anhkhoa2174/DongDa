@@ -21,6 +21,8 @@ export interface GeminiRetryOptions {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   random?: () => number;
+  /** Lỗi nào được thử lại trên cùng key. Mặc định: isTransientGeminiError. */
+  isTransient?: (error: any) => boolean;
   /** Chỉ nhận số liệu, không nhận error: error của axios chứa API key và nội dung file. */
   onRetry?: (info: GeminiRetryInfo) => void;
 }
@@ -39,6 +41,7 @@ export async function withGeminiRetry<T>(fn: () => Promise<T>, options: GeminiRe
     sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
     random = Math.random,
+    isTransient = isTransientGeminiError,
     onRetry,
   } = options;
   const startedAt = now();
@@ -47,7 +50,7 @@ export async function withGeminiRetry<T>(fn: () => Promise<T>, options: GeminiRe
     try {
       return await fn();
     } catch (error: any) {
-      if (attempt >= maxAttempts || !isTransientGeminiError(error)) throw error;
+      if (attempt >= maxAttempts || !isTransient(error)) throw error;
       const delayMs = baseDelayMs * 2 ** (attempt - 1) + random() * baseDelayMs;
       if (now() - startedAt + delayMs > maxTotalMs) throw error;
       const status = Number(error?.response?.status);
