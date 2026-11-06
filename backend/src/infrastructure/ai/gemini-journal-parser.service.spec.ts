@@ -12,6 +12,7 @@ const rowsResponse = {
     { code: '4402801610', amount: 1000, currencyCode: 'USD', customerName: 'VO THI BACH TUYET' },
   ] }) }] } }] },
 };
+const OK_RESPONSE = rowsResponse;
 const httpError = (status: number) => ({ response: { status } });
 
 function makeService(env: Record<string, string> = {}) {
@@ -111,5 +112,48 @@ describe('GeminiJournalParserService — thử lại khi Gemini lỗi tạm th�
     await parseWithFakeClock(makeService({ GEMINI_MODEL: 'gemini-3.8-flash' }));
 
     expect(post.mock.calls[0][0]).toContain('/models/gemini-3.8-flash:generateContent');
+  });
+});
+
+describe('key dự phòng (GEMINI_API_KEY_FALLBACK)', () => {
+  const FALLBACK_KEY = 'AQ.paid-fallback-secret';
+  const dayQuota = {
+    response: { status: 429, data: { error: { status: 'RESOURCE_EXHAUSTED', message: 'quota', details: [
+      { violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] },
+      { retryDelay: '3600s' },
+    ] } } },
+  };
+  const usedKey = (call: any[]) => call[2].headers['x-goog-api-key'];
+
+  beforeEach(() => { jest.useFakeTimers(); post.mockReset(); });
+  afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
+  it('key chính hết hạn mức ngày: cùng request gửi lại bằng key dự phòng và trả kết quả', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    post.mockImplementation((_url: string, _body: any, cfg: any) =>
+      (cfg.headers['x-goog-api-key'] === API_KEY ? Promise.reject(dayQuota) : Promise.resolve(OK_RESPONSE)));
+    const service = makeService({ GEMINI_API_KEY_FALLBACK: FALLBACK_KEY });
+
+    const result: any = await parseWithFakeClock(service);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toHaveLength(1);
+    expect(post.mock.calls.map(usedKey)).toEqual([API_KEY, FALLBACK_KEY]);
+
+    // Request tiếp theo đi thẳng key dự phòng.
+    post.mockClear();
+    await parseWithFakeClock(service);
+    expect(post.mock.calls.map(usedKey)).toEqual([FALLBACK_KEY]);
+  });
+
+  it('không có key dự phòng: hành vi như cũ, báo lỗi hết quota', async () => {
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    post.mockRejectedValue(dayQuota);
+
+    const result: any = await parseWithFakeClock(makeService());
+
+    expect(result.error).toBeInstanceOf(ServiceUnavailableException);
+    expect(post).toHaveBeenCalledTimes(1);
   });
 });

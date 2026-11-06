@@ -4,3 +4,6 @@
 
 # Tài liệu nghiệp vụ nội bộ (sổ quỹ thật, journal khách, requirements) — không đưa lên remote
 docs/
+
+# File chứa API key dự phòng (không bao giờ commit)
+API_key_fallback

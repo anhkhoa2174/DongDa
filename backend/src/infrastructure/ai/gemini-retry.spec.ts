@@ -119,3 +119,26 @@ describe('withGeminiRetry', () => {
     expect(onRetry).toHaveBeenCalledWith({ attempt: 1, maxAttempts: 3, delayMs: 2000, status: 503 });
   });
 });
+
+describe('withGeminiRetry — tuỳ chỉnh lỗi nào được thử lại', () => {
+  it('dùng isTransient do người gọi truyền vào thay cho mặc định', async () => {
+    const clock = makeClock();
+    const err = httpError(503);
+    const fn = jest.fn().mockRejectedValue(err);
+
+    // Người gọi nói "503 KHÔNG được thử lại" -> phải ném ngay ở lần đầu.
+    await expect(withGeminiRetry(fn, { ...clock, isTransient: () => false })).rejects.toBe(err);
+
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(clock.sleeps).toEqual([]);
+  });
+
+  it('isTransient có thể mở rộng sang lỗi mà mặc định không thử lại', async () => {
+    const clock = makeClock();
+    const fn = jest.fn().mockRejectedValueOnce(httpError(403)).mockResolvedValue('ok');
+
+    await expect(withGeminiRetry(fn, { ...clock, random: () => 0, isTransient: () => true })).resolves.toBe('ok');
+
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
